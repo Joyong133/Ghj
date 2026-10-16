@@ -1,0 +1,216 @@
+<!--HEAD-->
+<title>부산·울산 VR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="실제 지도 데이터로 부산과 울산을 1:1 크기로 걷고, 날고, 지하철과 버스를 타는 WebXR 여행.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gothic+A1:wght@400;500;700&display=swap">
+<style>
+/* Layout: 전면 3D 화면 위에 지하철 안내판처럼 생긴 판들이 모서리에 붙는다. 노선 색 배지가 정보의 단위. */
+:root {
+  color-scheme: dark;
+  --ink: #06121c;
+  --panel: rgba(7, 19, 30, 0.86);
+  --panel-solid: #0b1b29;
+  --line: rgba(196, 220, 238, 0.18);
+  --text: #eef4f8;
+  --muted: #93a7b8;
+  --accent: #ffb43a;
+  --sea: #3aa0d8;
+  --ok: #5fd28a;
+  --warn: #ff8a6a;
+  --l1: #f06a00; --l2: #81bf48; --l3: #bb8c00; --l4: #217dcb; --bgl: #8652a1; --dh: #0054a6;
+  --font-display: "Black Han Sans", "Gothic A1", "Apple SD Gothic Neo", sans-serif;
+  --font-ui: "Gothic A1", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --r: 10px;
+  --gut-l: max(16px, env(safe-area-inset-left, 0px));
+  --gut-r: max(16px, env(safe-area-inset-right, 0px));
+  --gut-t: max(12px, env(safe-area-inset-top, 0px));
+  --gut-b: max(12px, env(safe-area-inset-bottom, 0px));
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--text); overflow: hidden; }
+body { font-family: var(--font-ui); font-size: 14px; -webkit-user-select: none; user-select: none; touch-action: none; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#app { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.badge { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; font-weight: 700; font-size: 12px; color: #fff; line-height: 1; white-space: nowrap; }
+
+/* ---------- HUD ---------- */
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#where { position: absolute; left: var(--gut-l); top: var(--gut-t); padding: 10px 14px; display: grid; gap: 4px; max-width: min(380px, calc(100vw - 210px)); }
+#where .place { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#where .sub { color: var(--muted); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+#where .near { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
+#where .near span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mapbox { position: absolute; right: var(--gut-r); top: var(--gut-t); display: grid; justify-items: end; gap: 6px; }
+#minimap { width: 160px; height: 160px; border-radius: 50%; border: 1px solid var(--line); background: #041019; display: block; }
+#modebar { position: absolute; left: 50%; bottom: var(--gut-b); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; padding: 6px; }
+#modebar .m { padding: 6px 12px; border-radius: 8px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+#modebar .m.on { background: rgba(255, 180, 58, 0.16); color: var(--accent); }
+#modebar .spd { padding: 0 8px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#prompt { position: absolute; left: 50%; top: 60%; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+#prompt kbd { font-family: var(--font-ui); font-weight: 700; color: var(--ink); background: var(--accent); border-radius: 4px; padding: 0 6px; margin-right: 6px; }
+#crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(255,255,255,0.75); }
+#info { position: absolute; right: var(--gut-r); top: calc(var(--gut-t) + 176px); width: min(320px, calc(100vw - 32px)); padding: 14px 16px; display: grid; gap: 6px; }
+#info .cat { font-size: 12px; color: var(--accent); letter-spacing: 0.08em; }
+#info h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 22px; text-wrap: balance; }
+#info p { margin: 0; color: #cfdbe5; font-size: 13px; line-height: 1.6; }
+#info .meta { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#ride { position: absolute; left: 50%; top: var(--gut-t); transform: translateX(-50%); width: min(520px, calc(100vw - 420px)); min-width: 280px; padding: 10px 14px; display: grid; gap: 6px; }
+#ride .top { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+#ride .next { font-family: var(--font-display); font-size: 24px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+#ride .next small { font-family: var(--font-ui); font-size: 12px; color: var(--muted); }
+#ride .strip { display: flex; gap: 0; align-items: center; overflow: hidden; height: 18px; }
+#ride .strip i { flex: 1; height: 4px; background: currentColor; opacity: 0.5; }
+#ride .strip b { width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; background: var(--panel-solid); flex: none; }
+#ride .strip b.here { background: currentColor; }
+#toasts { position: absolute; left: var(--gut-l); bottom: calc(var(--gut-b) + 64px); display: flex; flex-direction: column-reverse; gap: 4px; max-width: min(440px, 60vw); }
+.toast { padding: 6px 12px; font-size: 13px; background: rgba(6, 16, 26, 0.85); border-radius: 8px; border-left: 3px solid var(--sea); animation: tin 0.25s ease; }
+@keyframes tin { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+#status { position: absolute; right: var(--gut-r); bottom: calc(var(--gut-b) + 22px); padding: 5px 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#attr { position: absolute; right: var(--gut-r); bottom: var(--gut-b); font-size: 10.5px; color: rgba(220, 232, 240, 0.7); text-shadow: 0 1px 2px #000; pointer-events: auto; }
+#attr a { color: inherit; }
+#banner { position: absolute; left: 0; right: 0; top: 26%; text-align: center; transition: opacity 0.5s; padding-left: var(--gut-l); padding-right: var(--gut-r); }
+#banner .t { font-family: var(--font-display); font-size: clamp(30px, 5.5vw, 60px); text-shadow: 0 2px 18px rgba(0,0,0,0.65); text-wrap: balance; }
+#banner .s { margin-top: 6px; font-size: clamp(13px, 1.6vw, 17px); color: #dce8f0; text-shadow: 0 1px 8px #000; }
+
+/* ---------- 메뉴 ---------- */
+#menu { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(2, 8, 14, 0.5); padding: var(--gut-t) var(--gut-r) var(--gut-b) var(--gut-l); }
+#menu .box { width: min(600px, 100%); max-height: min(86vh, 760px); display: flex; flex-direction: column; background: rgba(8, 20, 32, 0.95); }
+#menu header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
+#menu h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 24px; text-wrap: balance; }
+#menu header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+#menu .tabs { display: flex; gap: 6px; padding: 10px 14px 0; flex-wrap: wrap; }
+#menu .tabs button { border: 1px solid var(--line); background: transparent; border-radius: 16px; padding: 5px 12px; cursor: pointer; color: var(--muted); }
+#menu .tabs button.on { border-color: var(--accent); color: var(--accent); }
+#menu .list { overflow-y: auto; padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+#menu .item { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+#menu .item:hover:not(:disabled), #menu .item.focus { background: rgba(255, 180, 58, 0.09); border-color: rgba(255, 180, 58, 0.45); }
+#menu .item:disabled { opacity: 0.4; cursor: default; }
+#menu .item .ic { grid-row: span 2; }
+#menu .item .l { font-size: 15px; min-width: 0; }
+#menu .item .r { color: var(--accent); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#menu .item .d { grid-column: 2 / -1; color: var(--muted); font-size: 12.5px; }
+#menu .text { padding: 6px 12px; color: var(--muted); font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; }
+#menu .text.head { color: var(--accent); font-size: 12px; letter-spacing: 0.1em; padding-top: 12px; }
+#menu footer { padding: 10px 22px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+/* ---------- 지도 ---------- */
+#map { position: absolute; inset: 0; background: #041019; }
+#mapc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#mapui { position: absolute; left: var(--gut-l); top: var(--gut-t); padding: 12px 14px; display: grid; gap: 8px; max-width: min(360px, calc(100vw - 32px)); }
+#mapui h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 22px; }
+#mapui p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+#mapui .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--ink); border-color: var(--accent); font-weight: 700; }
+
+/* ---------- 시작 화면 ---------- */
+#title { position: absolute; inset: 0; overflow-y: auto; background: radial-gradient(120% 90% at 80% 10%, rgba(58,160,216,0.25), transparent 60%), linear-gradient(180deg, rgba(4,12,20,0.55), rgba(4,12,20,0.92)); padding: var(--gut-t) var(--gut-r) var(--gut-b) var(--gut-l); display: grid; align-content: center; }
+#title .inner { width: min(720px, 100%); margin: 0 auto; display: grid; gap: 20px; padding-block: 24px; }
+#title .lines { display: flex; gap: 6px; flex-wrap: wrap; }
+#title h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(44px, 8vw, 88px); line-height: 1; letter-spacing: 0.01em; }
+#title h1 em { font-style: normal; color: var(--accent); }
+#title .lede { margin: 0; color: #cfdbe5; font-size: clamp(15px, 1.8vw, 18px); line-height: 1.6; max-width: 56ch; }
+#title .starts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.start { text-align: left; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(8, 20, 32, 0.8); cursor: pointer; display: grid; gap: 3px; }
+.start b { font-size: 15px; }
+.start span { color: var(--muted); font-size: 12px; }
+.start:hover, .start.on { border-color: var(--accent); background: rgba(255, 180, 58, 0.1); }
+#title .go { display: flex; gap: 8px; flex-wrap: wrap; }
+#title .go .btn { padding: 12px 18px; font-size: 15px; }
+#title .fine { color: var(--muted); font-size: 12px; line-height: 1.6; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); color: var(--muted); font-size: 15px; }
+
+/* ---------- 터치 ---------- */
+#touch { position: absolute; inset: 0; pointer-events: none; }
+#touch .pad { position: absolute; left: calc(var(--gut-l) + 8px); bottom: calc(var(--gut-b) + 56px); width: 124px; height: 124px; border-radius: 50%; border: 1px solid var(--line); background: rgba(6, 16, 26, 0.35); pointer-events: auto; }
+#touch .knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255, 180, 58, 0.35); border: 1px solid rgba(255,180,58,0.6); }
+#touch .tb { position: absolute; pointer-events: auto; min-width: 56px; height: 44px; border-radius: 22px; border: 1px solid var(--line); background: rgba(6, 16, 26, 0.6); font-size: 13px; padding: 0 12px; }
+#touch .tb.on { background: rgba(255, 180, 58, 0.35); }
+
+@media (max-width: 1240px) { #ride { top: calc(var(--gut-t) + 104px); left: var(--gut-l); transform: none; width: min(480px, calc(100vw - 210px)); min-width: 0; } }
+@media (max-width: 760px) {
+  #minimap { width: 110px; height: 110px; }
+  #where { max-width: calc(100vw - 150px); padding: 8px 10px; }
+  #where .place { font-size: 17px; }
+  #info { top: auto; bottom: calc(var(--gut-b) + 190px); }
+  #ride { top: calc(var(--gut-t) + 120px); left: var(--gut-l); transform: none; width: calc(100vw - 32px); min-width: 0; }
+  body.touch #modebar { bottom: calc(var(--gut-b) + 4px); }
+}
+@media (max-height: 520px) { #info { display: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+</style>
+<!--BODY-->
+<div id="app">
+  <canvas id="view" tabindex="0" aria-label="3D 지도 화면"></canvas>
+  <div id="hud" hidden>
+    <div id="where" class="panel">
+      <div class="place" id="w-place">부산</div>
+      <div class="near" id="w-near"></div>
+      <div class="sub"><span id="w-alt">고도 0 m</span><span id="w-ll">35.0000, 129.0000</span></div>
+    </div>
+    <div id="mapbox"><canvas id="minimap" width="320" height="320"></canvas></div>
+    <div id="crosshair"></div>
+    <div id="prompt" class="panel" hidden></div>
+    <aside id="info" class="panel" hidden><div class="cat" id="i-cat"></div><h3 id="i-name"></h3><p id="i-desc"></p><div class="meta" id="i-meta"></div></aside>
+    <div id="ride" class="panel" hidden><div class="top" id="r-top"></div><div class="next" id="r-next"></div><div class="strip" id="r-strip"></div></div>
+    <div id="modebar" class="panel"></div>
+    <div id="toasts"></div>
+    <div id="status" class="panel" hidden></div>
+    <div id="banner" style="opacity:0"><div class="t"></div><div class="s"></div></div>
+  </div>
+  <div id="attr">지도 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 기여자 · 위성 Esri, Maxar, Earthstar · 지형 Mapzen/AWS</div>
+
+  <div id="touch" hidden>
+    <div class="pad" id="tpad"><div class="knob" id="tknob"></div></div>
+    <button class="tb" id="t-up" style="right:calc(var(--gut-r) + 8px);bottom:calc(var(--gut-b) + 170px)" hidden>위로</button>
+    <button class="tb" id="t-down" style="right:calc(var(--gut-r) + 8px);bottom:calc(var(--gut-b) + 116px)" hidden>아래로</button>
+    <button class="tb" id="t-use" style="right:calc(var(--gut-r) + 8px);bottom:calc(var(--gut-b) + 62px)" hidden>타기</button>
+    <button class="tb" id="t-fly" style="right:calc(var(--gut-r) + 84px);bottom:calc(var(--gut-b) + 62px)">비행</button>
+    <button class="tb" id="t-run" style="right:calc(var(--gut-r) + 160px);bottom:calc(var(--gut-b) + 62px)">달리기</button>
+    <button class="tb" id="t-map" style="right:calc(var(--gut-r) + 8px);top:calc(var(--gut-t) + 176px)">지도</button>
+    <button class="tb" id="t-menu" style="right:calc(var(--gut-r) + 84px);top:calc(var(--gut-t) + 176px)">메뉴</button>
+  </div>
+
+  <div id="menu" hidden>
+    <div class="box panel" role="dialog" aria-modal="true" aria-labelledby="menutitle">
+      <header><h2 id="menutitle">메뉴</h2><p id="menusub"></p></header>
+      <div class="tabs" id="menutabs"></div>
+      <div class="list" id="menulist"></div>
+      <footer id="menufoot">↑↓ 선택 · Enter 확인 · Esc 뒤로</footer>
+    </div>
+  </div>
+
+  <div id="map" hidden>
+    <canvas id="mapc"></canvas>
+    <div id="mapui" class="panel">
+      <h2>지도</h2>
+      <p id="maphint">끌어서 이동, 휠·두 손가락으로 확대. 원하는 곳을 누르면 그 위치로 순간이동합니다.</p>
+      <div class="row"><button class="btn" id="map-me" type="button">내 위치</button><button class="btn" id="map-busan" type="button">부산</button><button class="btn" id="map-ulsan" type="button">울산</button><button class="btn primary" id="map-close" type="button">닫기</button></div>
+    </div>
+  </div>
+
+  <div id="title" hidden>
+    <div class="inner">
+      <div class="lines"><span class="badge" style="background:var(--l1)">1</span><span class="badge" style="background:var(--l2)">2</span><span class="badge" style="background:var(--l3)">3</span><span class="badge" style="background:var(--l4)">4</span><span class="badge" style="background:var(--bgl)">김해</span><span class="badge" style="background:var(--dh)">동해선</span></div>
+      <h1>부산·울산<br><em>VR</em> 여행</h1>
+      <p class="lede">실제 지도 데이터로 두 도시를 1:1 크기로 세웠습니다. 걸어서 골목을 돌고, 하늘을 날고, 지하철과 버스를 타고, 공항과 대학교와 바다를 둘러보세요.</p>
+      <div class="starts" id="starts"></div>
+      <div class="go">
+        <button class="btn primary" id="b-start" type="button">여기서 시작</button>
+        <button class="btn" id="b-vr" type="button" hidden>VR로 시작</button>
+        <button class="btn" id="b-help" type="button">조작법</button>
+      </div>
+      <p class="fine">지도 데이터는 플레이하는 동안 OpenStreetMap, Esri, AWS에서 실시간으로 받아옵니다. 인터넷 연결이 필요하고, 처음 가는 곳은 불러오는 데 몇 초가 걸립니다. 건물 높이는 OSM에 높이 정보가 없으면 건물 종류로 추정합니다.</p>
+    </div>
+  </div>
+  <div id="loading"><span id="loadtext">불러오는 중…</span></div>
+</div>
+<script type="module">
+/*__GAME__*/
+</script>
