@@ -196,15 +196,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
     <div id="mapui" class="panel">
       <h2>지도</h2>
       <p id="maphint">끌어서 이동, 휠·두 손가락으로 확대. 원하는 곳을 누르면 그 위치로 순간이동합니다.</p>
-      <div class="row"><button class="btn" id="map-me" type="button">내 위치</button><button class="btn" id="map-busan" type="button">부산</button><button class="btn" id="map-ulsan" type="button">울산</button><button class="btn primary" id="map-close" type="button">닫기</button></div>
+      <div class="row"><button class="btn" id="map-me" type="button">내 위치</button><button class="btn" type="button" data-go="35.15,129.06,0.012">부산</button><button class="btn" type="button" data-go="35.53,129.32,0.012">울산</button><button class="btn" type="button" data-go="37.55,126.99,0.01">서울</button><button class="btn" type="button" data-go="36.35,127.40,0.012">대전</button><button class="btn" type="button" data-go="35.87,128.60,0.012">대구</button><button class="btn" type="button" data-go="35.83,129.22,0.012">경주</button><button class="btn" type="button" data-go="36.04,129.37,0.012">포항</button><button class="btn" type="button" data-go="37.76,128.90,0.012">강릉</button><button class="btn" type="button" data-go="36.4,128.2,0.0016">전국</button><button class="btn primary" id="map-close" type="button">닫기</button></div>
     </div>
   </div>
 
   <div id="title" hidden>
     <div class="inner">
-      <div class="lines"><span class="badge" style="background:var(--l1)">1</span><span class="badge" style="background:var(--l2)">2</span><span class="badge" style="background:var(--l3)">3</span><span class="badge" style="background:var(--l4)">4</span><span class="badge" style="background:var(--bgl)">김해</span><span class="badge" style="background:var(--dh)">동해선</span></div>
+      <div class="lines"><span class="badge" style="background:var(--l1)">1</span><span class="badge" style="background:var(--l2)">2</span><span class="badge" style="background:var(--l3)">3</span><span class="badge" style="background:var(--l4)">4</span><span class="badge" style="background:var(--bgl)">김해</span><span class="badge" style="background:var(--dh)">동해선</span><span class="badge" style="background:#1f4fa0">KTX</span><span class="badge" style="background:#2a8fd0">KTX-이음</span></div>
       <h1>부산·울산<br><em>VR</em> 여행</h1>
-      <p class="lede">실제 지도 데이터로 두 도시를 1:1 크기로 세웠습니다. 걸어서 골목을 돌고, 하늘을 날고, 지하철과 버스를 타고, 공항과 대학교와 바다를 둘러보세요.</p>
+      <p class="lede">실제 지도 데이터로 두 도시를 1:1 크기로 세웠습니다. 걸어서 골목을 돌고, 하늘을 날고, 지하철과 버스를 타고, 공항과 대학교와 바다를 둘러보세요. KTX를 타면 서울·대전·대구·경주까지, KTX-이음을 타면 포항·삼척·동해·강릉까지 갈 수 있습니다.</p>
       <div class="starts" id="starts"></div>
       <div class="go">
         <button class="btn primary" id="b-start" type="button">여기서 시작</button>
@@ -330,6 +330,13 @@ const Input = {
 // 좌표는 대략값이다. 주변 OSM 데이터가 들어오면 q의 이름과 일치하는 지점으로 자동 보정한다.
 // ---------------------------------------------------------------------------
 const REGION = { s: 34.98, w: 128.80, n: 35.72, e: 129.50 }; // 부산 + 울산
+const KOREA = { s: 33.0, w: 124.5, n: 38.8, e: 131.0 }; // 먼 지형을 불러오는 범위 (KTX로 가는 도시 포함)
+// 명소 목록의 지역 묶음
+const CITY_GROUP = {
+  부산: '부산', 울산: '울산', 서울: '수도권', 광명: '수도권', '천안·아산': '충청', 청주: '충청', 대전: '충청',
+  김천: '대구·경북', 대구: '대구·경북', 경주: '대구·경북', 포항: '대구·경북', 영덕: '대구·경북', 울진: '대구·경북',
+  삼척: '강원', 동해: '강원', 강릉: '강원',
+};
 
 const CATS = {
   beach: { name: '해변', color: '#3aa0d8' },
@@ -422,9 +429,82 @@ const PLACES = [
   { id: 'samsan', city: '울산', cat: 'market', name: '삼산동 번화가', lat: 35.5395, lon: 129.3375, q: ['삼산동'], desc: '백화점과 버스터미널이 모인 울산의 대표 번화가.' },
   { id: 'unist', city: '울산', cat: 'uni', name: 'UNIST', lat: 35.5733, lon: 129.1903, q: ['울산과학기술원', 'UNIST'], desc: '2009년에 문을 연 이공계 특성화 국립대학교. 울주군 언양읍에 있다.' },
   { id: 'uou', city: '울산', cat: 'uni', name: '울산대학교', lat: 35.5437, lon: 129.2566, q: ['울산대학교'], desc: '남구 무거동의 사립대학교.' },
+
+  // ---------------- KTX로 가는 도시들 (좌표는 대략값, OSM 이름으로 보정)
+  // 서울·경기
+  { id: 'seoulstn', city: '서울', cat: 'transit', name: '서울역', lat: 37.5547, lon: 126.9707, q: ['서울역'], desc: 'KTX 경부선의 출발역. 옛 서울역사(문화역서울284) 옆에 지금의 역사가 있다.' },
+  { id: 'gyeongbok', city: '서울', cat: 'culture', name: '경복궁', lat: 37.5788, lon: 126.9770, q: ['경복궁'], desc: '조선의 법궁. 광화문을 지나 근정전과 경회루가 이어진다.' },
+  { id: 'gwanghwamun', city: '서울', cat: 'sight', name: '광화문광장', lat: 37.5720, lon: 126.9769, q: ['광화문광장', '광화문'], desc: '세종대왕상과 이순신 장군상이 서 있는 서울 도심의 광장.' },
+  { id: 'changdeok', city: '서울', cat: 'culture', name: '창덕궁', lat: 37.5794, lon: 126.9910, q: ['창덕궁'], desc: '후원이 아름다운 조선의 궁궐. 유네스코 세계유산.' },
+  { id: 'bukchon', city: '서울', cat: 'culture', name: '북촌한옥마을', lat: 37.5826, lon: 126.9836, q: ['북촌한옥마을', '북촌'], desc: '경복궁과 창덕궁 사이 언덕에 한옥이 모여 있는 동네.' },
+  { id: 'namsan', city: '서울', cat: 'sight', name: 'N서울타워', lat: 37.5512, lon: 126.9882, q: ['N서울타워', '남산서울타워', '서울타워'], desc: '남산 꼭대기의 전망 타워. 서울 시내가 한눈에 보인다.' },
+  { id: 'myeongdong', city: '서울', cat: 'market', name: '명동', lat: 37.5609, lon: 126.9862, q: ['명동'], desc: '쇼핑 거리와 노점이 빽빽한 서울 도심의 번화가.' },
+  { id: 'namdaemun', city: '서울', cat: 'market', name: '남대문시장', lat: 37.5591, lon: 126.9776, q: ['남대문시장'], desc: '숭례문 옆의 오래된 전통시장.' },
+  { id: 'cheonggye', city: '서울', cat: 'nature', name: '청계천', lat: 37.5692, lon: 126.9779, q: ['청계광장', '청계천'], desc: '도심을 동서로 흐르는 복원된 하천과 산책로.' },
+  { id: 'ddp', city: '서울', cat: 'culture', name: '동대문디자인플라자', lat: 37.5663, lon: 127.0092, q: ['동대문디자인플라자', 'DDP'], desc: '곡선 외벽의 복합 문화 공간. 주변은 밤늦게까지 여는 패션 상가.' },
+  { id: 'hongdae', city: '서울', cat: 'market', name: '홍대 거리', lat: 37.5551, lon: 126.9233, q: ['홍대', '홍익대학교'], desc: '클럽과 공연장, 카페가 모인 젊은 거리.' },
+  { id: 'yeouido', city: '서울', cat: 'nature', name: '여의도 한강공원', lat: 37.5283, lon: 126.9326, q: ['여의도한강공원', '여의도 한강공원'], desc: '한강 남쪽 여의도의 강변 공원. 봄에는 벚꽃길이 붐빈다.' },
+  { id: 'gangnam', city: '서울', cat: 'market', name: '강남역 거리', lat: 37.4979, lon: 127.0276, q: ['강남역'], desc: '고층 빌딩과 상가가 늘어선 강남대로의 중심.' },
+  { id: 'coex', city: '서울', cat: 'sight', name: '코엑스', lat: 37.5115, lon: 127.0595, q: ['코엑스', 'COEX'], desc: '전시장과 지하 쇼핑몰, 별마당 도서관이 있는 복합 시설.' },
+  { id: 'lwt', city: '서울', cat: 'sight', name: '롯데월드타워', lat: 37.5126, lon: 127.1025, q: ['롯데월드타워'], desc: '높이 555m, 123층의 초고층 건물. 꼭대기에 전망대가 있다.' },
+  { id: 'snu', city: '서울', cat: 'uni', name: '서울대학교', lat: 37.4600, lon: 126.9516, q: ['서울대학교'], desc: '관악산 자락의 국립대학교.' },
+  { id: 'yonsei', city: '서울', cat: 'uni', name: '연세대학교', lat: 37.5658, lon: 126.9386, q: ['연세대학교'], desc: '서대문구 신촌의 사립대학교.' },
+  { id: 'korea', city: '서울', cat: 'uni', name: '고려대학교', lat: 37.5894, lon: 127.0323, q: ['고려대학교'], desc: '성북구 안암동의 사립대학교.' },
+  { id: 'gwangmyeongstn', city: '광명', cat: 'transit', name: '광명역', lat: 37.4163, lon: 126.8848, q: ['광명역'], desc: '경부고속철도가 서울을 벗어나며 처음 서는 KTX 역.' },
+  // 충청·대전
+  { id: 'cheonanasan', city: '천안·아산', cat: 'transit', name: '천안아산역', lat: 36.7945, lon: 127.1046, q: ['천안아산역'], desc: '천안과 아산 사이의 KTX 역.' },
+  { id: 'independence', city: '천안·아산', cat: 'culture', name: '독립기념관', lat: 36.7838, lon: 127.2229, q: ['독립기념관'], desc: '흑성산 아래의 독립운동 역사 전시관.' },
+  { id: 'osong', city: '청주', cat: 'transit', name: '오송역', lat: 36.6203, lon: 127.3275, q: ['오송역'], desc: '경부고속철도와 호남고속철도가 갈라지는 KTX 역.' },
+  { id: 'daejeonstn', city: '대전', cat: 'transit', name: '대전역', lat: 36.3323, lon: 127.4346, q: ['대전역'], desc: '대전 동구의 KTX 역. 원도심 한가운데에 있다.' },
+  { id: 'hanbit', city: '대전', cat: 'sight', name: '엑스포과학공원 한빛탑', lat: 36.3765, lon: 127.3868, q: ['한빛탑', '엑스포과학공원'], desc: '1993년 대전 엑스포의 상징탑.' },
+  { id: 'kaist', city: '대전', cat: 'uni', name: 'KAIST', lat: 36.3721, lon: 127.3604, q: ['한국과학기술원', 'KAIST'], desc: '유성구의 이공계 특성화 국립대학교.' },
+  { id: 'cnu', city: '대전', cat: 'uni', name: '충남대학교', lat: 36.3685, lon: 127.3460, q: ['충남대학교'], desc: '유성구의 국립대학교.' },
+  { id: 'yuseong', city: '대전', cat: 'culture', name: '유성온천', lat: 36.3537, lon: 127.3418, q: ['유성온천'], desc: '대전 유성구의 온천 거리. 무료 족욕장이 있다.' },
+  // 대구·경북
+  { id: 'gimcheongumi', city: '김천', cat: 'transit', name: '김천구미역', lat: 36.1137, lon: 128.1802, q: ['김천구미역', '김천(구미)역'], desc: '김천시 남면의 KTX 역. 구미와 김천 사이에 있다.' },
+  { id: 'seodaegu', city: '대구', cat: 'transit', name: '서대구역', lat: 35.8826, lon: 128.5390, q: ['서대구역'], desc: '2022년에 문을 연 대구 서구의 KTX 역.' },
+  { id: 'dongdaegu', city: '대구', cat: 'transit', name: '동대구역', lat: 35.8793, lon: 128.6286, q: ['동대구역'], desc: '대구의 대표 KTX 역. 복합환승센터가 붙어 있다.' },
+  { id: 'dongseongno', city: '대구', cat: 'market', name: '동성로', lat: 35.8694, lon: 128.5960, q: ['동성로'], desc: '대구 도심의 쇼핑 거리.' },
+  { id: 'seomun', city: '대구', cat: 'market', name: '서문시장', lat: 35.8695, lon: 128.5806, q: ['서문시장'], desc: '조선 시대부터 이어진 대구의 큰 전통시장. 야시장이 열린다.' },
+  { id: 'kimkwangseok', city: '대구', cat: 'culture', name: '김광석다시그리기길', lat: 35.8597, lon: 128.6066, q: ['김광석다시그리기길', '김광석 다시그리기 길'], desc: '가수 김광석을 기리는 벽화 골목.' },
+  { id: 'e83', city: '대구', cat: 'sight', name: '83타워', lat: 35.8532, lon: 128.5650, q: ['83타워', '이월드'], desc: '두류공원 옆 이월드의 전망 타워.' },
+  { id: 'suseongmot', city: '대구', cat: 'nature', name: '수성못', lat: 35.8280, lon: 128.6170, q: ['수성못'], desc: '수성구의 호수 공원. 둘레 산책로가 있다.' },
+  { id: 'lionspark', city: '대구', cat: 'sport', name: '대구삼성라이온즈파크', lat: 35.8411, lon: 128.6815, q: ['대구삼성라이온즈파크', '라이온즈파크'], desc: '수성구 연호동의 야구장.' },
+  { id: 'knu', city: '대구', cat: 'uni', name: '경북대학교', lat: 35.8899, lon: 128.6105, q: ['경북대학교'], desc: '대구 북구의 국립대학교.' },
+  { id: 'gyeongjustn', city: '경주', cat: 'transit', name: '경주역', lat: 35.7982, lon: 129.1390, q: ['경주역', '신경주역'], desc: '건천읍의 KTX 역(옛 신경주역). 경부선 KTX와 동해선 KTX-이음이 선다.' },
+  { id: 'bulguksa', city: '경주', cat: 'culture', name: '불국사', lat: 35.7900, lon: 129.3320, q: ['불국사'], desc: '신라 때 세운 절. 다보탑과 석가탑이 있는 유네스코 세계유산.' },
+  { id: 'seokguram', city: '경주', cat: 'culture', name: '석굴암', lat: 35.7950, lon: 129.3490, q: ['석굴암'], desc: '토함산 중턱의 석굴 사원. 불국사와 함께 세계유산이다.' },
+  { id: 'cheomseongdae', city: '경주', cat: 'culture', name: '첨성대', lat: 35.8347, lon: 129.2190, q: ['첨성대'], desc: '신라 선덕여왕 때 세운 천문대.' },
+  { id: 'daereungwon', city: '경주', cat: 'culture', name: '대릉원', lat: 35.8381, lon: 129.2120, q: ['대릉원'], desc: '신라 왕과 귀족의 큰 무덤이 모인 고분 공원. 천마총이 있다.' },
+  { id: 'donggung', city: '경주', cat: 'culture', name: '동궁과 월지', lat: 35.8346, lon: 129.2266, q: ['동궁과월지', '동궁과 월지', '안압지'], desc: '신라 별궁 터와 연못. 밤 조명이 아름답다.' },
+  { id: 'hwangridan', city: '경주', cat: 'market', name: '황리단길', lat: 35.8378, lon: 129.2096, q: ['황리단길'], desc: '대릉원 옆 한옥 카페와 가게가 모인 거리.' },
+  { id: 'bomun', city: '경주', cat: 'sight', name: '보문관광단지', lat: 35.8420, lon: 129.2850, q: ['보문호', '보문관광단지'], desc: '보문호를 둘러싼 호텔과 놀이공원 단지.' },
+  { id: 'pohangstn', city: '포항', cat: 'transit', name: '포항역', lat: 36.0717, lon: 129.3418, q: ['포항역'], desc: '흥해읍의 KTX 역. 동해선 KTX-이음이 선다.' },
+  { id: 'yeongildae', city: '포항', cat: 'beach', name: '영일대해수욕장', lat: 36.0560, lon: 129.3790, q: ['영일대해수욕장', '영일대'], desc: '바다 위 누각 영일대가 있는 포항의 해수욕장. 건너편으로 제철소가 보인다.' },
+  { id: 'spacewalk', city: '포항', cat: 'sight', name: '스페이스워크', lat: 36.0655, lon: 129.3920, q: ['스페이스워크', '환호공원'], desc: '환호공원 언덕 위의 롤러코스터 모양 철제 산책로.' },
+  { id: 'jukdo', city: '포항', cat: 'market', name: '죽도시장', lat: 36.0350, lon: 129.3650, q: ['죽도시장'], desc: '경북 동해안에서 가장 큰 수산 시장.' },
+  { id: 'homigot', city: '포항', cat: 'nature', name: '호미곶', lat: 36.0770, lon: 129.5690, q: ['호미곶', '상생의손'], desc: '한반도 동쪽 끝의 곶. 바다 위로 상생의 손 조형물이 솟아 있다.' },
+  { id: 'posco', city: '포항', cat: 'industry', name: '포스코 포항제철소', lat: 36.0040, lon: 129.3880, q: ['포항제철소', '포스코'], desc: '형산강 하구의 대규모 제철소.' },
+  { id: 'postech', city: '포항', cat: 'uni', name: '포항공과대학교', lat: 36.0130, lon: 129.3220, q: ['포항공과대학교', 'POSTECH'], desc: '포항 남구의 이공계 사립대학교.' },
+  { id: 'yeongdeokstn', city: '영덕', cat: 'transit', name: '영덕역', lat: 36.4157, lon: 129.3627, q: ['영덕역'], desc: '영덕읍의 동해선 역. KTX-이음이 선다.' },
+  { id: 'ganggu', city: '영덕', cat: 'market', name: '강구항 대게거리', lat: 36.3580, lon: 129.3880, q: ['강구항'], desc: '대게 식당이 줄지어 선 영덕의 항구.' },
+  { id: 'uljinstn', city: '울진', cat: 'transit', name: '울진역', lat: 36.9930, lon: 129.3990, q: ['울진역'], desc: '울진읍의 동해선 역. KTX-이음이 선다.' },
+  // 강원
+  { id: 'samcheokstn', city: '삼척', cat: 'transit', name: '삼척역', lat: 37.4410, lon: 129.1660, q: ['삼척역'], desc: '삼척 시내의 역. 동해선 KTX-이음이 선다.' },
+  { id: 'jukseoru', city: '삼척', cat: 'culture', name: '죽서루', lat: 37.4418, lon: 129.1608, q: ['죽서루'], desc: '오십천 절벽 위의 누각. 관동팔경의 하나.' },
+  { id: 'donghaestn', city: '동해', cat: 'transit', name: '동해역', lat: 37.4977, lon: 129.1241, q: ['동해역'], desc: '동해시의 역. KTX-이음이 선다.' },
+  { id: 'chuam', city: '동해', cat: 'nature', name: '추암 촛대바위', lat: 37.4770, lon: 129.1630, q: ['촛대바위', '추암'], desc: '바다에 솟은 촛대 모양 바위. 해돋이 명소.' },
+  { id: 'mukhostn', city: '동해', cat: 'transit', name: '묵호역', lat: 37.5464, lon: 129.1094, q: ['묵호역'], desc: '묵호항 가까이의 역. KTX-이음이 선다.' },
+  { id: 'nongol', city: '동해', cat: 'culture', name: '논골담길', lat: 37.5520, lon: 129.1170, q: ['논골담길', '묵호등대'], desc: '묵호등대 아래 벽화 골목. 항구와 바다가 내려다보인다.' },
+  { id: 'jeongdongjin', city: '강릉', cat: 'beach', name: '정동진', lat: 37.6913, lon: 129.0342, q: ['정동진역', '정동진'], desc: '바다에 가장 가까운 역으로 알려진 해돋이 명소.' },
+  { id: 'gangneungstn', city: '강릉', cat: 'transit', name: '강릉역', lat: 37.7640, lon: 128.8996, q: ['강릉역'], desc: '동해선 KTX-이음의 종착역. 서울로 가는 강릉선 KTX도 선다.' },
+  { id: 'gyeongpo', city: '강릉', cat: 'beach', name: '경포해변', lat: 37.8055, lon: 128.9080, q: ['경포해변', '경포해수욕장'], desc: '경포호 옆의 넓은 백사장.' },
+  { id: 'anmok', city: '강릉', cat: 'market', name: '안목해변 커피거리', lat: 37.7720, lon: 128.9480, q: ['안목해변', '커피거리'], desc: '바다를 보며 커피를 마시는 카페 거리.' },
+  { id: 'ojukheon', city: '강릉', cat: 'culture', name: '오죽헌', lat: 37.7790, lon: 128.8780, q: ['오죽헌'], desc: '신사임당과 율곡 이이가 태어난 집.' },
+  { id: 'gnmarket', city: '강릉', cat: 'market', name: '강릉중앙시장', lat: 37.7540, lon: 128.8990, q: ['강릉중앙시장', '중앙시장'], desc: '강릉 도심의 전통시장.' },
 ];
 
-const STARTS = ['busanstn', 'haeundae', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam'];
+const STARTS = ['busanstn', 'haeundae', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam', 'seoulstn', 'dongdaegu', 'bulguksa', 'gangneungstn'];
 
 // 부산·울산 도시철도와 광역철도. 역 이름 순서대로 OSM 역 지점과 철길을 찾아 노선을 만든다.
 const LINES = [
@@ -442,6 +522,24 @@ const LINES = [
     stations: ['부전', '거제해맞이', '거제', '교대', '동래', '안락', '부산원동', '재송', '센텀', '벡스코', '신해운대', '송정', '오시리아', '기장', '일광', '좌천', '월내', '서생', '남창', '망양', '덕하', '태화강'] },
 ];
 
+// KTX: 역 [이름, 위도, 경도, 다음 역까지 최고 속도(m/s), 다른 이름]. 위치는 OSM 역 지점으로 보정하고
+// 역 사이 철길은 OSM 철도에서 찾는다. 속도는 실제 소요 시간에 가깝게 맞춘 모의 운행 값
+const KTX_LINES = [
+  { id: 'KTX', name: 'KTX 경부선', short: 'KTX', color: '#1f4fa0', model: 'sancheon', cars: 10, headway: 1800,
+    stations: [
+      ['서울', 37.5547, 126.9707, 33], ['광명', 37.4163, 126.8848, 83], ['천안아산', 36.7945, 127.1046, 83], ['오송', 36.6203, 127.3275, 83],
+      ['대전', 36.3323, 127.4346, 83], ['김천구미', 36.1137, 128.1802, 70, ['김천(구미)']], ['서대구', 35.8826, 128.5390, 28],
+      ['동대구', 35.8793, 128.6286, 83], ['경주', 35.7982, 129.1390, 83, ['신경주']], ['울산', 35.5515, 129.1386, 64, ['울산(통도사)']],
+      ['부산', 35.1152, 129.0423],
+    ] },
+  { id: 'KTXE', name: 'KTX-이음 동해선', short: '이음', color: '#2a8fd0', model: 'eum', cars: 6, headway: 7200,
+    stations: [
+      ['부전', 35.1642, 129.0597, 30], ['태화강', 35.5390, 129.3535, 32], ['경주', 35.7982, 129.1390, 32, ['신경주']], ['포항', 36.0717, 129.3418, 32],
+      ['영덕', 36.4157, 129.3627, 32], ['울진', 36.9930, 129.3990, 32], ['삼척', 37.4410, 129.1660, 32], ['동해', 37.4977, 129.1241, 32],
+      ['묵호', 37.5464, 129.1094, 32], ['정동진', 37.6913, 129.0342, 32], ['강릉', 37.7640, 128.8996],
+    ] },
+];
+
 // OSM 활주로가 없을 때 쓰는 대략적인 활주로 (중심, 방위각)
 const AIRPORTS = {
   PUS: { name: '김해국제공항', lat: 35.1795, lon: 128.9382, heading: 176, length: 3000 },
@@ -449,6 +547,7 @@ const AIRPORTS = {
 };
 
 function placeById(id) { return PLACES.find((p) => p.id === id); }
+function stationLabel(n) { return /역$/.test(n) ? n : n + '역'; }
 function normName(s) { return (s || '').replace(/\(.*?\)/g, '').replace(/[\s·.\-‧・]/g, '').replace(/역$/, ''); }
 
 // ===== 02_net.js =====
@@ -1177,7 +1276,8 @@ const Terrain = {
   update(px, pz, alt) {
     const lat = GEO.lat(pz), lon = GEO.lon(px);
     // 가까운 타일
-    const rn = this.nearRadius() + clamp(alt * 0.6, 0, 700);
+    // KTX가 빨리 달리는 동안에는 가까운 타일을 한 겹만
+    const rn = G.fastRide ? 500 : this.nearRadius() + clamp(alt * 0.6, 0, 700);
     const need = new Set();
     const cx = GEO.tileX(lon, this.NZ), cy = GEO.tileY(lat, this.NZ);
     const span = Math.ceil(rn / 900) + 1;
@@ -1190,6 +1290,8 @@ const Terrain = {
       need.add(k);
       if (!this.near.has(k)) this.loadNear(x, y, k);
     }
+    // 빨리 달릴 때 미뤄 둔 도시 짓기
+    if (!G.fastRide) for (const t of this.near.values()) if (t.cityLater && t.ready) { t.cityLater = false; City.requestTile(t); }
     for (const [k, t] of this.near) {
       if (need.has(k)) continue;
       if (this.rectDist(px, pz, t.b) > rn + 450) this.unloadNear(k, t);
@@ -1202,7 +1304,7 @@ const Terrain = {
       const x = fx + dx, y = fy + dy;
       const b = GEO.tileBounds(this.FZ, x, y);
       if (this.rectDist(px, pz, b) > rf) continue;
-      if (b.e < REGION.w - 0.4 || b.w > REGION.e + 0.4 || b.n < REGION.s - 0.3 || b.s > REGION.n + 0.3) continue;
+      if (b.e < KOREA.w || b.w > KOREA.e || b.n < KOREA.s || b.s > KOREA.n) continue;
       const k = this.key(this.FZ, x, y);
       if (!this.far.has(k)) this.loadFar(x, y, k);
     }
@@ -1314,7 +1416,7 @@ const Terrain = {
     t.ready = true;
     this.updateHoles(x >> 3, y >> 3);
     if (canvas.ok) this.plantTrees(t, canvas);
-    City.requestTile(t);
+    if (G.fastRide) t.cityLater = true; else City.requestTile(t);
   },
   unloadNear(k, t) {
     t.dead = true;
@@ -1456,6 +1558,7 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
   },
 
   requestTile(t) {
+    if (this.tiles.has(t.k)) return;
     const rec = { t, b: t.b, k: t.k, dead: false, group: null };
     this.tiles.set(t.k, rec);
     const sig = {};
@@ -2763,7 +2866,7 @@ const Ships = {
         if (!this.isSea(x, z)) continue;
         const lat = GEO.lat(z), lon = GEO.lon(x);
         // 정박지: 부산 남쪽 앞바다(화물선), 울산항 앞바다(유조선·자동차 운반선)
-        const ulsan = lat > 35.3;
+        const ulsan = lat > 35.3 && lat < 35.7 && lon > 129.2;
         const anchorage = ulsan ? lat > 35.39 && lat < 35.49 && lon > 129.39 : lat < 35.075 && lon > 128.98 && lon < 129.16;
         const r = Math.random();
         const type = ulsan
@@ -2964,7 +3067,7 @@ const Transit = {
       if (!c) { c = []; for (const [k, v] of byName) if (k.startsWith(nn) || nn.startsWith(k) && k.length >= 2) c.push(...v); }
       return c;
     };
-    this.lines = [];
+    const lines = [];
     for (const L of LINES) {
       const cands = L.stations.map((n) => findCands(n));
       const chosen = [];
@@ -3006,16 +3109,36 @@ const Transit = {
       line.speed = L.id === 'DH' ? 24 : L.id === 'L4' || L.id === 'BGL' ? 15 : 19;
       line.dwell = 22;
       this.schedule(line);
-      this.lines.push(line);
+      lines.push(line);
     }
-    // 역 목록 (중복 이름은 하나로)
+    this.lines = lines.concat(this.lines.filter((l) => l.ktx));
+    this.rebuildStations();
+  },
+  // KTX처럼 따로 불러오는 노선을 더한다
+  addLine(line) {
+    this.lines = this.lines.filter((l) => l.id !== line.id).concat([line]);
+    this.rebuildStations();
+  },
+  // 역 목록: 같은 이름("부산역"과 "부산")이 800m 안에 있으면 한 역으로 묶는다
+  rebuildStations() {
     this.stations = [];
     for (const l of this.lines) for (let i = 0; i < l.stops.length; i++) {
-      const s = l.stops[i];
-      let st = this.stations.find((q) => q.name === s.name && Math.hypot(q.x - s.x, q.z - s.z) < 600);
+      const s = l.stops[i], key = normName(s.name);
+      let st = this.stations.find((q) => normName(q.name) === key && Math.hypot(q.x - s.x, q.z - s.z) < 800);
       if (!st) { st = { name: s.name, x: s.x, z: s.z, lines: [] }; this.stations.push(st); }
+      if (l.ktx) st.ktx = true;
       st.lines.push({ line: l, idx: i });
     }
+  },
+  // 노선 모양이 바뀌면(KTX 구간 철길 도착) 타고 있는 열차의 위치를 같은 구간 비율로 옮긴다
+  remap(l, oldStopD) {
+    const a = Ride.active;
+    if (!a || a.line !== l) return;
+    if (a.phase === 'move') {
+      const i = a.idx, j = a.next, o0 = oldStopD[i], o1 = oldStopD[j];
+      const f = o1 !== o0 ? (a.d - o0) / (o1 - o0) : 0;
+      a.from = l.stopD[i]; a.to = l.stopD[j]; a.d = lerp(a.from, a.to, clamp(f, 0, 1));
+    } else a.d = l.stopD[a.idx];
   },
   stationFits(s, L) {
     const t = s.tags || {};
@@ -3024,7 +3147,7 @@ const Transit = {
     if (L.id === 'BGL') return st === 'light_rail' || /경전철|김해/.test(ops);
     return st === 'subway' || st === 'light_rail' || /도시철도|교통공사|Metro/i.test(ops);
   },
-  dijkstra(a, b, types, maxLen) {
+  dijkstra(a, b, types, maxLen, nodeMap = this.nodeMap, maxNodes = 80000) {
     // 이진 힙 다익스트라
     const dist = new Map([[a.id, 0]]), prev = new Map(), done = new Set();
     const heap = [[0, a.id]];
@@ -3035,8 +3158,8 @@ const Transit = {
       if (done.has(id)) continue;
       done.add(id);
       if (id === b.id) break;
-      if (d > maxLen || done.size > 80000) return null;
-      const n = this.nodeMap.get(id);
+      if (d > maxLen || done.size > maxNodes) return null;
+      const n = nodeMap.get(id);
       for (const e of n.adj) {
         if (!types.includes(e.type)) continue;
         const nd = d + e.len;
@@ -3046,20 +3169,27 @@ const Transit = {
     if (!prev.has(b.id) && a.id !== b.id) return null;
     const out = [];
     let cur = b.id;
-    while (cur !== undefined) { const n = this.nodeMap.get(cur); const p = prev.get(cur); out.push({ x: n.x, z: n.z, tunnel: p ? p.e.tunnel : false, bridge: p ? p.e.bridge : false }); cur = p ? p.id : undefined; }
+    while (cur !== undefined) { const n = nodeMap.get(cur); const p = prev.get(cur); out.push({ x: n.x, z: n.z, tunnel: p ? p.e.tunnel : false, bridge: p ? p.e.bridge : false }); cur = p ? p.id : undefined; }
     return out.reverse();
   },
   // 왕복 운행표. 구간 시간 = 거리/속도 + 가감속 손실
   schedule(l) {
     const seg = [];
-    for (let i = 0; i < l.stopD.length - 1; i++) { const d = l.stopD[i + 1] - l.stopD[i]; seg.push(d / l.speed + 14); }
+    if (l.ktx) { l.dwell = 90; l.speed = 60; }
+    for (let i = 0; i < l.stopD.length - 1; i++) { const d = l.stopD[i + 1] - l.stopD[i]; seg.push(l.ktx ? trapTime(d, l.segV[i] || 40) : d / l.speed + 14); }
     l.seg = seg;
     const one = seg.reduce((a, b) => a + b, 0) + l.dwell * (l.stopD.length - 1);
-    l.turn = 90;
+    l.turn = l.ktx ? 900 : 90;
     l.period = 2 * (one + l.turn);
     l.one = one;
-    l.headway = l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
+    l.headway = l.ktx ? l.headway : l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
     l.count = Math.max(2, Math.round(l.period / l.headway));
+  },
+  // i번째 역에서 dir 방향 종착역까지 걸리는 시간(초)
+  timeToEnd(l, i, dir) {
+    let t = 0;
+    for (let k = i; dir > 0 ? k < l.stops.length - 1 : k > 0; k += dir) t += l.seg[dir > 0 ? k : k - 1] + l.dwell;
+    return Math.max(0, t - l.dwell);
   },
   // 시각 t의 열차 위치: {d(노선 위 거리), dir(+1/-1), stopIdx(정차 중이면), next}
   stateAt(l, t) {
@@ -3073,7 +3203,11 @@ const Transit = {
       if (ph < l.dwell) return { d: l.stopD[a], dir, stop: a, next: b };
       ph -= l.dwell;
       const st = l.seg[dir > 0 ? i : n - 2 - i];
-      if (ph < st) { const k = ph / st; const e = k * k * (3 - 2 * k); return { d: lerp(l.stopD[a], l.stopD[b], e), dir, next: b, from: a, k }; }
+      if (ph < st) {
+        const k = ph / st;
+        if (l.ktx) { const D = Math.abs(l.stopD[b] - l.stopD[a]); return { d: lerp(l.stopD[a], l.stopD[b], D ? trapPos(ph, D, l.segV[Math.min(a, b)] || 40) / D : 1), dir, next: b, from: a, k }; }
+        const e = k * k * (3 - 2 * k); return { d: lerp(l.stopD[a], l.stopD[b], e), dir, next: b, from: a, k };
+      }
       ph -= st;
     }
     return { d: dir > 0 ? l.len : 0, dir, stop: dir > 0 ? n - 1 : 0 };
@@ -3094,7 +3228,7 @@ const Transit = {
     for (let k = 0; k < l.count; k++) {
       const off = (k * l.period) / l.count;
       // 앞으로 한 주기 안에서 그 역에 정차를 시작하는 시각 찾기 (5초 단위 탐색)
-      for (let s = 0; s < l.period; s += 5) {
+      for (let s = 0; s < l.period; s += l.ktx ? 30 : 5) {
         const st = this.stateAt(l, t + off + s);
         if (st.stop === idx && st.dir === dir) { best = Math.min(best, s); break; }
         if (s > best) break;
@@ -3118,11 +3252,11 @@ const Transit = {
     return g;
   },
   updateTrains(now) {
-    if (!this.ready) return;
+    if (!this.lines.length) return;
     const P = Player.pos, keep = new Set();
     for (const l of this.lines) {
       const short = l.id === 'L4' || l.id === 'BGL';
-      const cars = short ? 2 : l.id === 'DH' ? 4 : 6;
+      const cars = l.ktx ? l.cars : short ? 2 : l.id === 'DH' ? 4 : 6;
       for (let k = 0; k < l.count; k++) {
         const st = this.stateAt(l, now + (k * l.period) / l.count);
         const head = this.pointAt(l, st.d);
@@ -3132,14 +3266,14 @@ const Transit = {
         let tr = this.trains.get(key);
         if (!tr) {
           tr = new THREE.Group();
-          for (let c = 0; c < cars; c++) tr.add(this.carModel(new THREE.Color(l.color).getHex(), short));
+          for (let c = 0; c < cars; c++) tr.add(l.ktx ? KTX.carModel(l, c) : this.carModel(new THREE.Color(l.color).getHex(), short));
           R.world.add(tr); this.trains.set(key, tr);
         }
         const L = tr.children[0].userData.len + 0.6;
         tr.children.forEach((car, c) => {
           const p = this.pointAt(l, st.d - st.dir * c * L);
           car.position.set(p.x, p.y, p.z);
-          car.rotation.y = p.yaw;
+          car.rotation.y = p.yaw + (l.ktx && st.dir < 0 ? Math.PI : 0); // KTX는 머리가 가는 쪽을 보게
           car.userData.win.emissiveIntensity = R.nightU.value * 0.8;
           car.visible = !p.tunnel;
         });
@@ -3148,8 +3282,8 @@ const Transit = {
     for (const [k, tr] of this.trains) if (!keep.has(k)) { World0.disposeGroup(tr); this.trains.delete(k); }
   },
   nearestStation(x, z, max = 80) {
-    let best = null, bd = max;
-    for (const s of this.stations) { const d = Math.hypot(s.x - x, s.z - z); if (d < bd) { bd = d; best = s; } }
+    let best = null, bd = Infinity;
+    for (const s of this.stations) { const d = Math.hypot(s.x - x, s.z - z); if (d < bd && d < (s.ktx ? Math.max(max, 160) : max)) { bd = d; best = s; } }
     return best;
   },
 };
@@ -3163,6 +3297,7 @@ const Ride = {
 
   buildInterior(kind, color) {
     if (this.interior) World0.disposeGroup(this.interior);
+    if (kind === 'ktx') return this.buildKTXInterior(color);
     const g = new THREE.Group();
     const subway = kind === 'subway';
     const L = subway ? 17.5 : 11, Wd = subway ? 2.7 : 2.4, H = subway ? 2.3 : 2.2;
@@ -3195,6 +3330,57 @@ const Ride = {
     this.interior = g;
     g.userData.L = L;
   },
+  // KTX 객실: 앞을 보는 2+2 좌석, 선반, 앞쪽 벽의 안내 화면(다음 역·속도)
+  buildKTXInterior(color) {
+    const g = new THREE.Group();
+    const L = 18.7, Wd = 2.9, H = 2.3;
+    const wallM = new THREE.MeshStandardMaterial({ color: 0xece8e0, roughness: 0.6, side: THREE.DoubleSide });
+    const floorM = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.95 });
+    const seatM = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.55), roughness: 0.8 });
+    const coverM = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7 });
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x9ac0d8, transparent: true, opacity: 0.1, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false });
+    const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
+    box(Wd, 0.1, L, floorM, 0, -0.05, 0);
+    box(Wd, 0.08, L, wallM, 0, H, 0);
+    for (const sd of [-1, 1]) {
+      box(0.06, 0.8, L, wallM, sd * Wd / 2, 0.4, 0);
+      box(0.06, 0.55, L, wallM, sd * Wd / 2, H - 0.27, 0);
+      box(0.04, H - 1.35, L, glassM, sd * Wd / 2, 0.8 + (H - 1.35) / 2, 0);
+      for (let z = -L / 2 + 0.5; z < L / 2; z += 1.0) box(0.1, H - 1.35, 0.35, wallM, sd * (Wd / 2 - 0.02), 0.8 + (H - 1.35) / 2, z);
+      box(0.45, 0.05, L - 1, wallM, sd * (Wd / 2 - 0.3), H - 0.45, 0); // 선반
+      // 앞을 보는 좌석 둘씩
+      for (let z = -L / 2 + 1.6; z < L / 2 - 1.2; z += 1.0) for (const x of [0.56, 1.06]) {
+        box(0.46, 0.12, 0.48, seatM, sd * x, 0.45, z);
+        box(0.46, 0.64, 0.1, seatM, sd * x, 0.82, z - 0.25); // 등받이 위가 눈높이보다 낮아 앞쪽 안내 화면이 보이게
+        box(0.3, 0.1, 0.03, coverM, sd * x, 1.06, z - 0.31);
+      }
+    }
+    // 앞쪽 벽과 안내 화면
+    box(Wd, H, 0.08, wallM, 0, H / 2, L / 2);
+    box(Wd, H, 0.08, wallM, 0, H / 2, -L / 2);
+    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const disp = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.45), new THREE.MeshBasicMaterial({ map: tex }));
+    disp.position.set(0, H - 0.25, L / 2 - 0.06); disp.rotation.y = Math.PI; g.add(disp);
+    this.disp = { c, tex, last: '' };
+    const lightM = new THREE.MeshBasicMaterial({ color: 0xfff6e8 });
+    for (const sd of [-0.5, 0.5]) box(0.25, 0.03, L - 1, lightM, sd, H - 0.06, 0);
+    const lamp = new THREE.PointLight(0xfff2e0, 3, 14, 1.5); lamp.position.set(0, H - 0.3, 0); g.add(lamp);
+    R.scene.add(g);
+    this.interior = g;
+    g.userData.L = L;
+  },
+  // 객실 앞 안내 화면
+  drawDisplay(top, bottom) {
+    const D = this.disp; if (!D) return;
+    const key = top + '|' + bottom; if (key === D.last) return; D.last = key;
+    const g = D.c.getContext('2d');
+    g.fillStyle = '#06080c'; g.fillRect(0, 0, 512, 128);
+    g.font = '700 46px "Gothic A1", sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#ffb43a'; g.fillText(top, 18, 40);
+    g.font = '600 36px "Gothic A1", sans-serif'; g.fillStyle = '#7fd0ff'; g.fillText(bottom, 18, 96);
+    D.tex.needsUpdate = true;
+  },
   buildTunnel() {
     if (this.tunnel) return;
     const c = document.createElement('canvas'); c.width = 64; c.height = 256;
@@ -3213,11 +3399,11 @@ const Ride = {
 
   // ---------------- 지하철
   startSubway(line, idx, dir) {
-    this.buildInterior('subway', line.color);
+    this.buildInterior(line.ktx ? 'ktx' : 'subway', line.color);
     this.buildTunnel();
-    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0) };
+    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1 };
     G.riding = true;
-    Player.enterRide('subway');
+    Player.enterRide(line.ktx ? 'ktx' : 'subway');
     const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
     UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
     this.announce(`이 열차는 ${term} 방면 열차입니다.`);
@@ -3237,7 +3423,7 @@ const Ride = {
   },
   stop(placeAt) {
     const a = this.active; if (!a) return;
-    this.active = null; G.riding = false; G.inTunnel = false;
+    this.active = null; G.riding = false; G.inTunnel = false; G.fastRide = false; this.disp = null;
     if (this.interior) { World0.disposeGroup(this.interior); this.interior = null; }
     if (this.tunnel) this.tunnel.visible = false;
     R.world.visible = true; R.sea.visible = true;
@@ -3247,7 +3433,11 @@ const Ride = {
   update(dt) {
     const a = this.active; if (!a) return;
     let p, yaw;
-    if (a.kind === 'subway') {
+    if (a.kind === 'subway' && a.line.ktx) {
+      p = this.updateKTX(dt);
+      if (!p) return;
+      yaw = p.yaw + (a.dir < 0 ? Math.PI : 0);
+    } else if (a.kind === 'subway') {
       const l = a.line;
       if (a.phase === 'dwell') {
         a.stopT += dt;
@@ -3295,7 +3485,62 @@ const Ride = {
     }
     this.interior.position.set(p.x, p.y, p.z);
     this.interior.rotation.set(0, yaw, 0);
-    Player.followRide(this.interior, a.kind);
+    Player.followRide(this.interior, a.kind === 'subway' && a.line.ktx ? 'ktx' : a.kind);
+  },
+  // KTX: 가속-정속-감속으로 달리고, 시간 흐름 배속(a.ts)을 적용한다
+  updateKTX(dt) {
+    const a = this.active, l = a.line, sdt = dt * a.ts;
+    if (a.phase === 'dwell') {
+      a.stopT += sdt; a.v = 0;
+      if (a.stopT > l.dwell) {
+        if (a.next < 0 || a.next >= l.stops.length) { UI.toast('종착역입니다. 내립니다.'); this.stop(l.stops[a.idx]); return null; }
+        a.phase = 'move';
+        this.announce(`다음 역은 ${stationLabel(l.stops[a.next].name)}입니다.`);
+      }
+    } else {
+      a.from = l.stopD[a.idx]; a.to = l.stopD[a.next];
+      const vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+      const rem = (a.to - a.d) * a.dir;
+      if (rem <= a.v * a.v / (2 * KTX_DEC) + a.v * sdt * 0.5) a.v = Math.max(1.5, a.v - KTX_DEC * sdt);
+      else a.v = Math.min(vmax, a.v + KTX_ACC * sdt);
+      const step = a.v * sdt;
+      if (step >= rem) {
+        a.d = a.to; a.idx = a.next; a.next += a.dir; a.phase = 'dwell'; a.stopT = 0; a.v = 0;
+        const nm = stationLabel(l.stops[a.idx].name);
+        this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500);
+      } else a.d += a.dir * step;
+    }
+    const p = Transit.pointAt(l, a.d);
+    // 빨리 달리는 동안에는 가까운 도시를 짓지 않는다 (지형과 위성 사진만)
+    G.fastRide = a.v * a.ts > 45;
+    const inTunnel = p.tunnel;
+    G.inTunnel = inTunnel;
+    this.tunnel.visible = inTunnel;
+    R.world.visible = !inTunnel; R.sea.visible = !inTunnel;
+    const yaw = p.yaw + (a.dir < 0 ? Math.PI : 0);
+    if (inTunnel) { this.tunnel.position.set(p.x, p.y + 2, p.z); this.tunnel.rotation.order = 'YXZ'; this.tunnel.rotation.set(Math.PI / 2, yaw, 0); this.tunnelTex.offset.y -= a.v * a.ts * dt / 20; }
+    const st = a.phase === 'dwell' ? l.stops[a.idx] : l.stops[a.next];
+    this.drawDisplay(`${a.phase === 'dwell' ? '이번 역' : '다음 역'} ${stationLabel(st.name)}`, `${Math.round(a.v * 3.6)} km/h${a.ts > 1 ? `   ×${a.ts}` : ''}`);
+    UI.ride({ kind: 'subway', line: l, a });
+    return p;
+  },
+  isKTX() { const a = this.active; return !!(a && a.kind === 'subway' && a.line.ktx); },
+  // 시간 흐름 1 → 10 → 60배
+  cycleSpeed() {
+    if (!this.isKTX()) return;
+    const a = this.active; a.ts = a.ts === 1 ? 10 : a.ts === 10 ? 60 : 1;
+    UI.toast(a.ts === 1 ? '보통 속도로 갑니다.' : `시간을 ${a.ts}배 빠르게 흘려 보냅니다. 열차가 빠르면 도시는 멈췄을 때 지어집니다.`);
+  },
+  // 다음 역 바로 앞으로 건너뛰기 (감속을 시작하는 지점)
+  skipNext() {
+    if (!this.isKTX()) return;
+    const a = this.active, l = a.line;
+    if (a.phase === 'dwell') { if (a.next < 0 || a.next >= l.stops.length) return; a.stopT = l.dwell; a.phase = 'move'; }
+    a.from = l.stopD[a.idx]; a.to = l.stopD[a.next];
+    const vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+    const left = Math.min(Math.abs(a.to - a.d), vmax * vmax / (2 * KTX_DEC));
+    a.d = a.to - a.dir * left; a.v = Math.min(vmax, Math.sqrt(2 * KTX_DEC * left));
+    UI.toast(`${stationLabel(l.stops[a.next].name)} 앞으로 건너뛰었습니다.`);
   },
   canExit() { const a = this.active; return a && a.phase === 'dwell'; },
   exitHere() {
@@ -3529,6 +3774,186 @@ const Planes = {
   },
 };
 
+// ===== 06b_ktx.js =====
+// ---------------------------------------------------------------------------
+// KTX: 역 위치를 OSM에서 찾고, 역 사이 철길을 구간마다 불러와 노선을 만든다.
+// 처음에는 역을 잇는 직선으로 바로 쓰고, 구간 철길이 도착하면 그 구간을 바꾼다.
+// ---------------------------------------------------------------------------
+const KTX_ACC = 0.45, KTX_DEC = 0.6; // m/s²
+
+// 가속-정속-감속 운행: 거리 D를 최고 속도 v로 갈 때 걸리는 시간
+function trapTime(D, v, a = KTX_ACC, b = KTX_DEC) {
+  const dAB = v * v / (2 * a) + v * v / (2 * b);
+  if (D >= dAB) return v / a + v / b + (D - dAB) / v;
+  const vp = Math.sqrt(2 * D * a * b / (a + b));
+  return vp / a + vp / b;
+}
+// 출발하고 t초 뒤에 간 거리
+function trapPos(t, D, v, a = KTX_ACC, b = KTX_DEC) {
+  const dAB = v * v / (2 * a) + v * v / (2 * b);
+  let vp = v, cruise = 0;
+  if (D < dAB) vp = Math.sqrt(2 * D * a * b / (a + b)); else cruise = (D - dAB) / v;
+  const t1 = vp / a, t2 = t1 + cruise, T = t2 + vp / b;
+  if (t <= 0) return 0;
+  if (t < t1) return 0.5 * a * t * t;
+  const d1 = 0.5 * a * t1 * t1;
+  if (t < t2) return d1 + vp * (t - t1);
+  if (t < T) { const u = t - t2; return d1 + vp * cruise + vp * u - 0.5 * b * u * u; }
+  return D;
+}
+function fmtDur(sec) { const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : m >= 1 ? `${m}분` : '1분 미만'; }
+// 역 이름 비교용: 괄호 속 글자는 남기고 공백·괄호·'역'만 뺀다 ("김천(구미)역" → "김천구미")
+function ktxKey(s) { return (s || '').replace(/[\s()·.\-]/g, '').replace(/역$/, ''); }
+
+const KTX = {
+  ready: false,
+
+  async load() {
+    let found = new Map();
+    try {
+      const names = new Set();
+      for (const L of KTX_LINES) for (const s of L.stations) { names.add(s[0]); for (const a of s[4] || []) names.add(a.replace(/\(.*$/, '')); }
+      const K = KOREA;
+      const q = `[out:json][timeout:120];node["railway"~"^(station|halt)$"]["name"~"^(${[...names].join('|')})"](${K.s},${K.w},${K.n},${K.e});out;`;
+      const data = await Net.overpass('ktx-st-v1', q, () => -0.5, { timeout: 120 });
+      found = this.matchStations(data.elements || []);
+    } catch (e) { /* 역 검색이 안 되면 대략 좌표로 */ }
+    for (const L of KTX_LINES) this.makeLine(L, found);
+    this.ready = true;
+    Transit.ready = true;
+    UI.toast(`KTX ${KTX_LINES.length}개 노선(${KTX_LINES.map((l) => l.name).join(', ')})을 만들었습니다. KTX 역에서 E를 눌러 타세요.`, '#2a8fd0');
+    // 구간 철길은 가까운 지도보다 늦게, 하나씩
+    for (const l of Transit.lines) if (l.ktx) for (let i = 0; i < l.stops.length - 1; i++) this.loadSegment(l, i);
+  },
+
+  // 노선마다 역 이름에 맞는 OSM 역 지점 (대략 좌표에서 5km 안, 지하철역 제외)
+  matchStations(els) {
+    const out = new Map();
+    for (const L of KTX_LINES) for (const [name, lat, lon, , alt] of L.stations) {
+      if (out.has(name)) continue;
+      const keys = new Set([ktxKey(name), ...(alt || []).map(ktxKey)]);
+      const ref = GEO.toWorld(lat, lon);
+      let best = null, bd = 5000;
+      for (const el of els) {
+        const t = el.tags || {};
+        if (!keys.has(ktxKey(t.name)) && !keys.has(ktxKey(t['name:ko']))) continue;
+        if (/subway|light_rail|monorail/.test(t.station || '')) continue;
+        const x = GEO.x(el.lon), z = GEO.z(el.lat), d = Math.hypot(x - ref.x, z - ref.z) - (t.station === 'train' ? 300 : 0);
+        if (d < bd) { bd = d; best = { x, z }; }
+      }
+      if (best) out.set(name, best);
+    }
+    return out;
+  },
+
+  makeLine(L, found) {
+    const stops = L.stations.map(([name, lat, lon, v]) => { const w = found.get(name) || GEO.toWorld(lat, lon); return { name, x: w.x, z: w.z, v: v || 0 }; });
+    const line = {
+      id: L.id, name: L.name, short: L.short, color: L.color, ktx: true, model: L.model, cars: L.cars, headway: L.headway, rail: ['rail'],
+      stops, segV: stops.slice(0, -1).map((s) => s.v),
+      // 구간마다 점 목록 (처음에는 두 역을 잇는 직선)
+      segs: stops.slice(0, -1).map((a, i) => this.straight(a, stops[i + 1])),
+    };
+    this.setGeometry(line);
+    Transit.addLine(line);
+  },
+  straight(a, b) {
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 250)), pts = [];
+    for (let k = 0; k <= n; k++) pts.push({ x: lerp(a.x, b.x, k / n), z: lerp(a.z, b.z, k / n), tunnel: false, bridge: false });
+    return pts;
+  },
+  // 구간들을 이어 노선 전체의 점·거리·역 위치를 다시 계산하고 운행표를 만든다
+  setGeometry(l) {
+    const pts = [], tunnel = [], bridge = [], stopAt = [0];
+    l.segs.forEach((seg, i) => {
+      seg.forEach((p, k) => { if (i > 0 && k === 0) return; pts.push({ x: p.x, z: p.z }); tunnel.push(!!p.tunnel); bridge.push(!!p.bridge); });
+      stopAt.push(pts.length - 1);
+    });
+    const dist = [0];
+    for (let i = 1; i < pts.length; i++) dist.push(dist[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+    Object.assign(l, { pts, tunnel, bridge, dist, stopD: stopAt.map((i) => dist[i]), len: dist[dist.length - 1] });
+    Transit.schedule(l);
+  },
+
+  // 두 역 사이 철길: 그 사이 사각형 안의 본선 철도(측선·차량기지 제외)를 받아 최단 경로를 찾는다.
+  // 고속선(highspeed=yes)을 조금 더 짧게 쳐서 나란히 가는 일반선보다 고른다
+  async loadSegment(l, i) {
+    const a = l.stops[i], b = l.stops[i + 1];
+    const m = 0.025;
+    const s = Math.min(GEO.lat(a.z), GEO.lat(b.z)) - m, n = Math.max(GEO.lat(a.z), GEO.lat(b.z)) + m;
+    const w = Math.min(GEO.lon(a.x), GEO.lon(b.x)) - m, e = Math.max(GEO.lon(a.x), GEO.lon(b.x)) + m;
+    const q = `[out:json][timeout:120];way["railway"="rail"][!"service"](${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)});out geom qt;`;
+    let data;
+    try { data = await Net.overpass(`ktx-seg-v1/${l.id}/${i}`, q, () => 6000 + i * 10, { timeout: 120 }); } catch (err) { return; }
+    const nodes = new Map();
+    for (const el of data.elements || []) {
+      if (el.type !== 'way' || !el.geometry || !el.nodes) continue;
+      const tg = el.tags || {}, tunnel = !!tg.tunnel && tg.tunnel !== 'no', bridge = !!tg.bridge && tg.bridge !== 'no', hs = tg.highspeed === 'yes';
+      for (let k = 0; k < el.nodes.length; k++) {
+        const id = el.nodes[k], g = el.geometry[k]; if (!g) continue;
+        let nd = nodes.get(id);
+        if (!nd) { nd = { id, x: GEO.x(g.lon), z: GEO.z(g.lat), adj: [] }; nodes.set(id, nd); }
+        if (k > 0) {
+          const p = nodes.get(el.nodes[k - 1]); if (!p) continue;
+          const len = Math.hypot(nd.x - p.x, nd.z - p.z) * (hs ? 0.8 : 1);
+          nd.adj.push({ to: p.id, len, type: 'rail', tunnel, bridge }); p.adj.push({ to: id, len, type: 'rail', tunnel, bridge });
+        }
+      }
+    }
+    const near = (pt) => { let best = null, bd = 900; for (const nd of nodes.values()) { const d = Math.hypot(nd.x - pt.x, nd.z - pt.z); if (d < bd) { bd = d; best = nd; } } return best; };
+    const na = near(a), nb = near(b);
+    if (!na || !nb) return;
+    const straightLen = Math.hypot(b.x - a.x, b.z - a.z);
+    const path = Transit.dijkstra(na, nb, ['rail'], straightLen * 2.2 + 3000, nodes, 400000);
+    if (!path || path.length < 2) return;
+    let plen = 0; for (let k = 1; k < path.length; k++) plen += Math.hypot(path[k].x - path[k - 1].x, path[k].z - path[k - 1].z);
+    if (plen > straightLen * 2.2 + 3000) return;
+    path[0] = { ...path[0], x: a.x, z: a.z }; path[path.length - 1] = { ...path[path.length - 1], x: b.x, z: b.z };
+    const old = l.stopD.slice();
+    l.segs[i] = path;
+    this.setGeometry(l);
+    Transit.remap(l, old);
+  },
+
+  // ---------------- 차량 모형 (흰 차체, 노선 색 띠, 앞뒤 차량은 유선형 머리)
+  carModel(l, idx) {
+    const g = new THREE.Group();
+    const len = 19, n = l.cars;
+    const white = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, metalness: 0.35, roughness: 0.35 });
+    const band = new THREE.MeshStandardMaterial({ color: new THREE.Color(l.color), metalness: 0.3, roughness: 0.4 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.8 });
+    const win = new THREE.MeshStandardMaterial({ color: 0x18222e, metalness: 0.5, roughness: 0.2, emissive: 0xffe6c0, emissiveIntensity: 0 });
+    const box = (w, h, d, m, y, z = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(0, y, z); g.add(o); return o; };
+    const head = idx === 0, tail = idx === n - 1;
+    const bodyLen = head || tail ? len - 6 : len, off = head ? -3 : tail ? 3 : 0;
+    box(2.95, 3.4, bodyLen, white, 2.15, off);
+    // 둥근 지붕과 팬터그래프(가운데 차량 하나)
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(1.475, 1.475, bodyLen, 14, 1, false, -Math.PI / 2, Math.PI), white);
+    roof.rotation.x = -Math.PI / 2; roof.scale.set(1, 1, 0.22); roof.position.set(0, 3.85, off); g.add(roof);
+    if (idx === Math.floor(n / 2)) { const pm = box(0.1, 0.9, 1.6, dark, 4.55, 2); pm.rotation.x = 0.5; box(1.6, 0.06, 0.2, dark, 4.95, 2.3); }
+    box(2.97, 0.42, bodyLen, band, 1.2, off);
+    box(2.97, 0.12, bodyLen, band, 3.55, off);
+    box(2.6, 0.8, len - 2, dark, 0.5);
+    const w = box(2.99, 0.7, bodyLen - 2, win, 2.5, off);
+    for (const [isHead, dir] of [[head, 1], [tail, -1]]) {
+      if (!isHead) continue;
+      // 유선형 머리: 반타원체를 앞으로 길게 늘인다
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, TAU, 0, Math.PI / 2), white);
+      nose.rotation.x = dir * Math.PI / 2; nose.scale.set(1.47, l.model === 'eum' ? 5.2 : 6.5, 1.7);
+      nose.position.set(0, 2.15, dir * (len / 2 - 6)); g.add(nose);
+      const cab = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI / 2), win);
+      cab.rotation.x = dir * Math.PI / 2; cab.scale.set(1.15, 2.6, 0.75);
+      cab.position.set(0, 2.95, dir * (len / 2 - 5.2)); g.add(cab);
+      const stripe = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 6, 0, TAU, 0, Math.PI / 2), band);
+      stripe.rotation.x = dir * Math.PI / 2; stripe.scale.set(1.49, l.model === 'eum' ? 4.6 : 5.8, 0.35);
+      stripe.position.set(0, 1.25, dir * (len / 2 - 6)); g.add(stripe);
+    }
+    g.userData.win = w.material;
+    g.userData.len = len;
+    return g;
+  },
+};
+
 // ===== 07_player.js =====
 // ---------------------------------------------------------------------------
 // 플레이어: 걷기·달리기, 비행, 탑승 중 시점, 건물 충돌, VR 컨트롤러
@@ -3645,7 +4070,8 @@ const Player = {
     UI.modebar();
   },
   followRide(interior, kind) {
-    const seat = kind === 'subway' ? new THREE.Vector3(0.9, 0, 2) : new THREE.Vector3(0.65, 0, -2);
+    // 지하철은 옆을 보는 긴 의자, KTX는 앞을 보는 창가 자리, 버스는 앞쪽 자리
+    const seat = kind === 'subway' ? new THREE.Vector3(0.9, 0, 2) : kind === 'ktx' ? new THREE.Vector3(-1.06, 0, 0.1) : new THREE.Vector3(0.65, 0, -2);
     const w = interior.localToWorld(seat.clone());
     this.pos.copy(w);
     this.groundY = w.y;
@@ -3761,6 +4187,22 @@ const DISTRICTS = [
   ['부산 금정구', 35.250, 129.092], ['부산 강서구', 35.150, 128.900], ['부산 연제구', 35.180, 129.080], ['부산 수영구', 35.150, 129.112], ['부산 사상구', 35.155, 128.990],
   ['부산 기장군', 35.270, 129.220], ['울산 중구', 35.572, 129.330], ['울산 남구', 35.530, 129.320], ['울산 동구', 35.505, 129.420], ['울산 북구', 35.610, 129.370],
   ['울산 울주군', 35.520, 129.170], ['울산 울주군', 35.400, 129.300], ['김해시', 35.235, 128.880], ['양산시', 35.340, 129.035],
+  // KTX 연선 (서울~부산, 부전~강릉)
+  ['서울 중구', 37.564, 126.997], ['서울 종로구', 37.573, 126.979], ['서울 용산구', 37.532, 126.990], ['서울 강남구', 37.517, 127.047], ['서울 서초구', 37.484, 127.033],
+  ['서울 송파구', 37.514, 127.106], ['서울 마포구', 37.566, 126.902], ['서울 영등포구', 37.526, 126.896], ['서울 성동구', 37.563, 127.037], ['서울 동대문구', 37.574, 127.040],
+  ['서울 성북구', 37.589, 127.017], ['서울 서대문구', 37.579, 126.937], ['서울 관악구', 37.478, 126.952], ['서울 구로구', 37.495, 126.887], ['서울 금천구', 37.457, 126.895],
+  ['서울 동작구', 37.512, 126.940], ['서울 광진구', 37.538, 127.082], ['서울 강서구', 37.551, 126.850], ['서울 양천구', 37.517, 126.866], ['서울 노원구', 37.654, 127.056],
+  ['서울 은평구', 37.603, 126.929], ['서울 강동구', 37.530, 127.124], ['서울 중랑구', 37.606, 127.093], ['서울 강북구', 37.640, 127.025], ['서울 도봉구', 37.669, 127.047],
+  ['광명시', 37.479, 126.865], ['안양시', 37.394, 126.957], ['군포시', 37.362, 126.935], ['의왕시', 37.345, 126.968], ['수원시', 37.263, 127.029],
+  ['화성시', 37.200, 126.831], ['오산시', 37.150, 127.077], ['평택시', 36.992, 127.113], ['천안시', 36.815, 127.114], ['아산시', 36.790, 127.002],
+  ['세종시', 36.480, 127.289], ['청주시 흥덕구', 36.630, 127.400], ['청주시', 36.642, 127.489], ['대전 동구', 36.312, 127.455], ['대전 중구', 36.326, 127.421],
+  ['대전 서구', 36.355, 127.384], ['대전 유성구', 36.362, 127.356], ['대전 대덕구', 36.347, 127.416], ['옥천군', 36.306, 127.572], ['영동군', 36.175, 127.783],
+  ['김천시', 36.140, 128.114], ['구미시', 36.120, 128.344], ['칠곡군', 35.996, 128.402], ['대구 중구', 35.869, 128.606], ['대구 동구', 35.887, 128.636],
+  ['대구 서구', 35.872, 128.559], ['대구 남구', 35.846, 128.598], ['대구 북구', 35.886, 128.583], ['대구 수성구', 35.858, 128.631], ['대구 달서구', 35.830, 128.533],
+  ['대구 달성군', 35.775, 128.432], ['경산시', 35.825, 128.741], ['영천시', 35.973, 128.938], ['경주시', 35.856, 129.225], ['경주시 건천읍', 35.840, 129.100],
+  ['포항시 북구', 36.060, 129.370], ['포항시 남구', 36.010, 129.360], ['영덕군', 36.415, 129.366], ['영덕군 영해면', 36.535, 129.410], ['울진군 후포면', 36.680, 129.450],
+  ['울진군', 36.993, 129.400], ['울진군 죽변면', 37.060, 129.410], ['삼척시 근덕면', 37.370, 129.230], ['삼척시', 37.450, 129.165], ['동해시', 37.525, 129.114],
+  ['강릉시 옥계면', 37.620, 129.050], ['강릉시', 37.752, 128.876],
 ].map(([n, lat, lon]) => ({ n, ...GEO.toWorld(lat, lon) }));
 
 const UI = {
@@ -3789,6 +4231,7 @@ const UI = {
       const P = Player.pos;
       let dn = DISTRICTS[0], dd = Infinity;
       for (const d of DISTRICTS) { const k = Math.hypot(d.x - P.x, d.z - P.z); if (k < dd) { dd = k; dn = d; } }
+      if (dd > 25000) dn = { n: `${dn.n} 부근` };
       const place = Places.nearest(P.x, P.z, 900);
       this.placeName = place ? place.name : dn.n;
       $('w-place').textContent = this.placeName;
@@ -3796,13 +4239,13 @@ const UI = {
       if (st) {
         const d = Math.hypot(st.x - P.x, st.z - P.z);
         const badges = st.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('');
-        $('w-near').innerHTML = `${badges}<span>${st.name}역 ${fmtDist(d)}</span>`;
-        this.nearText = `${st.name}역 ${fmtDist(d)}`;
+        $('w-near').innerHTML = `${badges}<span>${stationLabel(st.name)} ${fmtDist(d)}</span>`;
+        this.nearText = `${stationLabel(st.name)} ${fmtDist(d)}`;
       } else { $('w-near').innerHTML = `<span>${place ? dn.n : Transit.msg || ''}</span>`; this.nearText = dn.n; }
       $('w-alt').textContent = `해발 ${Math.round(Player.pos.y + (Player.mode === 'walk' ? Player.eye : 0))} m`;
       $('w-ll').textContent = `${GEO.lat(P.z).toFixed(4)}, ${GEO.lon(P.x).toFixed(4)}`;
       // 상태
-      const pend = Terrain.pending() + Net.queue.length + Net.active + City.buildQueue.length;
+      const pend = Terrain.pending() + Net.queue.filter((j) => j.prio() < 5000).length + Net.active + City.buildQueue.length; // KTX 철길 같은 뒷일은 빼고
       const st2 = $('status');
       if (pend > 0 || Net.lastError) { st2.hidden = false; st2.textContent = Net.lastError ? `${Net.lastError} · 다시 시도 중` : `지도 불러오는 중 · 남은 작업 ${pend}`; }
       else st2.hidden = true;
@@ -3814,7 +4257,7 @@ const UI = {
         $('i-name').textContent = near.name;
         $('i-desc').textContent = near.desc;
         const ns = Transit.ready ? Transit.nearestStation(near.wx, near.wz, 2500) : null;
-        $('i-meta').innerHTML = ns ? `가까운 역 ${ns.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('')} ${ns.name} · ${fmtDist(Math.hypot(ns.x - near.wx, ns.z - near.wz))}` : '';
+        $('i-meta').innerHTML = ns ? `가까운 역 ${ns.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('')} ${stationLabel(ns.name)} · ${fmtDist(Math.hypot(ns.x - near.wx, ns.z - near.wz))}` : '';
       } else $('info').hidden = true;
       // 상호작용 안내
       const act = Game.actionHere();
@@ -3872,7 +4315,13 @@ const UI = {
       const here = a.phase === 'dwell';
       const st = here ? l.stops[a.idx] : l.stops[a.next];
       $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${term} 방면</span>`;
-      $('r-next').innerHTML = `${here ? '이번 역' : '다음 역'} ${st ? st.name : ''}<small>${here ? (Ride.canExit() ? 'E로 내리기' : '') : ''}</small>`;
+      let small = here ? (Ride.canExit() ? 'E로 내리기' : '') : '';
+      if (l.ktx) {
+        const left = Math.abs(l.stopD[a.next] - a.d), vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+        const eta = here ? 0 : (a.v > 1 ? left / Math.max(a.v, vmax * 0.7) : trapTime(left, vmax)) / a.ts;
+        small = `${Math.round(a.v * 3.6)} km/h${a.ts > 1 ? ` · ×${a.ts}` : ''}${here ? ' · E로 내리기' : ` · 약 ${fmtDur(eta)}`}${G.touch || G.xr ? '' : ' · G 빨리 · N 다음 역'}`;
+      }
+      $('r-next').innerHTML = `${here ? '이번 역' : '다음 역'} ${st ? stationLabel(st.name) : ''}<small>${small}</small>`;
       const strip = $('r-strip'); strip.style.color = l.color;
       const from = Math.max(0, Math.min(a.idx, l.stops.length - 1) - (a.dir > 0 ? 1 : 4)), arr = [];
       for (let k = -2; k <= 4; k++) { const i = a.idx + k * a.dir; if (i < 0 || i >= l.stops.length) continue; arr.push(`<b class="${i === a.idx ? 'here' : ''}" title="${l.stops[i].name}"></b>`); }
@@ -3982,7 +4431,7 @@ const UI = {
     let y = 96;
     if (tabs.length) {
       let x = 40; g.font = '600 24px "Gothic A1", sans-serif';
-      for (const t of tabs) { const w = g.measureText(t.label).width + 28; const hov = V.hover === 200 + V.tabs.length; g.fillStyle = t.on ? '#ffb43a' : hov ? 'rgba(255,180,58,0.3)' : 'rgba(255,255,255,0.08)'; g.fillRect(x, y, w, 40); g.fillStyle = t.on ? '#06121c' : '#eef4f8'; g.fillText(t.label, x + 14, y + 20); V.tabs.push({ x0: x, x1: x + w, y0: y, y1: y + 40, t }); x += w + 8; if (x > W - 120) break; }
+      for (const t of tabs) { const w = g.measureText(t.label).width + 28; if (x + w > W - 40) { x = 40; y += 48; } const hov = V.hover === 200 + V.tabs.length; g.fillStyle = t.on ? '#ffb43a' : hov ? 'rgba(255,180,58,0.3)' : 'rgba(255,255,255,0.08)'; g.fillRect(x, y, w, 40); g.fillStyle = t.on ? '#06121c' : '#eef4f8'; g.fillText(t.label, x + 14, y + 20); V.tabs.push({ x0: x, x1: x + w, y0: y, y1: y + 40, t }); x += w + 8; }
       y += 54;
     }
     for (const it of rows) {
@@ -4078,8 +4527,8 @@ const UI = {
     c.addEventListener('wheel', (e) => { e.preventDefault(); const before = toWorld(e.clientX, e.clientY); M.scale = clamp(M.scale * (e.deltaY > 0 ? 0.8 : 1.25), 0.002, 2); const after = toWorld(e.clientX, e.clientY); M.cx += before.x - after.x; M.cz += before.z - after.z; this.drawMap(); }, { passive: false });
     $('map-close').addEventListener('click', () => { this.closeMap(); if (!G.touch) Game.lockPointer(); });
     $('map-me').addEventListener('click', () => { M.cx = Player.pos.x; M.cz = Player.pos.z; M.scale = 0.08; this.drawMap(); });
-    $('map-busan').addEventListener('click', () => { const p = GEO.toWorld(35.15, 129.06); M.cx = p.x; M.cz = p.z; M.scale = 0.012; this.drawMap(); });
-    $('map-ulsan').addEventListener('click', () => { const p = GEO.toWorld(35.53, 129.32); M.cx = p.x; M.cz = p.z; M.scale = 0.012; this.drawMap(); });
+    // 도시 바로가기: data-go="위도,경도,축척"
+    for (const b of document.querySelectorAll('#map [data-go]')) b.addEventListener('click', () => { const [lat, lon, sc] = b.dataset.go.split(',').map(Number); const p = GEO.toWorld(lat, lon); M.cx = p.x; M.cz = p.z; M.scale = sc; this.drawMap(); });
     window.addEventListener('resize', () => { if (G.state === 'map') { this.resizeMap(); this.drawMap(); } });
   },
   drawMap() {
@@ -4206,6 +4655,7 @@ const Game = {
     $('loading').hidden = true;
     R.renderer.setAnimationLoop((t) => this.frame(t));
     Transit.load();
+    KTX.load();
   },
 
   setupTitle() {
@@ -4261,7 +4711,7 @@ const Game = {
     if (Ride.active) return Ride.canExit() ? { label: '여기서 내리기', short: '내리기', fn: () => Ride.exitHere() } : null;
     if (Player.mode === 'fly' && Player.alt() > 8) return null;
     const P = Player.pos;
-    if (Transit.ready) { const st = Transit.nearestStation(P.x, P.z, 70); if (st) return { label: `${st.name}역 · 지하철 타기`, short: '지하철', fn: () => UI.openMenu(() => this.stationMenu(st)) }; }
+    if (Transit.ready) { const st = Transit.nearestStation(P.x, P.z, 70); if (st) { const what = st.ktx ? (st.lines.some((o) => !o.line.ktx) ? '지하철·KTX' : 'KTX') : '지하철'; return { label: `${stationLabel(st.name)} · ${what} 타기`, short: st.ktx ? 'KTX' : '지하철', fn: () => UI.openMenu(() => this.stationMenu(st)) }; } }
     let bs = null, bd = 20;
     for (const s of City.stops) { const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; bs = s; } }
     if (bs) return { label: `${bs.name} 정류장 · 버스 타기`, short: '버스', fn: () => this.openBus(bs) };
@@ -4275,11 +4725,13 @@ const Game = {
       for (const dir of [1, -1]) {
         const nx = idx + dir; if (nx < 0 || nx >= line.stops.length) continue;
         const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
-        const eta = Transit.eta(line, idx, dir, now);
-        items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail: `${line.name} · 다음 역 ${line.stops[nx].name} · 다음 열차 ${isFinite(eta) ? Math.ceil(eta / 60) + '분 후' : '곧'}`, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
+        const detail = line.ktx
+          ? `${line.name} · 다음 역 ${line.stops[nx].name} · ${term}까지 약 ${fmtDur(Transit.timeToEnd(line, idx, dir))}`
+          : (() => { const eta = Transit.eta(line, idx, dir, now); return `${line.name} · 다음 역 ${line.stops[nx].name} · 다음 열차 ${isFinite(eta) ? Math.ceil(eta / 60) + '분 후' : '곧'}`; })();
+        items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
       }
     }
-    return { title: `${st.name}역`, sub: '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
+    return { title: stationLabel(st.name), sub: st.ktx ? '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다. KTX 안에서는 G로 시간을 빨리 흘리고 N으로 다음 역 앞까지 건너뛸 수 있습니다.' : '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
   },
   openBus(stop) {
     let state = { loading: true, routes: [], err: false };
@@ -4300,7 +4752,9 @@ const Game = {
         { label: '계속하기', onSelect: () => { UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '명소로 이동', detail: `부산·울산 명소와 대학교 ${PLACES.length}곳`, onSelect: () => UI.openMenu(() => this.placesMenu()), keep: true },
         { label: '지도 열기', detail: '위성 지도에서 원하는 곳을 눌러 이동', onSelect: () => { UI.closeMenu(); UI.openMap(); }, keep: true, disabled: G.xr },
-        { label: '지하철 노선', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
+        { label: '철도 노선 (지하철·KTX)', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
+        Ride.isKTX() ? { label: `빨리 가기: ×${Ride.active.ts}`, detail: '고르면 시간 흐름이 1배 → 10배 → 60배로 바뀝니다 (G)', onSelect: () => Ride.cycleSpeed() } : null,
+        Ride.isKTX() ? { label: '다음 역 앞까지 건너뛰기', detail: '열차가 다음 역 앞에서 속도를 줄이기 시작하는 곳으로 갑니다 (N)', onSelect: () => { Ride.skipNext(); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true } : null,
         { label: Player.mode === 'fly' ? '걷기로 바꾸기' : '비행으로 바꾸기', disabled: !!Ride.active, onSelect: () => { Player.setMode(Player.mode === 'fly' ? 'walk' : 'fly'); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '시간대', right: this.hourLabel(), onSelect: () => UI.openMenu(() => this.timeMenu()), keep: true },
         { label: '설정', onSelect: () => UI.openMenu(() => this.settingsMenu()), keep: true },
@@ -4314,8 +4768,8 @@ const Game = {
   openPlaces() { if (G.state === 'play') UI.openMenu(() => this.placesMenu()); },
   placesMenu() {
     const P = Player.pos;
-    const tabs = [['all', '전체'], ['부산', '부산'], ['울산', '울산'], ['uni', '대학교'], ['transit', '교통'], ['beach', '해변'], ['culture', '문화']];
-    const list = PLACES.filter((p) => this.placeTab === 'all' || p.city === this.placeTab || p.cat === this.placeTab)
+    const tabs = [['all', '전체'], ['부산', '부산'], ['울산', '울산'], ['수도권', '서울·경기'], ['충청', '충청·대전'], ['대구·경북', '대구·경북'], ['강원', '강원'], ['uni', '대학교'], ['transit', '교통'], ['beach', '해변'], ['culture', '문화']];
+    const list = PLACES.filter((p) => this.placeTab === 'all' || CITY_GROUP[p.city] === this.placeTab || p.cat === this.placeTab)
       .map((p) => ({ p, d: Math.hypot(p.wx - P.x, p.wz - P.z) })).sort((a, b) => (this.placeTab === 'all' ? a.d - b.d : a.p.name.localeCompare(b.p.name, 'ko')));
     return {
       title: '명소로 이동', sub: '고르면 그 앞으로 순간이동합니다.',
@@ -4324,10 +4778,10 @@ const Game = {
     };
   },
   linesMenu() {
-    return { title: '지하철 노선', sub: '역을 고르면 그 역으로 이동합니다.', items: Transit.lines.map((l) => ({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: l.name, detail: `${l.stops[0].name} ↔ ${l.stops[l.stops.length - 1].name} · ${l.stops.length}개 역 · ${(l.len / 1000).toFixed(1)} km`, onSelect: () => UI.openMenu(() => this.lineStations(l)), keep: true })) };
+    return { title: '철도 노선', sub: '역을 고르면 그 역으로 이동합니다.', items: Transit.lines.map((l) => ({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: l.name, detail: `${l.stops[0].name} ↔ ${l.stops[l.stops.length - 1].name} · ${l.stops.length}개 역 · ${(l.len / 1000).toFixed(1)} km${l.ktx ? ` · 약 ${fmtDur(l.one)}` : ''}`, onSelect: () => UI.openMenu(() => this.lineStations(l)), keep: true })) };
   },
   lineStations(l) {
-    return { title: l.name, sub: `역 ${l.stops.length}곳`, items: l.stops.map((s, i) => ({ icon: `<span class="badge" style="background:${l.color}">${i + 1}</span>`, label: s.name, onSelect: () => { UI.closeMenu(); Player.setMode('walk'); Player.teleport(s.x + 8, s.z + 8); UI.banner(`${s.name}역`, l.name, 2200); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true })) };
+    return { title: l.name, sub: `역 ${l.stops.length}곳`, items: l.stops.map((s, i) => ({ icon: `<span class="badge" style="background:${l.color}">${i + 1}</span>`, label: s.name, onSelect: () => { UI.closeMenu(); if (Ride.active) Ride.stop(); Player.setMode('walk'); Player.teleport(s.x + 8, s.z + 8); UI.banner(stationLabel(s.name), l.name, 2200); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true })) };
   },
   hourLabel() { const h = G.settings.hour; return h === 'auto' ? '실제 시각' : { 7: '아침', 13: '낮', 18.5: '노을', 22: '밤' }[h] || `${h}시`; },
   timeMenu() {
@@ -4352,13 +4806,13 @@ const Game = {
     return {
       title: '조작법', items: [
         { text: '키보드·마우스', head: true },
-        { text: '화면 클릭: 마우스 고정 · WASD: 이동 · Shift: 달리기(비행 중에는 가속) · Space: 점프(비행 중 상승) · C: 비행 중 하강\nF: 걷기/비행 전환 · 마우스 휠 또는 +/−: 비행 속도 · E: 지하철·버스 타기, 내리기\nM: 지도 · T: 명소 목록 · Esc: 메뉴' },
+        { text: '화면 클릭: 마우스 고정 · WASD: 이동 · Shift: 달리기(비행 중에는 가속) · Space: 점프(비행 중 상승) · C: 비행 중 하강\nF: 걷기/비행 전환 · 마우스 휠 또는 +/−: 비행 속도 · E: 지하철·KTX·버스 타기, 내리기\nKTX 안에서: G 시간 빨리(1·10·60배) · N 다음 역 앞까지 건너뛰기\nM: 지도 · T: 명소 목록 · Esc: 메뉴' },
         { text: '터치', head: true },
         { text: '왼쪽 원: 이동 · 화면 드래그: 둘러보기 · 비행/위로/아래로 · 달리기 · 지도 · 메뉴 · 타기 버튼' },
         { text: 'VR (WebXR)', head: true },
         { text: '왼쪽 스틱: 이동 · 오른쪽 스틱 좌우: 30° 회전, 위아래: 비행 중 상승·하강\nA: 지하철·버스 타기/내리기 · B: 메뉴 · X: 명소 목록 · Y: 걷기/비행 · 스틱 누르기: 비행 속도\n메뉴는 오른손 광선으로 가리키고 트리거로 고릅니다. 왼손목에 현재 위치가 보입니다.' },
         { text: '이동 요령', head: true },
-        { text: '역이나 정류장 가까이 가면 화면에 "타기" 안내가 나옵니다. 탑승 중에는 정차할 때 E로 내릴 수 있습니다. 먼 곳은 지도나 명소 목록으로 순간이동하세요.' },
+        { text: '역이나 정류장 가까이 가면 화면에 "타기" 안내가 나옵니다. 탑승 중에는 정차할 때 E로 내릴 수 있습니다. 먼 곳은 지도나 명소 목록으로 순간이동하세요.\nKTX는 부산역·부전역·울산역·태화강역 등에서 탈 수 있습니다. 서울까지 실제처럼 2시간 넘게 걸리니, 메뉴의 "빨리 가기"나 "다음 역 앞까지 건너뛰기"를 쓰세요. 터치·VR에서는 메뉴에서 고릅니다.' },
       ],
     };
   },
@@ -4366,9 +4820,9 @@ const Game = {
     return {
       title: '데이터와 한계', items: [
         { text: '지도 데이터', head: true },
-        { text: '건물·도로·철도·정류장·버스 노선: © OpenStreetMap 기여자 (ODbL), Overpass API로 실시간 조회\n위성 사진: Esri World Imagery (Esri, Maxar, Earthstar Geographics)\n지형 고도: Mapzen Terrain Tiles (AWS Open Data)' },
+        { text: '건물·도로·철도·역·정류장·버스 노선: © OpenStreetMap 기여자 (ODbL), Overpass API로 실시간 조회\n위성 사진: Esri World Imagery (Esri, Maxar, Earthstar Geographics)\n지형 고도: Mapzen Terrain Tiles (AWS Open Data)' },
         { text: '알아 둘 점', head: true },
-        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교·울산대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n울산 조선소의 골리앗 크레인과 건조 중인 배는 해안선을 따라 자동으로 놓은 것이라 실제 도크 위치와 다를 수 있습니다.\n지하철 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다.\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
+        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교·울산대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n울산 조선소의 골리앗 크레인과 건조 중인 배는 해안선을 따라 자동으로 놓은 것이라 실제 도크 위치와 다를 수 있습니다.\n지하철과 KTX 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다. KTX 정차역은 경부선(서울~부산)과 동해선 KTX-이음(부전~강릉)의 주요 정차역을 따랐고, 열차마다 다른 정차 패턴은 넣지 않았습니다.\n위경도를 미터로 바꾸는 축척을 부산·울산에 맞춰서, 북쪽으로 갈수록 조금씩 크게 보입니다(대구 약 1%, 서울·강릉 약 3%).\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
       ],
     };
   },
@@ -4388,6 +4842,8 @@ const Game = {
         else if (e.code === 'KeyT') this.openPlaces();
         else if (e.code === 'KeyF') Player.setMode(Player.mode === 'fly' ? 'walk' : 'fly');
         else if (e.code === 'KeyE') this.useAction();
+        else if (e.code === 'KeyG') Ride.cycleSpeed();
+        else if (e.code === 'KeyN') Ride.skipNext();
       } else if (G.state === 'map' && (e.code === 'Escape' || e.code === 'KeyM')) { UI.closeMap(); }
     });
     window.addEventListener('keyup', (e) => Input.keys.delete(e.code));
@@ -4483,7 +4939,7 @@ const Game = {
   },
 };
 
-if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, Ships, People, Gulls, THREE };
+if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, KTX, Ships, People, Gulls, THREE };
 Game.init();
 
 </script>

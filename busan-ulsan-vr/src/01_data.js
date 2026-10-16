@@ -3,6 +3,13 @@
 // 좌표는 대략값이다. 주변 OSM 데이터가 들어오면 q의 이름과 일치하는 지점으로 자동 보정한다.
 // ---------------------------------------------------------------------------
 const REGION = { s: 34.98, w: 128.80, n: 35.72, e: 129.50 }; // 부산 + 울산
+const KOREA = { s: 33.0, w: 124.5, n: 38.8, e: 131.0 }; // 먼 지형을 불러오는 범위 (KTX로 가는 도시 포함)
+// 명소 목록의 지역 묶음
+const CITY_GROUP = {
+  부산: '부산', 울산: '울산', 서울: '수도권', 광명: '수도권', '천안·아산': '충청', 청주: '충청', 대전: '충청',
+  김천: '대구·경북', 대구: '대구·경북', 경주: '대구·경북', 포항: '대구·경북', 영덕: '대구·경북', 울진: '대구·경북',
+  삼척: '강원', 동해: '강원', 강릉: '강원',
+};
 
 const CATS = {
   beach: { name: '해변', color: '#3aa0d8' },
@@ -95,9 +102,82 @@ const PLACES = [
   { id: 'samsan', city: '울산', cat: 'market', name: '삼산동 번화가', lat: 35.5395, lon: 129.3375, q: ['삼산동'], desc: '백화점과 버스터미널이 모인 울산의 대표 번화가.' },
   { id: 'unist', city: '울산', cat: 'uni', name: 'UNIST', lat: 35.5733, lon: 129.1903, q: ['울산과학기술원', 'UNIST'], desc: '2009년에 문을 연 이공계 특성화 국립대학교. 울주군 언양읍에 있다.' },
   { id: 'uou', city: '울산', cat: 'uni', name: '울산대학교', lat: 35.5437, lon: 129.2566, q: ['울산대학교'], desc: '남구 무거동의 사립대학교.' },
+
+  // ---------------- KTX로 가는 도시들 (좌표는 대략값, OSM 이름으로 보정)
+  // 서울·경기
+  { id: 'seoulstn', city: '서울', cat: 'transit', name: '서울역', lat: 37.5547, lon: 126.9707, q: ['서울역'], desc: 'KTX 경부선의 출발역. 옛 서울역사(문화역서울284) 옆에 지금의 역사가 있다.' },
+  { id: 'gyeongbok', city: '서울', cat: 'culture', name: '경복궁', lat: 37.5788, lon: 126.9770, q: ['경복궁'], desc: '조선의 법궁. 광화문을 지나 근정전과 경회루가 이어진다.' },
+  { id: 'gwanghwamun', city: '서울', cat: 'sight', name: '광화문광장', lat: 37.5720, lon: 126.9769, q: ['광화문광장', '광화문'], desc: '세종대왕상과 이순신 장군상이 서 있는 서울 도심의 광장.' },
+  { id: 'changdeok', city: '서울', cat: 'culture', name: '창덕궁', lat: 37.5794, lon: 126.9910, q: ['창덕궁'], desc: '후원이 아름다운 조선의 궁궐. 유네스코 세계유산.' },
+  { id: 'bukchon', city: '서울', cat: 'culture', name: '북촌한옥마을', lat: 37.5826, lon: 126.9836, q: ['북촌한옥마을', '북촌'], desc: '경복궁과 창덕궁 사이 언덕에 한옥이 모여 있는 동네.' },
+  { id: 'namsan', city: '서울', cat: 'sight', name: 'N서울타워', lat: 37.5512, lon: 126.9882, q: ['N서울타워', '남산서울타워', '서울타워'], desc: '남산 꼭대기의 전망 타워. 서울 시내가 한눈에 보인다.' },
+  { id: 'myeongdong', city: '서울', cat: 'market', name: '명동', lat: 37.5609, lon: 126.9862, q: ['명동'], desc: '쇼핑 거리와 노점이 빽빽한 서울 도심의 번화가.' },
+  { id: 'namdaemun', city: '서울', cat: 'market', name: '남대문시장', lat: 37.5591, lon: 126.9776, q: ['남대문시장'], desc: '숭례문 옆의 오래된 전통시장.' },
+  { id: 'cheonggye', city: '서울', cat: 'nature', name: '청계천', lat: 37.5692, lon: 126.9779, q: ['청계광장', '청계천'], desc: '도심을 동서로 흐르는 복원된 하천과 산책로.' },
+  { id: 'ddp', city: '서울', cat: 'culture', name: '동대문디자인플라자', lat: 37.5663, lon: 127.0092, q: ['동대문디자인플라자', 'DDP'], desc: '곡선 외벽의 복합 문화 공간. 주변은 밤늦게까지 여는 패션 상가.' },
+  { id: 'hongdae', city: '서울', cat: 'market', name: '홍대 거리', lat: 37.5551, lon: 126.9233, q: ['홍대', '홍익대학교'], desc: '클럽과 공연장, 카페가 모인 젊은 거리.' },
+  { id: 'yeouido', city: '서울', cat: 'nature', name: '여의도 한강공원', lat: 37.5283, lon: 126.9326, q: ['여의도한강공원', '여의도 한강공원'], desc: '한강 남쪽 여의도의 강변 공원. 봄에는 벚꽃길이 붐빈다.' },
+  { id: 'gangnam', city: '서울', cat: 'market', name: '강남역 거리', lat: 37.4979, lon: 127.0276, q: ['강남역'], desc: '고층 빌딩과 상가가 늘어선 강남대로의 중심.' },
+  { id: 'coex', city: '서울', cat: 'sight', name: '코엑스', lat: 37.5115, lon: 127.0595, q: ['코엑스', 'COEX'], desc: '전시장과 지하 쇼핑몰, 별마당 도서관이 있는 복합 시설.' },
+  { id: 'lwt', city: '서울', cat: 'sight', name: '롯데월드타워', lat: 37.5126, lon: 127.1025, q: ['롯데월드타워'], desc: '높이 555m, 123층의 초고층 건물. 꼭대기에 전망대가 있다.' },
+  { id: 'snu', city: '서울', cat: 'uni', name: '서울대학교', lat: 37.4600, lon: 126.9516, q: ['서울대학교'], desc: '관악산 자락의 국립대학교.' },
+  { id: 'yonsei', city: '서울', cat: 'uni', name: '연세대학교', lat: 37.5658, lon: 126.9386, q: ['연세대학교'], desc: '서대문구 신촌의 사립대학교.' },
+  { id: 'korea', city: '서울', cat: 'uni', name: '고려대학교', lat: 37.5894, lon: 127.0323, q: ['고려대학교'], desc: '성북구 안암동의 사립대학교.' },
+  { id: 'gwangmyeongstn', city: '광명', cat: 'transit', name: '광명역', lat: 37.4163, lon: 126.8848, q: ['광명역'], desc: '경부고속철도가 서울을 벗어나며 처음 서는 KTX 역.' },
+  // 충청·대전
+  { id: 'cheonanasan', city: '천안·아산', cat: 'transit', name: '천안아산역', lat: 36.7945, lon: 127.1046, q: ['천안아산역'], desc: '천안과 아산 사이의 KTX 역.' },
+  { id: 'independence', city: '천안·아산', cat: 'culture', name: '독립기념관', lat: 36.7838, lon: 127.2229, q: ['독립기념관'], desc: '흑성산 아래의 독립운동 역사 전시관.' },
+  { id: 'osong', city: '청주', cat: 'transit', name: '오송역', lat: 36.6203, lon: 127.3275, q: ['오송역'], desc: '경부고속철도와 호남고속철도가 갈라지는 KTX 역.' },
+  { id: 'daejeonstn', city: '대전', cat: 'transit', name: '대전역', lat: 36.3323, lon: 127.4346, q: ['대전역'], desc: '대전 동구의 KTX 역. 원도심 한가운데에 있다.' },
+  { id: 'hanbit', city: '대전', cat: 'sight', name: '엑스포과학공원 한빛탑', lat: 36.3765, lon: 127.3868, q: ['한빛탑', '엑스포과학공원'], desc: '1993년 대전 엑스포의 상징탑.' },
+  { id: 'kaist', city: '대전', cat: 'uni', name: 'KAIST', lat: 36.3721, lon: 127.3604, q: ['한국과학기술원', 'KAIST'], desc: '유성구의 이공계 특성화 국립대학교.' },
+  { id: 'cnu', city: '대전', cat: 'uni', name: '충남대학교', lat: 36.3685, lon: 127.3460, q: ['충남대학교'], desc: '유성구의 국립대학교.' },
+  { id: 'yuseong', city: '대전', cat: 'culture', name: '유성온천', lat: 36.3537, lon: 127.3418, q: ['유성온천'], desc: '대전 유성구의 온천 거리. 무료 족욕장이 있다.' },
+  // 대구·경북
+  { id: 'gimcheongumi', city: '김천', cat: 'transit', name: '김천구미역', lat: 36.1137, lon: 128.1802, q: ['김천구미역', '김천(구미)역'], desc: '김천시 남면의 KTX 역. 구미와 김천 사이에 있다.' },
+  { id: 'seodaegu', city: '대구', cat: 'transit', name: '서대구역', lat: 35.8826, lon: 128.5390, q: ['서대구역'], desc: '2022년에 문을 연 대구 서구의 KTX 역.' },
+  { id: 'dongdaegu', city: '대구', cat: 'transit', name: '동대구역', lat: 35.8793, lon: 128.6286, q: ['동대구역'], desc: '대구의 대표 KTX 역. 복합환승센터가 붙어 있다.' },
+  { id: 'dongseongno', city: '대구', cat: 'market', name: '동성로', lat: 35.8694, lon: 128.5960, q: ['동성로'], desc: '대구 도심의 쇼핑 거리.' },
+  { id: 'seomun', city: '대구', cat: 'market', name: '서문시장', lat: 35.8695, lon: 128.5806, q: ['서문시장'], desc: '조선 시대부터 이어진 대구의 큰 전통시장. 야시장이 열린다.' },
+  { id: 'kimkwangseok', city: '대구', cat: 'culture', name: '김광석다시그리기길', lat: 35.8597, lon: 128.6066, q: ['김광석다시그리기길', '김광석 다시그리기 길'], desc: '가수 김광석을 기리는 벽화 골목.' },
+  { id: 'e83', city: '대구', cat: 'sight', name: '83타워', lat: 35.8532, lon: 128.5650, q: ['83타워', '이월드'], desc: '두류공원 옆 이월드의 전망 타워.' },
+  { id: 'suseongmot', city: '대구', cat: 'nature', name: '수성못', lat: 35.8280, lon: 128.6170, q: ['수성못'], desc: '수성구의 호수 공원. 둘레 산책로가 있다.' },
+  { id: 'lionspark', city: '대구', cat: 'sport', name: '대구삼성라이온즈파크', lat: 35.8411, lon: 128.6815, q: ['대구삼성라이온즈파크', '라이온즈파크'], desc: '수성구 연호동의 야구장.' },
+  { id: 'knu', city: '대구', cat: 'uni', name: '경북대학교', lat: 35.8899, lon: 128.6105, q: ['경북대학교'], desc: '대구 북구의 국립대학교.' },
+  { id: 'gyeongjustn', city: '경주', cat: 'transit', name: '경주역', lat: 35.7982, lon: 129.1390, q: ['경주역', '신경주역'], desc: '건천읍의 KTX 역(옛 신경주역). 경부선 KTX와 동해선 KTX-이음이 선다.' },
+  { id: 'bulguksa', city: '경주', cat: 'culture', name: '불국사', lat: 35.7900, lon: 129.3320, q: ['불국사'], desc: '신라 때 세운 절. 다보탑과 석가탑이 있는 유네스코 세계유산.' },
+  { id: 'seokguram', city: '경주', cat: 'culture', name: '석굴암', lat: 35.7950, lon: 129.3490, q: ['석굴암'], desc: '토함산 중턱의 석굴 사원. 불국사와 함께 세계유산이다.' },
+  { id: 'cheomseongdae', city: '경주', cat: 'culture', name: '첨성대', lat: 35.8347, lon: 129.2190, q: ['첨성대'], desc: '신라 선덕여왕 때 세운 천문대.' },
+  { id: 'daereungwon', city: '경주', cat: 'culture', name: '대릉원', lat: 35.8381, lon: 129.2120, q: ['대릉원'], desc: '신라 왕과 귀족의 큰 무덤이 모인 고분 공원. 천마총이 있다.' },
+  { id: 'donggung', city: '경주', cat: 'culture', name: '동궁과 월지', lat: 35.8346, lon: 129.2266, q: ['동궁과월지', '동궁과 월지', '안압지'], desc: '신라 별궁 터와 연못. 밤 조명이 아름답다.' },
+  { id: 'hwangridan', city: '경주', cat: 'market', name: '황리단길', lat: 35.8378, lon: 129.2096, q: ['황리단길'], desc: '대릉원 옆 한옥 카페와 가게가 모인 거리.' },
+  { id: 'bomun', city: '경주', cat: 'sight', name: '보문관광단지', lat: 35.8420, lon: 129.2850, q: ['보문호', '보문관광단지'], desc: '보문호를 둘러싼 호텔과 놀이공원 단지.' },
+  { id: 'pohangstn', city: '포항', cat: 'transit', name: '포항역', lat: 36.0717, lon: 129.3418, q: ['포항역'], desc: '흥해읍의 KTX 역. 동해선 KTX-이음이 선다.' },
+  { id: 'yeongildae', city: '포항', cat: 'beach', name: '영일대해수욕장', lat: 36.0560, lon: 129.3790, q: ['영일대해수욕장', '영일대'], desc: '바다 위 누각 영일대가 있는 포항의 해수욕장. 건너편으로 제철소가 보인다.' },
+  { id: 'spacewalk', city: '포항', cat: 'sight', name: '스페이스워크', lat: 36.0655, lon: 129.3920, q: ['스페이스워크', '환호공원'], desc: '환호공원 언덕 위의 롤러코스터 모양 철제 산책로.' },
+  { id: 'jukdo', city: '포항', cat: 'market', name: '죽도시장', lat: 36.0350, lon: 129.3650, q: ['죽도시장'], desc: '경북 동해안에서 가장 큰 수산 시장.' },
+  { id: 'homigot', city: '포항', cat: 'nature', name: '호미곶', lat: 36.0770, lon: 129.5690, q: ['호미곶', '상생의손'], desc: '한반도 동쪽 끝의 곶. 바다 위로 상생의 손 조형물이 솟아 있다.' },
+  { id: 'posco', city: '포항', cat: 'industry', name: '포스코 포항제철소', lat: 36.0040, lon: 129.3880, q: ['포항제철소', '포스코'], desc: '형산강 하구의 대규모 제철소.' },
+  { id: 'postech', city: '포항', cat: 'uni', name: '포항공과대학교', lat: 36.0130, lon: 129.3220, q: ['포항공과대학교', 'POSTECH'], desc: '포항 남구의 이공계 사립대학교.' },
+  { id: 'yeongdeokstn', city: '영덕', cat: 'transit', name: '영덕역', lat: 36.4157, lon: 129.3627, q: ['영덕역'], desc: '영덕읍의 동해선 역. KTX-이음이 선다.' },
+  { id: 'ganggu', city: '영덕', cat: 'market', name: '강구항 대게거리', lat: 36.3580, lon: 129.3880, q: ['강구항'], desc: '대게 식당이 줄지어 선 영덕의 항구.' },
+  { id: 'uljinstn', city: '울진', cat: 'transit', name: '울진역', lat: 36.9930, lon: 129.3990, q: ['울진역'], desc: '울진읍의 동해선 역. KTX-이음이 선다.' },
+  // 강원
+  { id: 'samcheokstn', city: '삼척', cat: 'transit', name: '삼척역', lat: 37.4410, lon: 129.1660, q: ['삼척역'], desc: '삼척 시내의 역. 동해선 KTX-이음이 선다.' },
+  { id: 'jukseoru', city: '삼척', cat: 'culture', name: '죽서루', lat: 37.4418, lon: 129.1608, q: ['죽서루'], desc: '오십천 절벽 위의 누각. 관동팔경의 하나.' },
+  { id: 'donghaestn', city: '동해', cat: 'transit', name: '동해역', lat: 37.4977, lon: 129.1241, q: ['동해역'], desc: '동해시의 역. KTX-이음이 선다.' },
+  { id: 'chuam', city: '동해', cat: 'nature', name: '추암 촛대바위', lat: 37.4770, lon: 129.1630, q: ['촛대바위', '추암'], desc: '바다에 솟은 촛대 모양 바위. 해돋이 명소.' },
+  { id: 'mukhostn', city: '동해', cat: 'transit', name: '묵호역', lat: 37.5464, lon: 129.1094, q: ['묵호역'], desc: '묵호항 가까이의 역. KTX-이음이 선다.' },
+  { id: 'nongol', city: '동해', cat: 'culture', name: '논골담길', lat: 37.5520, lon: 129.1170, q: ['논골담길', '묵호등대'], desc: '묵호등대 아래 벽화 골목. 항구와 바다가 내려다보인다.' },
+  { id: 'jeongdongjin', city: '강릉', cat: 'beach', name: '정동진', lat: 37.6913, lon: 129.0342, q: ['정동진역', '정동진'], desc: '바다에 가장 가까운 역으로 알려진 해돋이 명소.' },
+  { id: 'gangneungstn', city: '강릉', cat: 'transit', name: '강릉역', lat: 37.7640, lon: 128.8996, q: ['강릉역'], desc: '동해선 KTX-이음의 종착역. 서울로 가는 강릉선 KTX도 선다.' },
+  { id: 'gyeongpo', city: '강릉', cat: 'beach', name: '경포해변', lat: 37.8055, lon: 128.9080, q: ['경포해변', '경포해수욕장'], desc: '경포호 옆의 넓은 백사장.' },
+  { id: 'anmok', city: '강릉', cat: 'market', name: '안목해변 커피거리', lat: 37.7720, lon: 128.9480, q: ['안목해변', '커피거리'], desc: '바다를 보며 커피를 마시는 카페 거리.' },
+  { id: 'ojukheon', city: '강릉', cat: 'culture', name: '오죽헌', lat: 37.7790, lon: 128.8780, q: ['오죽헌'], desc: '신사임당과 율곡 이이가 태어난 집.' },
+  { id: 'gnmarket', city: '강릉', cat: 'market', name: '강릉중앙시장', lat: 37.7540, lon: 128.8990, q: ['강릉중앙시장', '중앙시장'], desc: '강릉 도심의 전통시장.' },
 ];
 
-const STARTS = ['busanstn', 'haeundae', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam'];
+const STARTS = ['busanstn', 'haeundae', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam', 'seoulstn', 'dongdaegu', 'bulguksa', 'gangneungstn'];
 
 // 부산·울산 도시철도와 광역철도. 역 이름 순서대로 OSM 역 지점과 철길을 찾아 노선을 만든다.
 const LINES = [
@@ -115,6 +195,24 @@ const LINES = [
     stations: ['부전', '거제해맞이', '거제', '교대', '동래', '안락', '부산원동', '재송', '센텀', '벡스코', '신해운대', '송정', '오시리아', '기장', '일광', '좌천', '월내', '서생', '남창', '망양', '덕하', '태화강'] },
 ];
 
+// KTX: 역 [이름, 위도, 경도, 다음 역까지 최고 속도(m/s), 다른 이름]. 위치는 OSM 역 지점으로 보정하고
+// 역 사이 철길은 OSM 철도에서 찾는다. 속도는 실제 소요 시간에 가깝게 맞춘 모의 운행 값
+const KTX_LINES = [
+  { id: 'KTX', name: 'KTX 경부선', short: 'KTX', color: '#1f4fa0', model: 'sancheon', cars: 10, headway: 1800,
+    stations: [
+      ['서울', 37.5547, 126.9707, 33], ['광명', 37.4163, 126.8848, 83], ['천안아산', 36.7945, 127.1046, 83], ['오송', 36.6203, 127.3275, 83],
+      ['대전', 36.3323, 127.4346, 83], ['김천구미', 36.1137, 128.1802, 70, ['김천(구미)']], ['서대구', 35.8826, 128.5390, 28],
+      ['동대구', 35.8793, 128.6286, 83], ['경주', 35.7982, 129.1390, 83, ['신경주']], ['울산', 35.5515, 129.1386, 64, ['울산(통도사)']],
+      ['부산', 35.1152, 129.0423],
+    ] },
+  { id: 'KTXE', name: 'KTX-이음 동해선', short: '이음', color: '#2a8fd0', model: 'eum', cars: 6, headway: 7200,
+    stations: [
+      ['부전', 35.1642, 129.0597, 30], ['태화강', 35.5390, 129.3535, 32], ['경주', 35.7982, 129.1390, 32, ['신경주']], ['포항', 36.0717, 129.3418, 32],
+      ['영덕', 36.4157, 129.3627, 32], ['울진', 36.9930, 129.3990, 32], ['삼척', 37.4410, 129.1660, 32], ['동해', 37.4977, 129.1241, 32],
+      ['묵호', 37.5464, 129.1094, 32], ['정동진', 37.6913, 129.0342, 32], ['강릉', 37.7640, 128.8996],
+    ] },
+];
+
 // OSM 활주로가 없을 때 쓰는 대략적인 활주로 (중심, 방위각)
 const AIRPORTS = {
   PUS: { name: '김해국제공항', lat: 35.1795, lon: 128.9382, heading: 176, length: 3000 },
@@ -122,4 +220,5 @@ const AIRPORTS = {
 };
 
 function placeById(id) { return PLACES.find((p) => p.id === id); }
+function stationLabel(n) { return /역$/.test(n) ? n : n + '역'; }
 function normName(s) { return (s || '').replace(/\(.*?\)/g, '').replace(/[\s·.\-‧・]/g, '').replace(/역$/, ''); }

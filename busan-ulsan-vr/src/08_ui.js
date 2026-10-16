@@ -7,6 +7,22 @@ const DISTRICTS = [
   ['부산 금정구', 35.250, 129.092], ['부산 강서구', 35.150, 128.900], ['부산 연제구', 35.180, 129.080], ['부산 수영구', 35.150, 129.112], ['부산 사상구', 35.155, 128.990],
   ['부산 기장군', 35.270, 129.220], ['울산 중구', 35.572, 129.330], ['울산 남구', 35.530, 129.320], ['울산 동구', 35.505, 129.420], ['울산 북구', 35.610, 129.370],
   ['울산 울주군', 35.520, 129.170], ['울산 울주군', 35.400, 129.300], ['김해시', 35.235, 128.880], ['양산시', 35.340, 129.035],
+  // KTX 연선 (서울~부산, 부전~강릉)
+  ['서울 중구', 37.564, 126.997], ['서울 종로구', 37.573, 126.979], ['서울 용산구', 37.532, 126.990], ['서울 강남구', 37.517, 127.047], ['서울 서초구', 37.484, 127.033],
+  ['서울 송파구', 37.514, 127.106], ['서울 마포구', 37.566, 126.902], ['서울 영등포구', 37.526, 126.896], ['서울 성동구', 37.563, 127.037], ['서울 동대문구', 37.574, 127.040],
+  ['서울 성북구', 37.589, 127.017], ['서울 서대문구', 37.579, 126.937], ['서울 관악구', 37.478, 126.952], ['서울 구로구', 37.495, 126.887], ['서울 금천구', 37.457, 126.895],
+  ['서울 동작구', 37.512, 126.940], ['서울 광진구', 37.538, 127.082], ['서울 강서구', 37.551, 126.850], ['서울 양천구', 37.517, 126.866], ['서울 노원구', 37.654, 127.056],
+  ['서울 은평구', 37.603, 126.929], ['서울 강동구', 37.530, 127.124], ['서울 중랑구', 37.606, 127.093], ['서울 강북구', 37.640, 127.025], ['서울 도봉구', 37.669, 127.047],
+  ['광명시', 37.479, 126.865], ['안양시', 37.394, 126.957], ['군포시', 37.362, 126.935], ['의왕시', 37.345, 126.968], ['수원시', 37.263, 127.029],
+  ['화성시', 37.200, 126.831], ['오산시', 37.150, 127.077], ['평택시', 36.992, 127.113], ['천안시', 36.815, 127.114], ['아산시', 36.790, 127.002],
+  ['세종시', 36.480, 127.289], ['청주시 흥덕구', 36.630, 127.400], ['청주시', 36.642, 127.489], ['대전 동구', 36.312, 127.455], ['대전 중구', 36.326, 127.421],
+  ['대전 서구', 36.355, 127.384], ['대전 유성구', 36.362, 127.356], ['대전 대덕구', 36.347, 127.416], ['옥천군', 36.306, 127.572], ['영동군', 36.175, 127.783],
+  ['김천시', 36.140, 128.114], ['구미시', 36.120, 128.344], ['칠곡군', 35.996, 128.402], ['대구 중구', 35.869, 128.606], ['대구 동구', 35.887, 128.636],
+  ['대구 서구', 35.872, 128.559], ['대구 남구', 35.846, 128.598], ['대구 북구', 35.886, 128.583], ['대구 수성구', 35.858, 128.631], ['대구 달서구', 35.830, 128.533],
+  ['대구 달성군', 35.775, 128.432], ['경산시', 35.825, 128.741], ['영천시', 35.973, 128.938], ['경주시', 35.856, 129.225], ['경주시 건천읍', 35.840, 129.100],
+  ['포항시 북구', 36.060, 129.370], ['포항시 남구', 36.010, 129.360], ['영덕군', 36.415, 129.366], ['영덕군 영해면', 36.535, 129.410], ['울진군 후포면', 36.680, 129.450],
+  ['울진군', 36.993, 129.400], ['울진군 죽변면', 37.060, 129.410], ['삼척시 근덕면', 37.370, 129.230], ['삼척시', 37.450, 129.165], ['동해시', 37.525, 129.114],
+  ['강릉시 옥계면', 37.620, 129.050], ['강릉시', 37.752, 128.876],
 ].map(([n, lat, lon]) => ({ n, ...GEO.toWorld(lat, lon) }));
 
 const UI = {
@@ -35,6 +51,7 @@ const UI = {
       const P = Player.pos;
       let dn = DISTRICTS[0], dd = Infinity;
       for (const d of DISTRICTS) { const k = Math.hypot(d.x - P.x, d.z - P.z); if (k < dd) { dd = k; dn = d; } }
+      if (dd > 25000) dn = { n: `${dn.n} 부근` };
       const place = Places.nearest(P.x, P.z, 900);
       this.placeName = place ? place.name : dn.n;
       $('w-place').textContent = this.placeName;
@@ -42,13 +59,13 @@ const UI = {
       if (st) {
         const d = Math.hypot(st.x - P.x, st.z - P.z);
         const badges = st.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('');
-        $('w-near').innerHTML = `${badges}<span>${st.name}역 ${fmtDist(d)}</span>`;
-        this.nearText = `${st.name}역 ${fmtDist(d)}`;
+        $('w-near').innerHTML = `${badges}<span>${stationLabel(st.name)} ${fmtDist(d)}</span>`;
+        this.nearText = `${stationLabel(st.name)} ${fmtDist(d)}`;
       } else { $('w-near').innerHTML = `<span>${place ? dn.n : Transit.msg || ''}</span>`; this.nearText = dn.n; }
       $('w-alt').textContent = `해발 ${Math.round(Player.pos.y + (Player.mode === 'walk' ? Player.eye : 0))} m`;
       $('w-ll').textContent = `${GEO.lat(P.z).toFixed(4)}, ${GEO.lon(P.x).toFixed(4)}`;
       // 상태
-      const pend = Terrain.pending() + Net.queue.length + Net.active + City.buildQueue.length;
+      const pend = Terrain.pending() + Net.queue.filter((j) => j.prio() < 5000).length + Net.active + City.buildQueue.length; // KTX 철길 같은 뒷일은 빼고
       const st2 = $('status');
       if (pend > 0 || Net.lastError) { st2.hidden = false; st2.textContent = Net.lastError ? `${Net.lastError} · 다시 시도 중` : `지도 불러오는 중 · 남은 작업 ${pend}`; }
       else st2.hidden = true;
@@ -60,7 +77,7 @@ const UI = {
         $('i-name').textContent = near.name;
         $('i-desc').textContent = near.desc;
         const ns = Transit.ready ? Transit.nearestStation(near.wx, near.wz, 2500) : null;
-        $('i-meta').innerHTML = ns ? `가까운 역 ${ns.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('')} ${ns.name} · ${fmtDist(Math.hypot(ns.x - near.wx, ns.z - near.wz))}` : '';
+        $('i-meta').innerHTML = ns ? `가까운 역 ${ns.lines.map((o) => `<span class="badge" style="background:${o.line.color}">${o.line.short}</span>`).join('')} ${stationLabel(ns.name)} · ${fmtDist(Math.hypot(ns.x - near.wx, ns.z - near.wz))}` : '';
       } else $('info').hidden = true;
       // 상호작용 안내
       const act = Game.actionHere();
@@ -118,7 +135,13 @@ const UI = {
       const here = a.phase === 'dwell';
       const st = here ? l.stops[a.idx] : l.stops[a.next];
       $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${term} 방면</span>`;
-      $('r-next').innerHTML = `${here ? '이번 역' : '다음 역'} ${st ? st.name : ''}<small>${here ? (Ride.canExit() ? 'E로 내리기' : '') : ''}</small>`;
+      let small = here ? (Ride.canExit() ? 'E로 내리기' : '') : '';
+      if (l.ktx) {
+        const left = Math.abs(l.stopD[a.next] - a.d), vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+        const eta = here ? 0 : (a.v > 1 ? left / Math.max(a.v, vmax * 0.7) : trapTime(left, vmax)) / a.ts;
+        small = `${Math.round(a.v * 3.6)} km/h${a.ts > 1 ? ` · ×${a.ts}` : ''}${here ? ' · E로 내리기' : ` · 약 ${fmtDur(eta)}`}${G.touch || G.xr ? '' : ' · G 빨리 · N 다음 역'}`;
+      }
+      $('r-next').innerHTML = `${here ? '이번 역' : '다음 역'} ${st ? stationLabel(st.name) : ''}<small>${small}</small>`;
       const strip = $('r-strip'); strip.style.color = l.color;
       const from = Math.max(0, Math.min(a.idx, l.stops.length - 1) - (a.dir > 0 ? 1 : 4)), arr = [];
       for (let k = -2; k <= 4; k++) { const i = a.idx + k * a.dir; if (i < 0 || i >= l.stops.length) continue; arr.push(`<b class="${i === a.idx ? 'here' : ''}" title="${l.stops[i].name}"></b>`); }
@@ -228,7 +251,7 @@ const UI = {
     let y = 96;
     if (tabs.length) {
       let x = 40; g.font = '600 24px "Gothic A1", sans-serif';
-      for (const t of tabs) { const w = g.measureText(t.label).width + 28; const hov = V.hover === 200 + V.tabs.length; g.fillStyle = t.on ? '#ffb43a' : hov ? 'rgba(255,180,58,0.3)' : 'rgba(255,255,255,0.08)'; g.fillRect(x, y, w, 40); g.fillStyle = t.on ? '#06121c' : '#eef4f8'; g.fillText(t.label, x + 14, y + 20); V.tabs.push({ x0: x, x1: x + w, y0: y, y1: y + 40, t }); x += w + 8; if (x > W - 120) break; }
+      for (const t of tabs) { const w = g.measureText(t.label).width + 28; if (x + w > W - 40) { x = 40; y += 48; } const hov = V.hover === 200 + V.tabs.length; g.fillStyle = t.on ? '#ffb43a' : hov ? 'rgba(255,180,58,0.3)' : 'rgba(255,255,255,0.08)'; g.fillRect(x, y, w, 40); g.fillStyle = t.on ? '#06121c' : '#eef4f8'; g.fillText(t.label, x + 14, y + 20); V.tabs.push({ x0: x, x1: x + w, y0: y, y1: y + 40, t }); x += w + 8; }
       y += 54;
     }
     for (const it of rows) {
@@ -324,8 +347,8 @@ const UI = {
     c.addEventListener('wheel', (e) => { e.preventDefault(); const before = toWorld(e.clientX, e.clientY); M.scale = clamp(M.scale * (e.deltaY > 0 ? 0.8 : 1.25), 0.002, 2); const after = toWorld(e.clientX, e.clientY); M.cx += before.x - after.x; M.cz += before.z - after.z; this.drawMap(); }, { passive: false });
     $('map-close').addEventListener('click', () => { this.closeMap(); if (!G.touch) Game.lockPointer(); });
     $('map-me').addEventListener('click', () => { M.cx = Player.pos.x; M.cz = Player.pos.z; M.scale = 0.08; this.drawMap(); });
-    $('map-busan').addEventListener('click', () => { const p = GEO.toWorld(35.15, 129.06); M.cx = p.x; M.cz = p.z; M.scale = 0.012; this.drawMap(); });
-    $('map-ulsan').addEventListener('click', () => { const p = GEO.toWorld(35.53, 129.32); M.cx = p.x; M.cz = p.z; M.scale = 0.012; this.drawMap(); });
+    // 도시 바로가기: data-go="위도,경도,축척"
+    for (const b of document.querySelectorAll('#map [data-go]')) b.addEventListener('click', () => { const [lat, lon, sc] = b.dataset.go.split(',').map(Number); const p = GEO.toWorld(lat, lon); M.cx = p.x; M.cz = p.z; M.scale = sc; this.drawMap(); });
     window.addEventListener('resize', () => { if (G.state === 'map') { this.resizeMap(); this.drawMap(); } });
   },
   drawMap() {

@@ -20,4 +20,4 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 ## 같은 저장소의 다른 프로젝트
 
 - [`skyspire/`](skyspire/): 100층 부유성을 오르는 1인칭 검술 RPG (브라우저·WebXR)
-- [`busan-ulsan-vr/`](busan-ulsan-vr/): 실제 지도 데이터로 부산·울산을 1:1로 둘러보는 VR 여행 (브라우저·WebXR)
+- [`busan-ulsan-vr/`](busan-ulsan-vr/): 실제 지도 데이터로 부산·울산을 1:1로 둘러보는 VR 여행. KTX로 서울·대구·경주·강릉 등까지 이동 (브라우저·WebXR)

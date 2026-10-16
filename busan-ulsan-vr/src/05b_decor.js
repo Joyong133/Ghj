@@ -665,7 +665,7 @@ const Ships = {
         if (!this.isSea(x, z)) continue;
         const lat = GEO.lat(z), lon = GEO.lon(x);
         // 정박지: 부산 남쪽 앞바다(화물선), 울산항 앞바다(유조선·자동차 운반선)
-        const ulsan = lat > 35.3;
+        const ulsan = lat > 35.3 && lat < 35.7 && lon > 129.2;
         const anchorage = ulsan ? lat > 35.39 && lat < 35.49 && lon > 129.39 : lat < 35.075 && lon > 128.98 && lon < 129.16;
         const r = Math.random();
         const type = ulsan

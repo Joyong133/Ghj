@@ -113,7 +113,8 @@ const Player = {
     UI.modebar();
   },
   followRide(interior, kind) {
-    const seat = kind === 'subway' ? new THREE.Vector3(0.9, 0, 2) : new THREE.Vector3(0.65, 0, -2);
+    // 지하철은 옆을 보는 긴 의자, KTX는 앞을 보는 창가 자리, 버스는 앞쪽 자리
+    const seat = kind === 'subway' ? new THREE.Vector3(0.9, 0, 2) : kind === 'ktx' ? new THREE.Vector3(-1.06, 0, 0.1) : new THREE.Vector3(0.65, 0, -2);
     const w = interior.localToWorld(seat.clone());
     this.pos.copy(w);
     this.groundY = w.y;

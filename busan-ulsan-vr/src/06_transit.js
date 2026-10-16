@@ -68,7 +68,7 @@ const Transit = {
       if (!c) { c = []; for (const [k, v] of byName) if (k.startsWith(nn) || nn.startsWith(k) && k.length >= 2) c.push(...v); }
       return c;
     };
-    this.lines = [];
+    const lines = [];
     for (const L of LINES) {
       const cands = L.stations.map((n) => findCands(n));
       const chosen = [];
@@ -110,16 +110,36 @@ const Transit = {
       line.speed = L.id === 'DH' ? 24 : L.id === 'L4' || L.id === 'BGL' ? 15 : 19;
       line.dwell = 22;
       this.schedule(line);
-      this.lines.push(line);
+      lines.push(line);
     }
-    // 역 목록 (중복 이름은 하나로)
+    this.lines = lines.concat(this.lines.filter((l) => l.ktx));
+    this.rebuildStations();
+  },
+  // KTX처럼 따로 불러오는 노선을 더한다
+  addLine(line) {
+    this.lines = this.lines.filter((l) => l.id !== line.id).concat([line]);
+    this.rebuildStations();
+  },
+  // 역 목록: 같은 이름("부산역"과 "부산")이 800m 안에 있으면 한 역으로 묶는다
+  rebuildStations() {
     this.stations = [];
     for (const l of this.lines) for (let i = 0; i < l.stops.length; i++) {
-      const s = l.stops[i];
-      let st = this.stations.find((q) => q.name === s.name && Math.hypot(q.x - s.x, q.z - s.z) < 600);
+      const s = l.stops[i], key = normName(s.name);
+      let st = this.stations.find((q) => normName(q.name) === key && Math.hypot(q.x - s.x, q.z - s.z) < 800);
       if (!st) { st = { name: s.name, x: s.x, z: s.z, lines: [] }; this.stations.push(st); }
+      if (l.ktx) st.ktx = true;
       st.lines.push({ line: l, idx: i });
     }
+  },
+  // 노선 모양이 바뀌면(KTX 구간 철길 도착) 타고 있는 열차의 위치를 같은 구간 비율로 옮긴다
+  remap(l, oldStopD) {
+    const a = Ride.active;
+    if (!a || a.line !== l) return;
+    if (a.phase === 'move') {
+      const i = a.idx, j = a.next, o0 = oldStopD[i], o1 = oldStopD[j];
+      const f = o1 !== o0 ? (a.d - o0) / (o1 - o0) : 0;
+      a.from = l.stopD[i]; a.to = l.stopD[j]; a.d = lerp(a.from, a.to, clamp(f, 0, 1));
+    } else a.d = l.stopD[a.idx];
   },
   stationFits(s, L) {
     const t = s.tags || {};
@@ -128,7 +148,7 @@ const Transit = {
     if (L.id === 'BGL') return st === 'light_rail' || /경전철|김해/.test(ops);
     return st === 'subway' || st === 'light_rail' || /도시철도|교통공사|Metro/i.test(ops);
   },
-  dijkstra(a, b, types, maxLen) {
+  dijkstra(a, b, types, maxLen, nodeMap = this.nodeMap, maxNodes = 80000) {
     // 이진 힙 다익스트라
     const dist = new Map([[a.id, 0]]), prev = new Map(), done = new Set();
     const heap = [[0, a.id]];
@@ -139,8 +159,8 @@ const Transit = {
       if (done.has(id)) continue;
       done.add(id);
       if (id === b.id) break;
-      if (d > maxLen || done.size > 80000) return null;
-      const n = this.nodeMap.get(id);
+      if (d > maxLen || done.size > maxNodes) return null;
+      const n = nodeMap.get(id);
       for (const e of n.adj) {
         if (!types.includes(e.type)) continue;
         const nd = d + e.len;
@@ -150,20 +170,27 @@ const Transit = {
     if (!prev.has(b.id) && a.id !== b.id) return null;
     const out = [];
     let cur = b.id;
-    while (cur !== undefined) { const n = this.nodeMap.get(cur); const p = prev.get(cur); out.push({ x: n.x, z: n.z, tunnel: p ? p.e.tunnel : false, bridge: p ? p.e.bridge : false }); cur = p ? p.id : undefined; }
+    while (cur !== undefined) { const n = nodeMap.get(cur); const p = prev.get(cur); out.push({ x: n.x, z: n.z, tunnel: p ? p.e.tunnel : false, bridge: p ? p.e.bridge : false }); cur = p ? p.id : undefined; }
     return out.reverse();
   },
   // 왕복 운행표. 구간 시간 = 거리/속도 + 가감속 손실
   schedule(l) {
     const seg = [];
-    for (let i = 0; i < l.stopD.length - 1; i++) { const d = l.stopD[i + 1] - l.stopD[i]; seg.push(d / l.speed + 14); }
+    if (l.ktx) { l.dwell = 90; l.speed = 60; }
+    for (let i = 0; i < l.stopD.length - 1; i++) { const d = l.stopD[i + 1] - l.stopD[i]; seg.push(l.ktx ? trapTime(d, l.segV[i] || 40) : d / l.speed + 14); }
     l.seg = seg;
     const one = seg.reduce((a, b) => a + b, 0) + l.dwell * (l.stopD.length - 1);
-    l.turn = 90;
+    l.turn = l.ktx ? 900 : 90;
     l.period = 2 * (one + l.turn);
     l.one = one;
-    l.headway = l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
+    l.headway = l.ktx ? l.headway : l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
     l.count = Math.max(2, Math.round(l.period / l.headway));
+  },
+  // i번째 역에서 dir 방향 종착역까지 걸리는 시간(초)
+  timeToEnd(l, i, dir) {
+    let t = 0;
+    for (let k = i; dir > 0 ? k < l.stops.length - 1 : k > 0; k += dir) t += l.seg[dir > 0 ? k : k - 1] + l.dwell;
+    return Math.max(0, t - l.dwell);
   },
   // 시각 t의 열차 위치: {d(노선 위 거리), dir(+1/-1), stopIdx(정차 중이면), next}
   stateAt(l, t) {
@@ -177,7 +204,11 @@ const Transit = {
       if (ph < l.dwell) return { d: l.stopD[a], dir, stop: a, next: b };
       ph -= l.dwell;
       const st = l.seg[dir > 0 ? i : n - 2 - i];
-      if (ph < st) { const k = ph / st; const e = k * k * (3 - 2 * k); return { d: lerp(l.stopD[a], l.stopD[b], e), dir, next: b, from: a, k }; }
+      if (ph < st) {
+        const k = ph / st;
+        if (l.ktx) { const D = Math.abs(l.stopD[b] - l.stopD[a]); return { d: lerp(l.stopD[a], l.stopD[b], D ? trapPos(ph, D, l.segV[Math.min(a, b)] || 40) / D : 1), dir, next: b, from: a, k }; }
+        const e = k * k * (3 - 2 * k); return { d: lerp(l.stopD[a], l.stopD[b], e), dir, next: b, from: a, k };
+      }
       ph -= st;
     }
     return { d: dir > 0 ? l.len : 0, dir, stop: dir > 0 ? n - 1 : 0 };
@@ -198,7 +229,7 @@ const Transit = {
     for (let k = 0; k < l.count; k++) {
       const off = (k * l.period) / l.count;
       // 앞으로 한 주기 안에서 그 역에 정차를 시작하는 시각 찾기 (5초 단위 탐색)
-      for (let s = 0; s < l.period; s += 5) {
+      for (let s = 0; s < l.period; s += l.ktx ? 30 : 5) {
         const st = this.stateAt(l, t + off + s);
         if (st.stop === idx && st.dir === dir) { best = Math.min(best, s); break; }
         if (s > best) break;
@@ -222,11 +253,11 @@ const Transit = {
     return g;
   },
   updateTrains(now) {
-    if (!this.ready) return;
+    if (!this.lines.length) return;
     const P = Player.pos, keep = new Set();
     for (const l of this.lines) {
       const short = l.id === 'L4' || l.id === 'BGL';
-      const cars = short ? 2 : l.id === 'DH' ? 4 : 6;
+      const cars = l.ktx ? l.cars : short ? 2 : l.id === 'DH' ? 4 : 6;
       for (let k = 0; k < l.count; k++) {
         const st = this.stateAt(l, now + (k * l.period) / l.count);
         const head = this.pointAt(l, st.d);
@@ -236,14 +267,14 @@ const Transit = {
         let tr = this.trains.get(key);
         if (!tr) {
           tr = new THREE.Group();
-          for (let c = 0; c < cars; c++) tr.add(this.carModel(new THREE.Color(l.color).getHex(), short));
+          for (let c = 0; c < cars; c++) tr.add(l.ktx ? KTX.carModel(l, c) : this.carModel(new THREE.Color(l.color).getHex(), short));
           R.world.add(tr); this.trains.set(key, tr);
         }
         const L = tr.children[0].userData.len + 0.6;
         tr.children.forEach((car, c) => {
           const p = this.pointAt(l, st.d - st.dir * c * L);
           car.position.set(p.x, p.y, p.z);
-          car.rotation.y = p.yaw;
+          car.rotation.y = p.yaw + (l.ktx && st.dir < 0 ? Math.PI : 0); // KTX는 머리가 가는 쪽을 보게
           car.userData.win.emissiveIntensity = R.nightU.value * 0.8;
           car.visible = !p.tunnel;
         });
@@ -252,8 +283,8 @@ const Transit = {
     for (const [k, tr] of this.trains) if (!keep.has(k)) { World0.disposeGroup(tr); this.trains.delete(k); }
   },
   nearestStation(x, z, max = 80) {
-    let best = null, bd = max;
-    for (const s of this.stations) { const d = Math.hypot(s.x - x, s.z - z); if (d < bd) { bd = d; best = s; } }
+    let best = null, bd = Infinity;
+    for (const s of this.stations) { const d = Math.hypot(s.x - x, s.z - z); if (d < bd && d < (s.ktx ? Math.max(max, 160) : max)) { bd = d; best = s; } }
     return best;
   },
 };
@@ -267,6 +298,7 @@ const Ride = {
 
   buildInterior(kind, color) {
     if (this.interior) World0.disposeGroup(this.interior);
+    if (kind === 'ktx') return this.buildKTXInterior(color);
     const g = new THREE.Group();
     const subway = kind === 'subway';
     const L = subway ? 17.5 : 11, Wd = subway ? 2.7 : 2.4, H = subway ? 2.3 : 2.2;
@@ -299,6 +331,57 @@ const Ride = {
     this.interior = g;
     g.userData.L = L;
   },
+  // KTX 객실: 앞을 보는 2+2 좌석, 선반, 앞쪽 벽의 안내 화면(다음 역·속도)
+  buildKTXInterior(color) {
+    const g = new THREE.Group();
+    const L = 18.7, Wd = 2.9, H = 2.3;
+    const wallM = new THREE.MeshStandardMaterial({ color: 0xece8e0, roughness: 0.6, side: THREE.DoubleSide });
+    const floorM = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.95 });
+    const seatM = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.55), roughness: 0.8 });
+    const coverM = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.7 });
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x9ac0d8, transparent: true, opacity: 0.1, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false });
+    const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
+    box(Wd, 0.1, L, floorM, 0, -0.05, 0);
+    box(Wd, 0.08, L, wallM, 0, H, 0);
+    for (const sd of [-1, 1]) {
+      box(0.06, 0.8, L, wallM, sd * Wd / 2, 0.4, 0);
+      box(0.06, 0.55, L, wallM, sd * Wd / 2, H - 0.27, 0);
+      box(0.04, H - 1.35, L, glassM, sd * Wd / 2, 0.8 + (H - 1.35) / 2, 0);
+      for (let z = -L / 2 + 0.5; z < L / 2; z += 1.0) box(0.1, H - 1.35, 0.35, wallM, sd * (Wd / 2 - 0.02), 0.8 + (H - 1.35) / 2, z);
+      box(0.45, 0.05, L - 1, wallM, sd * (Wd / 2 - 0.3), H - 0.45, 0); // 선반
+      // 앞을 보는 좌석 둘씩
+      for (let z = -L / 2 + 1.6; z < L / 2 - 1.2; z += 1.0) for (const x of [0.56, 1.06]) {
+        box(0.46, 0.12, 0.48, seatM, sd * x, 0.45, z);
+        box(0.46, 0.64, 0.1, seatM, sd * x, 0.82, z - 0.25); // 등받이 위가 눈높이보다 낮아 앞쪽 안내 화면이 보이게
+        box(0.3, 0.1, 0.03, coverM, sd * x, 1.06, z - 0.31);
+      }
+    }
+    // 앞쪽 벽과 안내 화면
+    box(Wd, H, 0.08, wallM, 0, H / 2, L / 2);
+    box(Wd, H, 0.08, wallM, 0, H / 2, -L / 2);
+    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const disp = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.45), new THREE.MeshBasicMaterial({ map: tex }));
+    disp.position.set(0, H - 0.25, L / 2 - 0.06); disp.rotation.y = Math.PI; g.add(disp);
+    this.disp = { c, tex, last: '' };
+    const lightM = new THREE.MeshBasicMaterial({ color: 0xfff6e8 });
+    for (const sd of [-0.5, 0.5]) box(0.25, 0.03, L - 1, lightM, sd, H - 0.06, 0);
+    const lamp = new THREE.PointLight(0xfff2e0, 3, 14, 1.5); lamp.position.set(0, H - 0.3, 0); g.add(lamp);
+    R.scene.add(g);
+    this.interior = g;
+    g.userData.L = L;
+  },
+  // 객실 앞 안내 화면
+  drawDisplay(top, bottom) {
+    const D = this.disp; if (!D) return;
+    const key = top + '|' + bottom; if (key === D.last) return; D.last = key;
+    const g = D.c.getContext('2d');
+    g.fillStyle = '#06080c'; g.fillRect(0, 0, 512, 128);
+    g.font = '700 46px "Gothic A1", sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#ffb43a'; g.fillText(top, 18, 40);
+    g.font = '600 36px "Gothic A1", sans-serif'; g.fillStyle = '#7fd0ff'; g.fillText(bottom, 18, 96);
+    D.tex.needsUpdate = true;
+  },
   buildTunnel() {
     if (this.tunnel) return;
     const c = document.createElement('canvas'); c.width = 64; c.height = 256;
@@ -317,11 +400,11 @@ const Ride = {
 
   // ---------------- 지하철
   startSubway(line, idx, dir) {
-    this.buildInterior('subway', line.color);
+    this.buildInterior(line.ktx ? 'ktx' : 'subway', line.color);
     this.buildTunnel();
-    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0) };
+    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1 };
     G.riding = true;
-    Player.enterRide('subway');
+    Player.enterRide(line.ktx ? 'ktx' : 'subway');
     const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
     UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
     this.announce(`이 열차는 ${term} 방면 열차입니다.`);
@@ -341,7 +424,7 @@ const Ride = {
   },
   stop(placeAt) {
     const a = this.active; if (!a) return;
-    this.active = null; G.riding = false; G.inTunnel = false;
+    this.active = null; G.riding = false; G.inTunnel = false; G.fastRide = false; this.disp = null;
     if (this.interior) { World0.disposeGroup(this.interior); this.interior = null; }
     if (this.tunnel) this.tunnel.visible = false;
     R.world.visible = true; R.sea.visible = true;
@@ -351,7 +434,11 @@ const Ride = {
   update(dt) {
     const a = this.active; if (!a) return;
     let p, yaw;
-    if (a.kind === 'subway') {
+    if (a.kind === 'subway' && a.line.ktx) {
+      p = this.updateKTX(dt);
+      if (!p) return;
+      yaw = p.yaw + (a.dir < 0 ? Math.PI : 0);
+    } else if (a.kind === 'subway') {
       const l = a.line;
       if (a.phase === 'dwell') {
         a.stopT += dt;
@@ -399,7 +486,62 @@ const Ride = {
     }
     this.interior.position.set(p.x, p.y, p.z);
     this.interior.rotation.set(0, yaw, 0);
-    Player.followRide(this.interior, a.kind);
+    Player.followRide(this.interior, a.kind === 'subway' && a.line.ktx ? 'ktx' : a.kind);
+  },
+  // KTX: 가속-정속-감속으로 달리고, 시간 흐름 배속(a.ts)을 적용한다
+  updateKTX(dt) {
+    const a = this.active, l = a.line, sdt = dt * a.ts;
+    if (a.phase === 'dwell') {
+      a.stopT += sdt; a.v = 0;
+      if (a.stopT > l.dwell) {
+        if (a.next < 0 || a.next >= l.stops.length) { UI.toast('종착역입니다. 내립니다.'); this.stop(l.stops[a.idx]); return null; }
+        a.phase = 'move';
+        this.announce(`다음 역은 ${stationLabel(l.stops[a.next].name)}입니다.`);
+      }
+    } else {
+      a.from = l.stopD[a.idx]; a.to = l.stopD[a.next];
+      const vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+      const rem = (a.to - a.d) * a.dir;
+      if (rem <= a.v * a.v / (2 * KTX_DEC) + a.v * sdt * 0.5) a.v = Math.max(1.5, a.v - KTX_DEC * sdt);
+      else a.v = Math.min(vmax, a.v + KTX_ACC * sdt);
+      const step = a.v * sdt;
+      if (step >= rem) {
+        a.d = a.to; a.idx = a.next; a.next += a.dir; a.phase = 'dwell'; a.stopT = 0; a.v = 0;
+        const nm = stationLabel(l.stops[a.idx].name);
+        this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500);
+      } else a.d += a.dir * step;
+    }
+    const p = Transit.pointAt(l, a.d);
+    // 빨리 달리는 동안에는 가까운 도시를 짓지 않는다 (지형과 위성 사진만)
+    G.fastRide = a.v * a.ts > 45;
+    const inTunnel = p.tunnel;
+    G.inTunnel = inTunnel;
+    this.tunnel.visible = inTunnel;
+    R.world.visible = !inTunnel; R.sea.visible = !inTunnel;
+    const yaw = p.yaw + (a.dir < 0 ? Math.PI : 0);
+    if (inTunnel) { this.tunnel.position.set(p.x, p.y + 2, p.z); this.tunnel.rotation.order = 'YXZ'; this.tunnel.rotation.set(Math.PI / 2, yaw, 0); this.tunnelTex.offset.y -= a.v * a.ts * dt / 20; }
+    const st = a.phase === 'dwell' ? l.stops[a.idx] : l.stops[a.next];
+    this.drawDisplay(`${a.phase === 'dwell' ? '이번 역' : '다음 역'} ${stationLabel(st.name)}`, `${Math.round(a.v * 3.6)} km/h${a.ts > 1 ? `   ×${a.ts}` : ''}`);
+    UI.ride({ kind: 'subway', line: l, a });
+    return p;
+  },
+  isKTX() { const a = this.active; return !!(a && a.kind === 'subway' && a.line.ktx); },
+  // 시간 흐름 1 → 10 → 60배
+  cycleSpeed() {
+    if (!this.isKTX()) return;
+    const a = this.active; a.ts = a.ts === 1 ? 10 : a.ts === 10 ? 60 : 1;
+    UI.toast(a.ts === 1 ? '보통 속도로 갑니다.' : `시간을 ${a.ts}배 빠르게 흘려 보냅니다. 열차가 빠르면 도시는 멈췄을 때 지어집니다.`);
+  },
+  // 다음 역 바로 앞으로 건너뛰기 (감속을 시작하는 지점)
+  skipNext() {
+    if (!this.isKTX()) return;
+    const a = this.active, l = a.line;
+    if (a.phase === 'dwell') { if (a.next < 0 || a.next >= l.stops.length) return; a.stopT = l.dwell; a.phase = 'move'; }
+    a.from = l.stopD[a.idx]; a.to = l.stopD[a.next];
+    const vmax = l.segV[Math.min(a.idx, a.next)] || 40;
+    const left = Math.min(Math.abs(a.to - a.d), vmax * vmax / (2 * KTX_DEC));
+    a.d = a.to - a.dir * left; a.v = Math.min(vmax, Math.sqrt(2 * KTX_DEC * left));
+    UI.toast(`${stationLabel(l.stops[a.next].name)} 앞으로 건너뛰었습니다.`);
   },
   canExit() { const a = this.active; return a && a.phase === 'dwell'; },
   exitHere() {

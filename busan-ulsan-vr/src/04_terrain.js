@@ -45,7 +45,8 @@ const Terrain = {
   update(px, pz, alt) {
     const lat = GEO.lat(pz), lon = GEO.lon(px);
     // 가까운 타일
-    const rn = this.nearRadius() + clamp(alt * 0.6, 0, 700);
+    // KTX가 빨리 달리는 동안에는 가까운 타일을 한 겹만
+    const rn = G.fastRide ? 500 : this.nearRadius() + clamp(alt * 0.6, 0, 700);
     const need = new Set();
     const cx = GEO.tileX(lon, this.NZ), cy = GEO.tileY(lat, this.NZ);
     const span = Math.ceil(rn / 900) + 1;
@@ -58,6 +59,8 @@ const Terrain = {
       need.add(k);
       if (!this.near.has(k)) this.loadNear(x, y, k);
     }
+    // 빨리 달릴 때 미뤄 둔 도시 짓기
+    if (!G.fastRide) for (const t of this.near.values()) if (t.cityLater && t.ready) { t.cityLater = false; City.requestTile(t); }
     for (const [k, t] of this.near) {
       if (need.has(k)) continue;
       if (this.rectDist(px, pz, t.b) > rn + 450) this.unloadNear(k, t);
@@ -70,7 +73,7 @@ const Terrain = {
       const x = fx + dx, y = fy + dy;
       const b = GEO.tileBounds(this.FZ, x, y);
       if (this.rectDist(px, pz, b) > rf) continue;
-      if (b.e < REGION.w - 0.4 || b.w > REGION.e + 0.4 || b.n < REGION.s - 0.3 || b.s > REGION.n + 0.3) continue;
+      if (b.e < KOREA.w || b.w > KOREA.e || b.n < KOREA.s || b.s > KOREA.n) continue;
       const k = this.key(this.FZ, x, y);
       if (!this.far.has(k)) this.loadFar(x, y, k);
     }
@@ -182,7 +185,7 @@ const Terrain = {
     t.ready = true;
     this.updateHoles(x >> 3, y >> 3);
     if (canvas.ok) this.plantTrees(t, canvas);
-    City.requestTile(t);
+    if (G.fastRide) t.cityLater = true; else City.requestTile(t);
   },
   unloadNear(k, t) {
     t.dead = true;

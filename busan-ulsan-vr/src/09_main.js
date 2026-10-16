@@ -26,6 +26,7 @@ const Game = {
     $('loading').hidden = true;
     R.renderer.setAnimationLoop((t) => this.frame(t));
     Transit.load();
+    KTX.load();
   },
 
   setupTitle() {
@@ -81,7 +82,7 @@ const Game = {
     if (Ride.active) return Ride.canExit() ? { label: '여기서 내리기', short: '내리기', fn: () => Ride.exitHere() } : null;
     if (Player.mode === 'fly' && Player.alt() > 8) return null;
     const P = Player.pos;
-    if (Transit.ready) { const st = Transit.nearestStation(P.x, P.z, 70); if (st) return { label: `${st.name}역 · 지하철 타기`, short: '지하철', fn: () => UI.openMenu(() => this.stationMenu(st)) }; }
+    if (Transit.ready) { const st = Transit.nearestStation(P.x, P.z, 70); if (st) { const what = st.ktx ? (st.lines.some((o) => !o.line.ktx) ? '지하철·KTX' : 'KTX') : '지하철'; return { label: `${stationLabel(st.name)} · ${what} 타기`, short: st.ktx ? 'KTX' : '지하철', fn: () => UI.openMenu(() => this.stationMenu(st)) }; } }
     let bs = null, bd = 20;
     for (const s of City.stops) { const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; bs = s; } }
     if (bs) return { label: `${bs.name} 정류장 · 버스 타기`, short: '버스', fn: () => this.openBus(bs) };
@@ -95,11 +96,13 @@ const Game = {
       for (const dir of [1, -1]) {
         const nx = idx + dir; if (nx < 0 || nx >= line.stops.length) continue;
         const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
-        const eta = Transit.eta(line, idx, dir, now);
-        items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail: `${line.name} · 다음 역 ${line.stops[nx].name} · 다음 열차 ${isFinite(eta) ? Math.ceil(eta / 60) + '분 후' : '곧'}`, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
+        const detail = line.ktx
+          ? `${line.name} · 다음 역 ${line.stops[nx].name} · ${term}까지 약 ${fmtDur(Transit.timeToEnd(line, idx, dir))}`
+          : (() => { const eta = Transit.eta(line, idx, dir, now); return `${line.name} · 다음 역 ${line.stops[nx].name} · 다음 열차 ${isFinite(eta) ? Math.ceil(eta / 60) + '분 후' : '곧'}`; })();
+        items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
       }
     }
-    return { title: `${st.name}역`, sub: '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
+    return { title: stationLabel(st.name), sub: st.ktx ? '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다. KTX 안에서는 G로 시간을 빨리 흘리고 N으로 다음 역 앞까지 건너뛸 수 있습니다.' : '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
   },
   openBus(stop) {
     let state = { loading: true, routes: [], err: false };
@@ -120,7 +123,9 @@ const Game = {
         { label: '계속하기', onSelect: () => { UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '명소로 이동', detail: `부산·울산 명소와 대학교 ${PLACES.length}곳`, onSelect: () => UI.openMenu(() => this.placesMenu()), keep: true },
         { label: '지도 열기', detail: '위성 지도에서 원하는 곳을 눌러 이동', onSelect: () => { UI.closeMenu(); UI.openMap(); }, keep: true, disabled: G.xr },
-        { label: '지하철 노선', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
+        { label: '철도 노선 (지하철·KTX)', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
+        Ride.isKTX() ? { label: `빨리 가기: ×${Ride.active.ts}`, detail: '고르면 시간 흐름이 1배 → 10배 → 60배로 바뀝니다 (G)', onSelect: () => Ride.cycleSpeed() } : null,
+        Ride.isKTX() ? { label: '다음 역 앞까지 건너뛰기', detail: '열차가 다음 역 앞에서 속도를 줄이기 시작하는 곳으로 갑니다 (N)', onSelect: () => { Ride.skipNext(); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true } : null,
         { label: Player.mode === 'fly' ? '걷기로 바꾸기' : '비행으로 바꾸기', disabled: !!Ride.active, onSelect: () => { Player.setMode(Player.mode === 'fly' ? 'walk' : 'fly'); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '시간대', right: this.hourLabel(), onSelect: () => UI.openMenu(() => this.timeMenu()), keep: true },
         { label: '설정', onSelect: () => UI.openMenu(() => this.settingsMenu()), keep: true },
@@ -134,8 +139,8 @@ const Game = {
   openPlaces() { if (G.state === 'play') UI.openMenu(() => this.placesMenu()); },
   placesMenu() {
     const P = Player.pos;
-    const tabs = [['all', '전체'], ['부산', '부산'], ['울산', '울산'], ['uni', '대학교'], ['transit', '교통'], ['beach', '해변'], ['culture', '문화']];
-    const list = PLACES.filter((p) => this.placeTab === 'all' || p.city === this.placeTab || p.cat === this.placeTab)
+    const tabs = [['all', '전체'], ['부산', '부산'], ['울산', '울산'], ['수도권', '서울·경기'], ['충청', '충청·대전'], ['대구·경북', '대구·경북'], ['강원', '강원'], ['uni', '대학교'], ['transit', '교통'], ['beach', '해변'], ['culture', '문화']];
+    const list = PLACES.filter((p) => this.placeTab === 'all' || CITY_GROUP[p.city] === this.placeTab || p.cat === this.placeTab)
       .map((p) => ({ p, d: Math.hypot(p.wx - P.x, p.wz - P.z) })).sort((a, b) => (this.placeTab === 'all' ? a.d - b.d : a.p.name.localeCompare(b.p.name, 'ko')));
     return {
       title: '명소로 이동', sub: '고르면 그 앞으로 순간이동합니다.',
@@ -144,10 +149,10 @@ const Game = {
     };
   },
   linesMenu() {
-    return { title: '지하철 노선', sub: '역을 고르면 그 역으로 이동합니다.', items: Transit.lines.map((l) => ({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: l.name, detail: `${l.stops[0].name} ↔ ${l.stops[l.stops.length - 1].name} · ${l.stops.length}개 역 · ${(l.len / 1000).toFixed(1)} km`, onSelect: () => UI.openMenu(() => this.lineStations(l)), keep: true })) };
+    return { title: '철도 노선', sub: '역을 고르면 그 역으로 이동합니다.', items: Transit.lines.map((l) => ({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: l.name, detail: `${l.stops[0].name} ↔ ${l.stops[l.stops.length - 1].name} · ${l.stops.length}개 역 · ${(l.len / 1000).toFixed(1)} km${l.ktx ? ` · 약 ${fmtDur(l.one)}` : ''}`, onSelect: () => UI.openMenu(() => this.lineStations(l)), keep: true })) };
   },
   lineStations(l) {
-    return { title: l.name, sub: `역 ${l.stops.length}곳`, items: l.stops.map((s, i) => ({ icon: `<span class="badge" style="background:${l.color}">${i + 1}</span>`, label: s.name, onSelect: () => { UI.closeMenu(); Player.setMode('walk'); Player.teleport(s.x + 8, s.z + 8); UI.banner(`${s.name}역`, l.name, 2200); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true })) };
+    return { title: l.name, sub: `역 ${l.stops.length}곳`, items: l.stops.map((s, i) => ({ icon: `<span class="badge" style="background:${l.color}">${i + 1}</span>`, label: s.name, onSelect: () => { UI.closeMenu(); if (Ride.active) Ride.stop(); Player.setMode('walk'); Player.teleport(s.x + 8, s.z + 8); UI.banner(stationLabel(s.name), l.name, 2200); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true })) };
   },
   hourLabel() { const h = G.settings.hour; return h === 'auto' ? '실제 시각' : { 7: '아침', 13: '낮', 18.5: '노을', 22: '밤' }[h] || `${h}시`; },
   timeMenu() {
@@ -172,13 +177,13 @@ const Game = {
     return {
       title: '조작법', items: [
         { text: '키보드·마우스', head: true },
-        { text: '화면 클릭: 마우스 고정 · WASD: 이동 · Shift: 달리기(비행 중에는 가속) · Space: 점프(비행 중 상승) · C: 비행 중 하강\nF: 걷기/비행 전환 · 마우스 휠 또는 +/−: 비행 속도 · E: 지하철·버스 타기, 내리기\nM: 지도 · T: 명소 목록 · Esc: 메뉴' },
+        { text: '화면 클릭: 마우스 고정 · WASD: 이동 · Shift: 달리기(비행 중에는 가속) · Space: 점프(비행 중 상승) · C: 비행 중 하강\nF: 걷기/비행 전환 · 마우스 휠 또는 +/−: 비행 속도 · E: 지하철·KTX·버스 타기, 내리기\nKTX 안에서: G 시간 빨리(1·10·60배) · N 다음 역 앞까지 건너뛰기\nM: 지도 · T: 명소 목록 · Esc: 메뉴' },
         { text: '터치', head: true },
         { text: '왼쪽 원: 이동 · 화면 드래그: 둘러보기 · 비행/위로/아래로 · 달리기 · 지도 · 메뉴 · 타기 버튼' },
         { text: 'VR (WebXR)', head: true },
         { text: '왼쪽 스틱: 이동 · 오른쪽 스틱 좌우: 30° 회전, 위아래: 비행 중 상승·하강\nA: 지하철·버스 타기/내리기 · B: 메뉴 · X: 명소 목록 · Y: 걷기/비행 · 스틱 누르기: 비행 속도\n메뉴는 오른손 광선으로 가리키고 트리거로 고릅니다. 왼손목에 현재 위치가 보입니다.' },
         { text: '이동 요령', head: true },
-        { text: '역이나 정류장 가까이 가면 화면에 "타기" 안내가 나옵니다. 탑승 중에는 정차할 때 E로 내릴 수 있습니다. 먼 곳은 지도나 명소 목록으로 순간이동하세요.' },
+        { text: '역이나 정류장 가까이 가면 화면에 "타기" 안내가 나옵니다. 탑승 중에는 정차할 때 E로 내릴 수 있습니다. 먼 곳은 지도나 명소 목록으로 순간이동하세요.\nKTX는 부산역·부전역·울산역·태화강역 등에서 탈 수 있습니다. 서울까지 실제처럼 2시간 넘게 걸리니, 메뉴의 "빨리 가기"나 "다음 역 앞까지 건너뛰기"를 쓰세요. 터치·VR에서는 메뉴에서 고릅니다.' },
       ],
     };
   },
@@ -186,9 +191,9 @@ const Game = {
     return {
       title: '데이터와 한계', items: [
         { text: '지도 데이터', head: true },
-        { text: '건물·도로·철도·정류장·버스 노선: © OpenStreetMap 기여자 (ODbL), Overpass API로 실시간 조회\n위성 사진: Esri World Imagery (Esri, Maxar, Earthstar Geographics)\n지형 고도: Mapzen Terrain Tiles (AWS Open Data)' },
+        { text: '건물·도로·철도·역·정류장·버스 노선: © OpenStreetMap 기여자 (ODbL), Overpass API로 실시간 조회\n위성 사진: Esri World Imagery (Esri, Maxar, Earthstar Geographics)\n지형 고도: Mapzen Terrain Tiles (AWS Open Data)' },
         { text: '알아 둘 점', head: true },
-        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교·울산대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n울산 조선소의 골리앗 크레인과 건조 중인 배는 해안선을 따라 자동으로 놓은 것이라 실제 도크 위치와 다를 수 있습니다.\n지하철 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다.\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
+        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교·울산대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n울산 조선소의 골리앗 크레인과 건조 중인 배는 해안선을 따라 자동으로 놓은 것이라 실제 도크 위치와 다를 수 있습니다.\n지하철과 KTX 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다. KTX 정차역은 경부선(서울~부산)과 동해선 KTX-이음(부전~강릉)의 주요 정차역을 따랐고, 열차마다 다른 정차 패턴은 넣지 않았습니다.\n위경도를 미터로 바꾸는 축척을 부산·울산에 맞춰서, 북쪽으로 갈수록 조금씩 크게 보입니다(대구 약 1%, 서울·강릉 약 3%).\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
       ],
     };
   },
@@ -208,6 +213,8 @@ const Game = {
         else if (e.code === 'KeyT') this.openPlaces();
         else if (e.code === 'KeyF') Player.setMode(Player.mode === 'fly' ? 'walk' : 'fly');
         else if (e.code === 'KeyE') this.useAction();
+        else if (e.code === 'KeyG') Ride.cycleSpeed();
+        else if (e.code === 'KeyN') Ride.skipNext();
       } else if (G.state === 'map' && (e.code === 'Escape' || e.code === 'KeyM')) { UI.closeMap(); }
     });
     window.addEventListener('keyup', (e) => Input.keys.delete(e.code));
@@ -303,5 +310,5 @@ const Game = {
   },
 };
 
-if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, Ships, People, Gulls, THREE };
+if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, KTX, Ships, People, Gulls, THREE };
 Game.init();

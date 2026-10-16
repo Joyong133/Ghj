@@ -191,15 +191,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
     <div id="mapui" class="panel">
       <h2>지도</h2>
       <p id="maphint">끌어서 이동, 휠·두 손가락으로 확대. 원하는 곳을 누르면 그 위치로 순간이동합니다.</p>
-      <div class="row"><button class="btn" id="map-me" type="button">내 위치</button><button class="btn" id="map-busan" type="button">부산</button><button class="btn" id="map-ulsan" type="button">울산</button><button class="btn primary" id="map-close" type="button">닫기</button></div>
+      <div class="row"><button class="btn" id="map-me" type="button">내 위치</button><button class="btn" type="button" data-go="35.15,129.06,0.012">부산</button><button class="btn" type="button" data-go="35.53,129.32,0.012">울산</button><button class="btn" type="button" data-go="37.55,126.99,0.01">서울</button><button class="btn" type="button" data-go="36.35,127.40,0.012">대전</button><button class="btn" type="button" data-go="35.87,128.60,0.012">대구</button><button class="btn" type="button" data-go="35.83,129.22,0.012">경주</button><button class="btn" type="button" data-go="36.04,129.37,0.012">포항</button><button class="btn" type="button" data-go="37.76,128.90,0.012">강릉</button><button class="btn" type="button" data-go="36.4,128.2,0.0016">전국</button><button class="btn primary" id="map-close" type="button">닫기</button></div>
     </div>
   </div>
 
   <div id="title" hidden>
     <div class="inner">
-      <div class="lines"><span class="badge" style="background:var(--l1)">1</span><span class="badge" style="background:var(--l2)">2</span><span class="badge" style="background:var(--l3)">3</span><span class="badge" style="background:var(--l4)">4</span><span class="badge" style="background:var(--bgl)">김해</span><span class="badge" style="background:var(--dh)">동해선</span></div>
+      <div class="lines"><span class="badge" style="background:var(--l1)">1</span><span class="badge" style="background:var(--l2)">2</span><span class="badge" style="background:var(--l3)">3</span><span class="badge" style="background:var(--l4)">4</span><span class="badge" style="background:var(--bgl)">김해</span><span class="badge" style="background:var(--dh)">동해선</span><span class="badge" style="background:#1f4fa0">KTX</span><span class="badge" style="background:#2a8fd0">KTX-이음</span></div>
       <h1>부산·울산<br><em>VR</em> 여행</h1>
-      <p class="lede">실제 지도 데이터로 두 도시를 1:1 크기로 세웠습니다. 걸어서 골목을 돌고, 하늘을 날고, 지하철과 버스를 타고, 공항과 대학교와 바다를 둘러보세요.</p>
+      <p class="lede">실제 지도 데이터로 두 도시를 1:1 크기로 세웠습니다. 걸어서 골목을 돌고, 하늘을 날고, 지하철과 버스를 타고, 공항과 대학교와 바다를 둘러보세요. KTX를 타면 서울·대전·대구·경주까지, KTX-이음을 타면 포항·삼척·동해·강릉까지 갈 수 있습니다.</p>
       <div class="starts" id="starts"></div>
       <div class="go">
         <button class="btn primary" id="b-start" type="button">여기서 시작</button>

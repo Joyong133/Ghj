@@ -38,6 +38,7 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
   },
 
   requestTile(t) {
+    if (this.tiles.has(t.k)) return;
     const rec = { t, b: t.b, k: t.k, dead: false, group: null };
     this.tiles.set(t.k, rec);
     const sig = {};
