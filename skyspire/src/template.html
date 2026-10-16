@@ -1,0 +1,277 @@
+<!--HEAD-->
+<title>Skyspire</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="100층 부유성을 오르는 1인칭 검술 액션 RPG. 브라우저와 WebXR VR에서 플레이.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=Marcellus+SC&display=swap">
+<style>
+/* Layout: 화면 전체를 3D 캔버스가 채우고, HUD는 네 모서리에 얇은 금속판처럼 얹힌다. 메뉴는 가운데 한 장의 각인판. */
+:root {
+  color-scheme: dark;
+  --ink: #0b0f15;
+  --plate: rgba(13, 19, 28, 0.84);
+  --plate-solid: #111925;
+  --line: rgba(206, 220, 236, 0.2);
+  --line-strong: rgba(232, 197, 116, 0.55);
+  --text: #e8edf4;
+  --muted: #95a3b4;
+  --brass: #e3c070;
+  --brass-dim: #9c8247;
+  --hp: #5fd27a;
+  --hp-mid: #e4c64a;
+  --hp-low: #e0554a;
+  --exp: #7cc4ff;
+  --danger: #ff6a5c;
+  --font-display: "Marcellus SC", "Gowun Batang", Georgia, serif;
+  --font-title-ko: "Gowun Batang", "Nanum Myeongjo", "Apple SD Gothic Neo", serif;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --cut: 10px;
+  --gut-l: max(16px, env(safe-area-inset-left, 0px));
+  --gut-r: max(16px, env(safe-area-inset-right, 0px));
+  --gut-t: max(12px, env(safe-area-inset-top, 0px));
+  --gut-b: max(12px, env(safe-area-inset-bottom, 0px));
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--text); overflow: hidden; }
+body { font-family: var(--font-ui); font-size: 14px; -webkit-user-select: none; user-select: none; touch-action: none; }
+#app { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.plate {
+  background: var(--plate);
+  border: 1px solid var(--line);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- HUD ---------- */
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud[hidden] { display: none !important; }
+#status {
+  position: absolute; left: var(--gut-l); top: var(--gut-t);
+  width: min(340px, calc(100vw - 200px)); min-width: 200px;
+  padding: 10px 12px 10px 14px; display: grid; gap: 6px;
+}
+#status .row1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#pname { font-family: var(--font-title-ko); font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#plevel { color: var(--brass); font-family: var(--font-display); font-size: 14px; letter-spacing: 0.06em; margin-left: auto; white-space: nowrap; }
+.bar { position: relative; height: 12px; background: rgba(0,0,0,0.5); border: 1px solid var(--line);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.bar > i { position: absolute; inset: 0 auto 0 0; width: 100%; background: var(--hp); transition: width 0.12s linear, background-color 0.3s; }
+.bar > b { position: absolute; inset: 0 auto 0 0; width: 100%; background: rgba(255,255,255,0.35); transition: width 0.6s ease 0.25s; }
+.bar.exp { height: 4px; clip-path: none; border: 0; }
+.bar.exp > i { background: var(--exp); }
+#hptext { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; gap: 8px; }
+#buffs { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--muted); min-height: 0; }
+#buffs span { border: 1px solid var(--line); padding: 1px 6px; }
+
+#mapbox { position: absolute; right: var(--gut-r); top: var(--gut-t); width: 168px; display: grid; gap: 6px; justify-items: end; }
+#minimap { width: 152px; height: 152px; border-radius: 50%; border: 1px solid var(--line-strong); background: rgba(5,8,12,0.7); display: block; }
+#floorlabel { padding: 5px 10px; text-align: right; font-size: 12px; color: var(--muted); max-width: 168px; }
+#floorlabel strong { display: block; color: var(--text); font-family: var(--font-title-ko); font-size: 14px; }
+
+#skillbar { position: absolute; left: 50%; bottom: var(--gut-b); transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-end; }
+.slot { position: relative; width: 54px; height: 54px; display: grid; place-items: center; text-align: center; padding: 4px; font-size: 10.5px; line-height: 1.15; overflow: hidden; }
+.slot .key { position: absolute; left: 5px; top: 3px; font-family: var(--font-display); color: var(--brass); font-size: 11px; }
+.slot .nm { margin-top: 8px; }
+.slot .cd { position: absolute; inset: auto 0 0 0; height: 0%; background: rgba(0,0,0,0.62); }
+.slot .cdt { position: absolute; inset: 0; display: grid; place-items: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+.slot.off { opacity: 0.35; }
+.slot.sel { border-color: var(--brass); }
+.slot.potion .nm { font-size: 18px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+#crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.8); box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+#callout { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); font-family: var(--font-title-ko); font-weight: 700; font-size: clamp(20px, 2.6vw, 30px); letter-spacing: 0.08em; text-shadow: 0 0 14px currentColor, 0 2px 6px #000; opacity: 0; white-space: nowrap; }
+#callout.show { animation: callout 0.9s ease-out; }
+@keyframes callout { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.05); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+#prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+#prompt kbd { font-family: var(--font-display); color: var(--ink); background: var(--brass); padding: 0 6px; margin-right: 6px; }
+
+#bossbar { position: absolute; left: 50%; top: var(--gut-t); transform: translateX(-50%); width: min(560px, calc(100vw - 760px)); min-width: 240px; padding: 8px 12px; display: grid; gap: 5px; }
+#bossname { font-family: var(--font-title-ko); font-weight: 700; display: flex; justify-content: space-between; gap: 10px; }
+#bossname span:last-child { color: var(--muted); font-family: var(--font-ui); font-weight: 400; font-size: 12px; white-space: nowrap; }
+#bossbars { display: flex; gap: 4px; }
+#bossbars .bar { flex: 1; height: 10px; }
+#bossbars .bar > i { background: var(--hp-low); }
+
+#toasts { position: absolute; left: var(--gut-l); bottom: calc(var(--gut-b) + 84px); display: flex; flex-direction: column-reverse; gap: 4px; max-width: min(420px, 60vw); }
+.toast { padding: 5px 10px; font-size: 13px; background: rgba(10,14,20,0.78); border-left: 2px solid var(--brass); animation: toastIn 0.25s ease; }
+@keyframes toastIn { from { transform: translateX(-12px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+#banner { position: absolute; left: 0; right: 0; top: 24%; text-align: center; pointer-events: none; transition: opacity 0.5s; padding-left: var(--gut-l); padding-right: var(--gut-r); }
+#banner .t { font-family: var(--font-title-ko); font-weight: 700; font-size: clamp(28px, 5vw, 54px); letter-spacing: 0.04em; text-shadow: 0 2px 18px rgba(0,0,0,0.7); text-wrap: balance; }
+#banner .s { margin-top: 6px; font-family: var(--font-display); color: var(--brass); letter-spacing: 0.3em; font-size: clamp(12px, 1.6vw, 16px); text-shadow: 0 1px 8px #000; }
+#vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(170, 10, 10, 0.75) 100%); transition: opacity 0.15s; }
+#fps { position: absolute; right: var(--gut-r); bottom: var(--gut-b); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- Menu ---------- */
+#menu { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4,6,10,0.55); padding: var(--gut-t) var(--gut-r) var(--gut-b) var(--gut-l); }
+#menu .panel { --cut: 14px; width: min(620px, 100%); max-height: min(86vh, 760px); display: flex; flex-direction: column; background: rgba(12,17,25,0.94); }
+#menu header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
+#menu h2 { margin: 0; font-family: var(--font-title-ko); font-size: 22px; text-wrap: balance; }
+#menu header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+#menu .list { overflow-y: auto; padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+#menu .item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; text-align: left; background: transparent; border: 1px solid transparent; padding: 9px 12px; cursor: pointer; }
+#menu .item:hover:not(:disabled), #menu .item.focus { background: rgba(227,192,112,0.1); border-color: var(--line-strong); }
+#menu .item:disabled { opacity: 0.4; cursor: default; }
+#menu .item .l { font-size: 15px; min-width: 0; }
+#menu .item .r { color: var(--brass); font-size: 13px; text-align: right; white-space: nowrap; align-self: center; font-variant-numeric: tabular-nums; }
+#menu .item .d { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
+#menu .text { padding: 6px 12px; color: var(--muted); font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; }
+#menu .text.head { color: var(--brass); font-family: var(--font-display); letter-spacing: 0.12em; font-size: 12px; padding-top: 12px; }
+#menu textarea { width: 100%; box-sizing: border-box; min-height: 90px; background: #070a0f; color: var(--text); border: 1px solid var(--line); font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; padding: 8px; user-select: text; -webkit-user-select: text; }
+#menu footer { padding: 10px 22px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- Title ---------- */
+#title { position: absolute; inset: 0; display: grid; align-content: center; justify-items: start; padding: var(--gut-t) var(--gut-r) var(--gut-b) var(--gut-l);
+  background: linear-gradient(90deg, rgba(5,8,12,0.88) 0%, rgba(5,8,12,0.55) 38%, rgba(5,8,12,0) 70%); }
+#title .inner { width: min(460px, 100%); padding-left: clamp(0px, 5vw, 64px); display: grid; gap: 22px; }
+#title .eyebrow { font-family: var(--font-display); color: var(--brass); letter-spacing: 0.38em; font-size: 13px; }
+#title h1 { margin: 6px 0 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(52px, 9vw, 104px); line-height: 1; letter-spacing: 0.02em; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+#title .sub { font-family: var(--font-title-ko); font-size: clamp(16px, 2vw, 20px); line-height: 1.5; color: #d5dde8; margin-top: 14px; text-wrap: balance; }
+#title .btns { display: grid; gap: 8px; }
+.tbtn { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 18px; background: rgba(12,17,25,0.82); border: 1px solid var(--line); cursor: pointer; font-size: 15px; text-align: left;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.tbtn:hover:not(:disabled) { border-color: var(--brass); background: rgba(227,192,112,0.12); }
+.tbtn small { color: var(--muted); font-size: 12px; }
+.tbtn.primary { border-color: var(--line-strong); }
+.tbtn:disabled { opacity: 0.4; cursor: default; }
+#newgame { display: grid; gap: 10px; padding: 16px; }
+#newgame label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+#newgame input[type=text] { background: #070a0f; border: 1px solid var(--line); color: var(--text); font: inherit; font-size: 16px; padding: 10px 12px; user-select: text; -webkit-user-select: text; }
+#newgame .chk { display: flex; gap: 10px; align-items: flex-start; grid-template-columns: none; color: var(--text); }
+#newgame .chk input { margin-top: 3px; accent-color: var(--danger); }
+#newgame .chk small { display: block; color: var(--muted); }
+#title .foot { color: var(--muted); font-size: 12px; line-height: 1.6; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ink); font-family: var(--font-title-ko); font-size: 18px; color: var(--muted); }
+#loading .t { display: grid; gap: 8px; justify-items: center; }
+#loading .t b { font-family: var(--font-display); color: var(--brass); letter-spacing: 0.3em; font-weight: 400; font-size: 13px; }
+
+/* ---------- Touch ---------- */
+#touch { position: absolute; inset: 0; pointer-events: none; }
+#touch .pad { position: absolute; left: calc(var(--gut-l) + 8px); bottom: calc(var(--gut-b) + 8px); width: 128px; height: 128px; border-radius: 50%; border: 1px solid var(--line); background: rgba(10,14,20,0.35); pointer-events: auto; }
+#touch .knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(227,192,112,0.35); border: 1px solid var(--line-strong); }
+#touch .tb { position: absolute; pointer-events: auto; width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line); background: rgba(10,14,20,0.5); font-size: 12px; display: grid; place-items: center; padding: 0; }
+#touch .tb.big { width: 78px; height: 78px; font-size: 15px; border-color: var(--line-strong); }
+#touch .tb:active, #touch .tb.on { background: rgba(227,192,112,0.35); }
+#touch .tb[hidden] { display: none !important; }
+#touchtop { position: absolute; top: calc(var(--gut-t) + 160px); right: var(--gut-r); display: grid; gap: 8px; pointer-events: auto; }
+#touchtop button { width: 46px; height: 34px; border: 1px solid var(--line); background: rgba(10,14,20,0.6); font-size: 12px; }
+
+@media (max-width: 1100px) { #bossbar { top: calc(var(--gut-t) + 132px); width: min(560px, calc(100vw - 32px)); } }
+@media (max-width: 720px) {
+  #minimap { width: 104px; height: 104px; }
+  #mapbox { width: 118px; }
+  #floorlabel { font-size: 11px; }
+  #status { width: calc(100vw - 150px); min-width: 0; padding: 7px 10px; }
+  #bossbar { top: calc(var(--gut-t) + 92px); width: calc(100vw - 32px); min-width: 0; }
+  #skillbar { left: auto; right: var(--gut-r); transform: none; bottom: calc(var(--gut-b) + 96px); flex-direction: column; gap: 6px; }
+  #skillbar .slot { width: 46px; height: 46px; font-size: 9.5px; }
+  #toasts { bottom: calc(var(--gut-b) + 150px); }
+  body.touch #skillbar { display: none; }
+}
+body.touch #skillbar { display: none; }
+body.touch #toasts { top: calc(var(--gut-t) + 128px); bottom: auto; flex-direction: column; max-width: min(360px, 55vw); }
+body.touch #prompt { display: none; }
+@media (max-height: 520px) {
+  #title .inner { gap: 12px; }
+  #title h1 { font-size: clamp(40px, 12vh, 64px); }
+  #title .sub { margin-top: 6px; font-size: 14px; }
+  .tbtn { padding: 9px 14px; font-size: 14px; }
+  #title .foot { display: none; }
+  #touchtop { top: var(--gut-t); right: calc(var(--gut-r) + 176px); grid-auto-flow: column; }
+  body.touch #toasts { top: calc(var(--gut-t) + 120px); }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+</style>
+<!--BODY-->
+<div id="app">
+  <canvas id="view" tabindex="0" aria-label="게임 화면"></canvas>
+
+  <div id="hud" hidden>
+    <div id="vignette"></div>
+    <div id="status" class="plate">
+      <div class="row1"><span id="pname">-</span><span id="plevel">LV 1</span></div>
+      <div class="bar" id="hpbar"><b></b><i></i></div>
+      <div id="hptext"><span id="hpnum">100 / 100</span><span id="colnum">0 Col</span></div>
+      <div class="bar exp" id="expbar"><i></i></div>
+      <div id="buffs"></div>
+    </div>
+    <div id="mapbox">
+      <canvas id="minimap" width="304" height="304"></canvas>
+      <div id="floorlabel" class="plate"><strong id="floorname">제 1층</strong><span id="areaname">-</span></div>
+    </div>
+    <div id="bossbar" class="plate" hidden>
+      <div id="bossname"><span id="bossnm">-</span><span id="bosslv">-</span></div>
+      <div id="bossbars"></div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="callout"></div>
+    <div id="prompt" class="plate" hidden></div>
+    <div id="skillbar"></div>
+    <div id="toasts"></div>
+    <div id="banner" style="opacity:0"><div class="t"></div><div class="s"></div></div>
+    <div id="fps" hidden></div>
+  </div>
+
+  <div id="touch" hidden>
+    <div class="pad" id="tpad"><div class="knob" id="tknob"></div></div>
+    <button class="tb big" id="t-atk" style="right:calc(var(--gut-r) + 18px);bottom:calc(var(--gut-b) + 26px)">공격</button>
+    <button class="tb" id="t-s1" style="right:calc(var(--gut-r) + 110px);bottom:calc(var(--gut-b) + 14px)">1</button>
+    <button class="tb" id="t-s2" style="right:calc(var(--gut-r) + 112px);bottom:calc(var(--gut-b) + 78px)">2</button>
+    <button class="tb" id="t-s3" style="right:calc(var(--gut-r) + 62px);bottom:calc(var(--gut-b) + 124px)">3</button>
+    <button class="tb" id="t-s4" style="right:calc(var(--gut-r) + 2px);bottom:calc(var(--gut-b) + 124px)">4</button>
+    <button class="tb" id="t-dodge" style="right:calc(var(--gut-r) + 176px);bottom:calc(var(--gut-b) + 22px)">회피</button>
+    <button class="tb" id="t-guard" style="right:calc(var(--gut-r) + 176px);bottom:calc(var(--gut-b) + 86px)">방어</button>
+    <button class="tb" id="t-use" style="right:calc(var(--gut-r) + 34px);bottom:calc(var(--gut-b) + 190px)" hidden>대화</button>
+    <div id="touchtop">
+      <button id="t-menu">메뉴</button>
+      <button id="t-pot">물약</button>
+      <button id="t-map">지도</button>
+      <button id="t-jump">점프</button>
+    </div>
+  </div>
+
+  <div id="menu" hidden>
+    <div class="panel plate" role="dialog" aria-modal="true" aria-labelledby="menutitle">
+      <header><h2 id="menutitle">메뉴</h2><p id="menusub"></p></header>
+      <div class="list" id="menulist"></div>
+      <footer><span id="menuhint">↑↓ 선택 · Enter 확인 · Esc 뒤로</span><span id="menuright"></span></footer>
+    </div>
+  </div>
+
+  <div id="title" hidden>
+    <div class="inner">
+      <div>
+        <div class="eyebrow">THE HUNDRED FLOORS</div>
+        <h1>Skyspire</h1>
+        <div class="sub">구름 위에 떠 있는 100층의 성. 꼭대기까지 검 한 자루로 오른다.</div>
+      </div>
+      <div class="btns" id="titlebtns">
+        <button class="tbtn primary" id="b-continue"><span>이어하기</span><small id="contInfo"></small></button>
+        <button class="tbtn" id="b-new"><span>새로 시작</span><small>캐릭터 만들기</small></button>
+        <button class="tbtn" id="b-vr" hidden><span>VR로 입장</span><small>WebXR 헤드셋</small></button>
+        <button class="tbtn" id="b-help"><span>조작법</span><small>키보드 · 터치 · VR</small></button>
+        <button class="tbtn" id="b-import"><span>저장 코드 불러오기</span><small>다른 기기에서 옮기기</small></button>
+      </div>
+      <form id="newgame" class="plate" hidden>
+        <label for="ng-name">검사의 이름
+          <input type="text" id="ng-name" maxlength="12" placeholder="예: 하늘검" autocomplete="off">
+        </label>
+        <label class="chk" for="ng-hard"><input type="checkbox" id="ng-hard"><span>하드코어<small>한 번 죽으면 저장 데이터가 삭제됩니다.</small></span></label>
+        <button class="tbtn primary" type="submit" id="ng-go"><span>제 1층으로</span><small>시작</small></button>
+        <button class="tbtn" type="button" id="ng-back"><span>돌아가기</span></button>
+      </form>
+      <div class="foot">PC: 클릭해서 시작, WASD 이동, 마우스 공격 · 휴대폰: 화면 버튼 · VR: Quest 브라우저 등 WebXR 지원 기기</div>
+    </div>
+  </div>
+
+  <div id="loading"><div class="t"><b>SKYSPIRE</b><span id="loadtext">성을 불러오는 중…</span></div></div>
+</div>
+<script type="module">
+/*__GAME__*/
+</script>
