@@ -188,7 +188,7 @@ const Game = {
         { text: '지도 데이터', head: true },
         { text: '건물·도로·철도·정류장·버스 노선: © OpenStreetMap 기여자 (ODbL), Overpass API로 실시간 조회\n위성 사진: Esri World Imagery (Esri, Maxar, Earthstar Geographics)\n지형 고도: Mapzen Terrain Tiles (AWS Open Data)' },
         { text: '알아 둘 점', head: true },
-        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n지하철 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다.\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
+        { text: '건물은 OSM 윤곽과 높이에 종류(아파트, 빌라, 상가, 사무실, 학교, 절 등)별 외벽과 지붕을 입힌 것입니다. 실제 외관 사진은 아닙니다.\n상가 간판은 OSM에 등록된 가게 이름을 쓰고, 이름이 없는 곳은 흔한 가게 이름을 꾸며 넣습니다.\n광안대교·부산항대교·울산대교 등 이름난 다리의 주탑과 케이블은 대략적인 위치와 크기로 세운 것입니다.\n울산 조선소의 골리앗 크레인과 건조 중인 배는 해안선을 따라 자동으로 놓은 것이라 실제 도크 위치와 다를 수 있습니다.\n지하철 운행은 실제 시간표가 아니라 노선 길이로 계산한 모의 운행입니다.\n버스는 OSM에 노선이 등록된 정류장에서만 탈 수 있습니다.\n비행기는 활주로 방향으로 착륙·이륙을 반복하는 연출입니다.\n명소 위치는 주변 OSM 이름과 맞춰 자동으로 보정하지만, 몇십 m 어긋날 수 있습니다.' },
       ],
     };
   },
@@ -293,7 +293,7 @@ const Game = {
     Mats.wall.emissiveIntensity = n > 0.05 ? 1 : 0;
     Mats.updateNight(n);
     BridgeFX.update(G.time, n);
-    if (Decor._beacon) Decor._beacon.emissiveIntensity = n > 0.15 ? (Math.sin(G.time * 2.2) > 0.6 ? 4 : 0.3) : 0.4;
+    Decor.update(G.time, n);
     if (G.state !== 'title') { People.update(dt); Gulls.update(dt); }
     Ships.update(dt);
     const cam = R.camera.getWorldPosition(new THREE.Vector3());

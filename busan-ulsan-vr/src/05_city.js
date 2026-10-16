@@ -17,8 +17,9 @@ way["building:part"](${bb});
 way["highway"](${bb});
 way["railway"~"^(rail|subway|light_rail|tram|monorail|narrow_gauge)$"](${bb});
 way["aeroway"~"^(runway|taxiway)$"](${bb});
-way["man_made"~"^(pier|breakwater|crane|tower|lighthouse)$"](${bb});
-node["man_made"~"^(crane|tower|lighthouse)$"](${bb});
+way["man_made"~"^(pier|breakwater|crane|tower|lighthouse|storage_tank|silo|chimney|flare|gasometer)$"](${bb});
+node["man_made"~"^(crane|tower|lighthouse|storage_tank|chimney|flare)$"](${bb});
+way["industrial"="shipyard"](${bb});
 way["landuse"~"^(port|harbour)$"](${bb});
 way["landuse"="industrial"]["name"](${bb});
 way["natural"="beach"](${bb});
@@ -41,7 +42,7 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     this.tiles.set(t.k, rec);
     const sig = {};
     rec.sig = sig;
-    Net.overpass('t15v2/' + t.x + '/' + t.y, this.query(t.b), () => Terrain.rectDist(Player.pos.x, Player.pos.z, t.b), { signal: sig })
+    Net.overpass('t15v3/' + t.x + '/' + t.y, this.query(t.b), () => Terrain.rectDist(Player.pos.x, Player.pos.z, t.b), { signal: sig })
       .then((data) => { if (!rec.dead) { this.buildQueue.push({ rec, data }); this.pumpBuild(); } })
       .catch(() => { if (!rec.dead) this.status.failed++; });
   },
@@ -86,7 +87,7 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     const I = Decor.newInst(); // 인스턴스로 그릴 소품 목록
     const W = new GeoBuf(), Rf = new GeoBuf(), Solid = new GeoBuf();
     const roads = new GeoBuf(), roads2 = new GeoBuf(), walks = new GeoBuf(), curbs = new GeoBuf(), paths = new GeoBuf(), rails = new GeoBuf(), decks = new GeoBuf(), sand = new GeoBuf();
-    const piers = [], parts = [], outlines = [], shops = [], ports = [];
+    const piers = [], parts = [], outlines = [], shops = [], ports = [], yards = [];
     const edges = new SpatialGrid(20); // 간판 붙일 벽
     // 교차로 찾기: 모든 차도 노드가 몇 개의 길에 쓰이는지
     const nodeUse = new Map();
@@ -103,6 +104,8 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
         if (tg.highway === 'bus_stop') this.stops.push({ tile: rec.k, id: el.id, name: tg.name || '정류장', x, z });
         if (tg.shop || (tg.amenity && !/^(university|college|marketplace)$/.test(tg.amenity))) { if (tg.name) shops.push({ name: tg.name, kind: tg.amenity || tg.shop, x, z }); continue; }
         if (tg.man_made === 'crane') { I.cranes.push({ x, z, yaw: 0 }); continue; }
+        if (tg.man_made === 'storage_tank') { const r = parseFloat(tg.diameter) / 2 || 8; Decor.addTank(I, [0, 1, 2, 3, 4, 5].map((k) => ({ x: x + Math.cos(k * TAU / 6) * r, z: z + Math.sin(k * TAU / 6) * r })), tg, cx, cz); continue; }
+        if (tg.man_made === 'chimney' || tg.man_made === 'flare') { Decor.stack(group, x - cx, z - cz, tg); continue; }
         if (tg.man_made === 'tower' || tg.man_made === 'lighthouse') { Decor.tower(group, x - cx, z - cz, tg); }
         if (tg.name) this.names.push({ tile: rec.k, name: tg.name, nameKo: tg['name:ko'] || '', x, z, kind: tg.tourism || tg.amenity || tg.leisure || tg.natural || tg.railway || tg.man_made || '' });
         continue;
@@ -113,11 +116,22 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
       const here = inTile(c.x, c.z);
       if (el.type === 'way' && tg.name && (tg.tourism || tg.amenity || tg.leisure || tg.natural) && here) this.names.push({ tile: rec.k, name: tg.name, nameKo: tg['name:ko'] || '', x: c.x, z: c.z, kind: tg.tourism || tg.amenity || tg.leisure || tg.natural });
       if (tg['building:part']) { if (here) parts.push({ el, rings, c }); continue; }
+      // 저장탱크·사일로는 건물 태그가 있어도 원통으로, 굴뚝·플레어는 탑으로
+      if (/^(storage_tank|silo|gasometer)$/.test(tg.man_made || '') && (el.type === 'relation' || isClosed(el))) { if (here) Decor.addTank(I, rings[0], tg, cx, cz); continue; }
+      if (/^(chimney|flare)$/.test(tg.man_made || '')) { if (here) Decor.stack(group, c.x - cx, c.z - cz, tg, Math.sqrt(Math.abs(ringArea(rings[0])) / Math.PI)); continue; }
       if (tg.building && (el.type === 'relation' || isClosed(el))) {
         if (here) { outlines.push({ el, rings, c }); if (tg.name && !/^(yes|house|apartments|residential)$/.test(tg.building)) this.names.push({ tile: rec.k, name: tg.name, nameKo: tg['name:ko'] || '', x: c.x, z: c.z, kind: 'building' }); }
         continue;
       }
       if (el.type !== 'way') continue;
+      // 부두·조선소 구역은 여러 타일에 걸치므로 겹치는 타일마다 자기 영역만 채운다
+      if ((tg.landuse || tg.industrial) && !tg.highway && !tg.man_made && isClosed(el)) {
+        const yard = tg.industrial === 'shipyard' || /중공업|조선|미포|shipyard/i.test(tg.name || '');
+        const port = !yard && (/^(port|harbour)$/.test(tg.landuse || '') || /부두|터미널|항만|컨테이너|port|terminal/i.test(tg.name || ''));
+        const bb = bbox(rings[0]);
+        if ((yard || port) && bb.x1 >= b.x0 && bb.x0 < b.x1 && bb.z1 >= b.z0 && bb.z0 < b.z1) (yard ? yards : ports).push(rings[0]);
+        continue;
+      }
       if (!here) { if (tg.highway && tg.tunnel !== 'yes') Traffic.addWay(rec.k, el, null); continue; }
       const pts = rings[0];
       if (tg.highway) {
@@ -142,15 +156,17 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
         ribbon(roads2, pts, prof, tg.aeroway === 'runway' ? 45 : 18, cx, cz, false);
         if (tg.aeroway === 'runway') this.runways.push({ tile: rec.k, a: pts[0], b: pts[pts.length - 1], ref: tg.ref || '' });
       } else if (tg.man_made === 'crane') {
-        const a = pts[0], z2 = pts[pts.length - 1];
-        I.cranes.push({ x: (a.x + z2.x) / 2, z: (a.z + z2.z) / 2, yaw: Math.atan2(z2.x - a.x, z2.z - a.z) });
+        const a = pts[0], z2 = pts[pts.length - 1], len = Math.hypot(z2.x - a.x, z2.z - a.z);
+        // 70m 넘게 긴 크레인 선은 조선소 골리앗(갠트리) 크레인으로. 260m 넘으면 레일로 보고 들보를 레일과 직각으로
+        const along = Math.atan2(-(z2.z - a.z), z2.x - a.x);
+        if (len > 260) Decor.goliath(group, (a.x + z2.x) / 2 - cx, (a.z + z2.z) / 2 - cz, along + Math.PI / 2, 170);
+        else if (len > 70) Decor.goliath(group, (a.x + z2.x) / 2 - cx, (a.z + z2.z) / 2 - cz, along, len);
+        else I.cranes.push({ x: (a.x + z2.x) / 2, z: (a.z + z2.z) / 2, yaw: Math.atan2(z2.x - a.x, z2.z - a.z) });
       } else if (tg.man_made === 'tower' || tg.man_made === 'lighthouse') {
         Decor.tower(group, c.x - cx, c.z - cz, tg);
       } else if (tg.man_made) {
         const prof = { h: pts.map((p) => Math.max(Terrain.heightAt(p.x, p.z), 0) + 1.6), bridge: false };
         ribbon(paths, pts, prof, 6, cx, cz, false);
-      } else if (tg.landuse) {
-        if (tg.landuse !== 'industrial' || /부두|터미널|항만|컨테이너|port|terminal/i.test(tg.name || '')) ports.push(rings[0]);
       } else if (tg.natural === 'beach') {
         this.sandPatch(sand, rings, cx, cz);
       }
@@ -226,6 +242,7 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     }
     // 항만
     for (const ring of ports) Decor.portYard(I, ring, rec);
+    for (const ring of yards) Decor.shipyard(I, group, ring, rec);
     const add = (buf, mat, cast, recv = true) => { const g = buf.build(); if (!g) return null; const m = new THREE.Mesh(g, mat); m.castShadow = cast; m.receiveShadow = recv; group.add(m); return m; };
     add(W, Mats.wall, true); add(Rf, Mats.roof, true); add(Solid, Mats.solid, true);
     add(roads, Mats.road, false); add(roads2, Mats.road2, false); add(walks, Mats.sidewalk, false); add(curbs, Mats.curb, false);
@@ -275,10 +292,12 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
     const L = len[len.length - 1] || 1;
     const h0 = g[0], h1 = g[g.length - 1];
+    // 광안대교·울산대교 같은 큰 다리는 배가 지나가도록 상판을 바다 위 55m 높이로
+    const special = !!(tg.name && BRIDGE_SPECIAL.some((b) => b.re.test(tg.name)));
     const h = pts.map((p, i) => {
       const t = len[i] / L, base = lerp(h0, h1, t);
-      const water = Terrain.heightAt(p.x, p.z) < 1;
-      const want = g[i] + (water ? (major ? 24 : 10) : 6.5) + Math.max(0, layer - 1) * 7;
+      const water = Terrain.heightAt(p.x, p.z) < (special ? 3 : 1);
+      const want = g[i] + (water ? (special ? 55 : major ? 24 : 10) : 6.5) + Math.max(0, layer - 1) * 7;
       const ramp = base + 0.6 + Math.min(len[i], L - len[i]) * 0.1;
       return Math.max(base + 0.4, Math.min(want, ramp));
     });
