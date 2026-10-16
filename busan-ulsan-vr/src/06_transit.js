@@ -186,6 +186,12 @@ const Transit = {
     l.headway = l.ktx ? l.headway : l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
     l.count = Math.max(2, Math.round(l.period / l.headway));
   },
+  // i번째 역에서 j번째 역까지 걸리는 시간(초, 중간 역 정차 포함)
+  travelTime(l, i, j) {
+    let t = 0;
+    for (let k = Math.min(i, j); k < Math.max(i, j); k++) t += l.seg[k] + l.dwell;
+    return Math.max(0, t - l.dwell);
+  },
   // i번째 역에서 dir 방향 종착역까지 걸리는 시간(초)
   timeToEnd(l, i, dir) {
     let t = 0;
@@ -399,14 +405,16 @@ const Ride = {
   },
 
   // ---------------- 지하철
-  startSubway(line, idx, dir) {
+  // dest: 내릴 역 번호(KTX 여행). 그 역에 닿으면 잠시 뒤 자동으로 내린다
+  startSubway(line, idx, dir, dest = null) {
     this.buildInterior(line.ktx ? 'ktx' : 'subway', line.color);
     this.buildTunnel();
-    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1 };
+    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1, dest };
     G.riding = true;
     Player.enterRide(line.ktx ? 'ktx' : 'subway');
     const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
-    UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
+    if (dest !== null) UI.banner(`${line.name}`, `${stationLabel(line.stops[idx].name)} → ${stationLabel(line.stops[dest].name)} · 약 ${fmtDur(Transit.travelTime(line, idx, dest))}`, 3200);
+    else UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
     this.announce(`이 열차는 ${term} 방면 열차입니다.`);
   },
   // ---------------- 버스
@@ -493,7 +501,10 @@ const Ride = {
     const a = this.active, l = a.line, sdt = dt * a.ts;
     if (a.phase === 'dwell') {
       a.stopT += sdt; a.v = 0;
-      if (a.stopT > l.dwell) {
+      if (a.arrived) {
+        a.arriveT = (a.arriveT || 0) + dt;
+        if (a.arriveT > 4) { UI.toast(`${stationLabel(l.stops[a.idx].name)}에서 내렸습니다.`); this.stop(l.stops[a.idx]); return null; }
+      } else if (a.stopT > l.dwell) {
         if (a.next < 0 || a.next >= l.stops.length) { UI.toast('종착역입니다. 내립니다.'); this.stop(l.stops[a.idx]); return null; }
         a.phase = 'move';
         this.announce(`다음 역은 ${stationLabel(l.stops[a.next].name)}입니다.`);
@@ -508,7 +519,8 @@ const Ride = {
       if (step >= rem) {
         a.d = a.to; a.idx = a.next; a.next += a.dir; a.phase = 'dwell'; a.stopT = 0; a.v = 0;
         const nm = stationLabel(l.stops[a.idx].name);
-        this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500);
+        if (a.dest === a.idx) { a.arrived = true; a.ts = 1; this.announce(`${nm}에 도착했습니다. 내리실 때 잊으신 물건이 없는지 확인하세요.`); UI.banner(nm, `${l.name} · 도착했습니다. 곧 내립니다`, 3500); }
+        else { this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500); }
       } else a.d += a.dir * step;
     }
     const p = Transit.pointAt(l, a.d);

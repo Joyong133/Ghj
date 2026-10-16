@@ -35,6 +35,7 @@ const Game = {
     const opts = [];
     if (saved && isFinite(saved.x)) opts.push({ id: 'saved', name: '마지막 위치', sub: '지난번에 있던 곳', x: saved.x, z: saved.z });
     for (const id of STARTS) { const p = placeById(id); opts.push({ id, name: p.name, sub: `${p.city} · ${CATS[p.cat].name}`, p }); }
+    for (const id of ['busan-gangneung', 'busan-seoul']) { const t = KTX_TRIPS.find((q) => q.id === id); opts.push({ id: 'trip-' + id, name: `KTX ${t.name}`, sub: `${t.sub} · 바로 탑승`, trip: t }); }
     this.startOpt = opts[0];
     for (const o of opts) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'start' + (o === this.startOpt ? ' on' : '');
@@ -52,7 +53,8 @@ const Game = {
     UI.show(true);
     Player.mode = 'walk';
     const o = this.startOpt;
-    if (o.p) this.goPlace(o.p, true); else Player.teleport(o.x, o.z);
+    if (o.trip) this.startTrip(o.trip);
+    else if (o.p) this.goPlace(o.p, true); else Player.teleport(o.x, o.z);
     UI.modebar();
     if (!G.touch && !G.xr) this.lockPointer();
     setTimeout(() => UI.toast(G.touch ? '왼쪽 원으로 걷고, 화면을 끌어 둘러보세요. 비행 버튼으로 하늘을 날 수 있습니다.' : 'WASD 이동 · 마우스 시점 · F 비행 · M 지도 · T 명소 · E 타기', '#ffb43a'), 800);
@@ -75,6 +77,35 @@ const Game = {
       const a = (k / 16) * TAU, x = Player.pos.x + Math.cos(a) * r, z = Player.pos.z + Math.sin(a) * r;
       if (!City.insideBuilding(x, z)) { Player.pos.x = x; Player.pos.z = z; Player.settle = 1; return; }
     }
+  },
+
+  // KTX 여행: 출발역으로 옮겨 바로 타고, 도착역에서 자동으로 내린다. KTX 노선이 아직이면 잠시 기다린다
+  startTrip(t, tries = 0) {
+    const l = Transit.lines.find((q) => q.id === t.line);
+    const KL = KTX_LINES.find((q) => q.id === t.line), s0 = KL.stations.find((q) => q[0] === t.from);
+    if (!l) {
+      if (tries === 0) { if (Ride.active) Ride.stop(); const w = GEO.toWorld(s0[1], s0[2]); Player.setMode('walk'); Player.teleport(w.x + 3, w.z + 3); UI.toast('KTX 노선을 만드는 중입니다. 잠시 뒤 탑니다.'); }
+      if (tries < 120) setTimeout(() => this.startTrip(t, tries + 1), 500);
+      return;
+    }
+    const i = l.stops.findIndex((q) => q.name === t.from), j = l.stops.findIndex((q) => q.name === t.to);
+    if (i < 0 || j < 0 || i === j) return;
+    if (Ride.active) Ride.stop();
+    Player.setMode('walk');
+    Player.teleport(l.stops[i].x + 3, l.stops[i].z + 3);
+    Ride.startSubway(l, i, Math.sign(j - i), j);
+    if (!G.touch && !G.xr && G.state === 'play') this.lockPointer();
+  },
+  tripsMenu() {
+    return {
+      title: 'KTX 여행', sub: '고르면 출발역으로 옮겨 바로 탑니다. 도착역에서 자동으로 내립니다. 탑승 중 G: 빨리 가기, N: 다음 역 앞까지.',
+      items: KTX_TRIPS.map((t) => {
+        const l = Transit.lines.find((q) => q.id === t.line);
+        const dur = l ? Transit.travelTime(l, l.stops.findIndex((q) => q.name === t.from), l.stops.findIndex((q) => q.name === t.to)) : 0;
+        const KL = KTX_LINES.find((q) => q.id === t.line);
+        return { icon: `<span class="badge" style="background:${KL.color}">${KL.short}</span>`, label: t.name, detail: `${t.sub}${l ? ` · 약 ${fmtDur(dur)}` : ' · 노선 준비 중'}`, right: '타기', disabled: !l, onSelect: () => { UI.closeMenu(); this.startTrip(t); }, keep: true };
+      }),
+    };
   },
 
   // ---------------------------------------------------------------- 상호작용
@@ -102,6 +133,14 @@ const Game = {
         items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
       }
     }
+    // 이 역에 안 서는 KTX는 가까운 역으로 옮겨 타기 (부산역 → 부전역의 강릉행 등)
+    for (const x of KTX_TRANSFERS) {
+      if (!st.lines.some((o) => o.line.stops[o.idx].name === x.at && o.line.ktx) || st.lines.some((o) => o.line.id === x.line)) continue;
+      const t = KTX_TRIPS.find((q) => q.id === x.trip), l = Transit.lines.find((q) => q.id === x.line);
+      if (!l) continue;
+      const dur = Transit.travelTime(l, l.stops.findIndex((q) => q.name === t.from), l.stops.findIndex((q) => q.name === t.to));
+      items.push({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: x.label, detail: `${x.note} · ${t.to}까지 약 ${fmtDur(dur)}`, right: `${t.from}역에서 타기`, onSelect: () => { UI.closeMenu(); this.startTrip(t); }, keep: true });
+    }
     return { title: stationLabel(st.name), sub: st.ktx ? '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다. KTX 안에서는 G로 시간을 빨리 흘리고 N으로 다음 역 앞까지 건너뛸 수 있습니다.' : '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
   },
   openBus(stop) {
@@ -123,6 +162,7 @@ const Game = {
         { label: '계속하기', onSelect: () => { UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '명소로 이동', detail: `부산·울산 명소와 대학교 ${PLACES.length}곳`, onSelect: () => UI.openMenu(() => this.placesMenu()), keep: true },
         { label: '지도 열기', detail: '위성 지도에서 원하는 곳을 눌러 이동', onSelect: () => { UI.closeMenu(); UI.openMap(); }, keep: true, disabled: G.xr },
+        { label: 'KTX 여행', detail: KTX.ready ? '부산 → 강릉, 부산 → 서울 등 골라서 바로 타기' : 'KTX 노선을 만드는 중', disabled: !KTX.ready, onSelect: () => UI.openMenu(() => this.tripsMenu()), keep: true },
         { label: '철도 노선 (지하철·KTX)', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
         Ride.isKTX() ? { label: `빨리 가기: ×${Ride.active.ts}`, detail: '고르면 시간 흐름이 1배 → 10배 → 60배로 바뀝니다 (G)', onSelect: () => Ride.cycleSpeed() } : null,
         Ride.isKTX() ? { label: '다음 역 앞까지 건너뛰기', detail: '열차가 다음 역 앞에서 속도를 줄이기 시작하는 곳으로 갑니다 (N)', onSelect: () => { Ride.skipNext(); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true } : null,

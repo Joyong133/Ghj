@@ -540,6 +540,23 @@ const KTX_LINES = [
     ] },
 ];
 
+// 바로 타는 KTX 여행 (도착역에서 자동으로 내린다)
+const KTX_TRIPS = [
+  { id: 'busan-gangneung', line: 'KTXE', from: '부전', to: '강릉', name: '부산 → 강릉', sub: 'KTX-이음 동해선 · 부전역 출발' },
+  { id: 'gangneung-busan', line: 'KTXE', from: '강릉', to: '부전', name: '강릉 → 부산', sub: 'KTX-이음 동해선 · 부전역 도착' },
+  { id: 'busan-seoul', line: 'KTX', from: '부산', to: '서울', name: '부산 → 서울', sub: 'KTX 경부선' },
+  { id: 'seoul-busan', line: 'KTX', from: '서울', to: '부산', name: '서울 → 부산', sub: 'KTX 경부선' },
+  { id: 'busan-daegu', line: 'KTX', from: '부산', to: '동대구', name: '부산 → 대구', sub: 'KTX 경부선 · 동대구역 도착' },
+  { id: 'daegu-busan', line: 'KTX', from: '동대구', to: '부산', name: '대구 → 부산', sub: 'KTX 경부선' },
+  { id: 'busan-gyeongju', line: 'KTXE', from: '부전', to: '경주', name: '부산 → 경주', sub: 'KTX-이음 동해선' },
+  { id: 'busan-pohang', line: 'KTXE', from: '부전', to: '포항', name: '부산 → 포항', sub: 'KTX-이음 동해선' },
+];
+// 이 역에 서지 않는 KTX를 가까운 역에서 타도록 안내 (부산역 ↔ 부전역)
+const KTX_TRANSFERS = [
+  { at: '부산', line: 'KTXE', trip: 'busan-gangneung', label: '강릉 방면 (KTX-이음)', note: '동해선 KTX-이음은 부산역이 아니라 부전역에서 떠납니다. 부전역으로 옮겨 바로 탑니다' },
+  { at: '부전', line: 'KTX', trip: 'busan-seoul', label: '서울 방면 (KTX 경부선)', note: 'KTX 경부선은 부산역에서 떠납니다. 부산역으로 옮겨 바로 탑니다' },
+];
+
 // OSM 활주로가 없을 때 쓰는 대략적인 활주로 (중심, 방위각)
 const AIRPORTS = {
   PUS: { name: '김해국제공항', lat: 35.1795, lon: 128.9382, heading: 176, length: 3000 },
@@ -3185,6 +3202,12 @@ const Transit = {
     l.headway = l.ktx ? l.headway : l.id === 'DH' ? 900 : l.id === 'L4' || l.id === 'BGL' ? 420 : 330;
     l.count = Math.max(2, Math.round(l.period / l.headway));
   },
+  // i번째 역에서 j번째 역까지 걸리는 시간(초, 중간 역 정차 포함)
+  travelTime(l, i, j) {
+    let t = 0;
+    for (let k = Math.min(i, j); k < Math.max(i, j); k++) t += l.seg[k] + l.dwell;
+    return Math.max(0, t - l.dwell);
+  },
   // i번째 역에서 dir 방향 종착역까지 걸리는 시간(초)
   timeToEnd(l, i, dir) {
     let t = 0;
@@ -3398,14 +3421,16 @@ const Ride = {
   },
 
   // ---------------- 지하철
-  startSubway(line, idx, dir) {
+  // dest: 내릴 역 번호(KTX 여행). 그 역에 닿으면 잠시 뒤 자동으로 내린다
+  startSubway(line, idx, dir, dest = null) {
     this.buildInterior(line.ktx ? 'ktx' : 'subway', line.color);
     this.buildTunnel();
-    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1 };
+    this.active = { kind: 'subway', line, idx, dir, t: 0, phase: 'dwell', stopT: line.ktx ? line.dwell - 20 : 0, d: line.stopD[idx], next: idx + dir, seat: new THREE.Vector3(0, 0, 0), v: 0, ts: 1, dest };
     G.riding = true;
     Player.enterRide(line.ktx ? 'ktx' : 'subway');
     const term = dir > 0 ? line.stops[line.stops.length - 1].name : line.stops[0].name;
-    UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
+    if (dest !== null) UI.banner(`${line.name}`, `${stationLabel(line.stops[idx].name)} → ${stationLabel(line.stops[dest].name)} · 약 ${fmtDur(Transit.travelTime(line, idx, dest))}`, 3200);
+    else UI.banner(`${line.name}`, `${term} 방면 · ${line.stops[idx].name}에서 출발`, 2600);
     this.announce(`이 열차는 ${term} 방면 열차입니다.`);
   },
   // ---------------- 버스
@@ -3492,7 +3517,10 @@ const Ride = {
     const a = this.active, l = a.line, sdt = dt * a.ts;
     if (a.phase === 'dwell') {
       a.stopT += sdt; a.v = 0;
-      if (a.stopT > l.dwell) {
+      if (a.arrived) {
+        a.arriveT = (a.arriveT || 0) + dt;
+        if (a.arriveT > 4) { UI.toast(`${stationLabel(l.stops[a.idx].name)}에서 내렸습니다.`); this.stop(l.stops[a.idx]); return null; }
+      } else if (a.stopT > l.dwell) {
         if (a.next < 0 || a.next >= l.stops.length) { UI.toast('종착역입니다. 내립니다.'); this.stop(l.stops[a.idx]); return null; }
         a.phase = 'move';
         this.announce(`다음 역은 ${stationLabel(l.stops[a.next].name)}입니다.`);
@@ -3507,7 +3535,8 @@ const Ride = {
       if (step >= rem) {
         a.d = a.to; a.idx = a.next; a.next += a.dir; a.phase = 'dwell'; a.stopT = 0; a.v = 0;
         const nm = stationLabel(l.stops[a.idx].name);
-        this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500);
+        if (a.dest === a.idx) { a.arrived = true; a.ts = 1; this.announce(`${nm}에 도착했습니다. 내리실 때 잊으신 물건이 없는지 확인하세요.`); UI.banner(nm, `${l.name} · 도착했습니다. 곧 내립니다`, 3500); }
+        else { this.announce(`이번 역은 ${nm}입니다.`); UI.banner(nm, `${l.name} · E로 내리기`, 2500); }
       } else a.d += a.dir * step;
     }
     const p = Transit.pointAt(l, a.d);
@@ -4314,7 +4343,7 @@ const UI = {
       const term = a.dir > 0 ? l.stops[l.stops.length - 1].name : l.stops[0].name;
       const here = a.phase === 'dwell';
       const st = here ? l.stops[a.idx] : l.stops[a.next];
-      $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${term} 방면</span>`;
+      $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${a.dest != null ? `${stationLabel(l.stops[a.dest].name)}까지` : `${term} 방면`}</span>`;
       let small = here ? (Ride.canExit() ? 'E로 내리기' : '') : '';
       if (l.ktx) {
         const left = Math.abs(l.stopD[a.next] - a.d), vmax = l.segV[Math.min(a.idx, a.next)] || 40;
@@ -4664,6 +4693,7 @@ const Game = {
     const opts = [];
     if (saved && isFinite(saved.x)) opts.push({ id: 'saved', name: '마지막 위치', sub: '지난번에 있던 곳', x: saved.x, z: saved.z });
     for (const id of STARTS) { const p = placeById(id); opts.push({ id, name: p.name, sub: `${p.city} · ${CATS[p.cat].name}`, p }); }
+    for (const id of ['busan-gangneung', 'busan-seoul']) { const t = KTX_TRIPS.find((q) => q.id === id); opts.push({ id: 'trip-' + id, name: `KTX ${t.name}`, sub: `${t.sub} · 바로 탑승`, trip: t }); }
     this.startOpt = opts[0];
     for (const o of opts) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'start' + (o === this.startOpt ? ' on' : '');
@@ -4681,7 +4711,8 @@ const Game = {
     UI.show(true);
     Player.mode = 'walk';
     const o = this.startOpt;
-    if (o.p) this.goPlace(o.p, true); else Player.teleport(o.x, o.z);
+    if (o.trip) this.startTrip(o.trip);
+    else if (o.p) this.goPlace(o.p, true); else Player.teleport(o.x, o.z);
     UI.modebar();
     if (!G.touch && !G.xr) this.lockPointer();
     setTimeout(() => UI.toast(G.touch ? '왼쪽 원으로 걷고, 화면을 끌어 둘러보세요. 비행 버튼으로 하늘을 날 수 있습니다.' : 'WASD 이동 · 마우스 시점 · F 비행 · M 지도 · T 명소 · E 타기', '#ffb43a'), 800);
@@ -4704,6 +4735,35 @@ const Game = {
       const a = (k / 16) * TAU, x = Player.pos.x + Math.cos(a) * r, z = Player.pos.z + Math.sin(a) * r;
       if (!City.insideBuilding(x, z)) { Player.pos.x = x; Player.pos.z = z; Player.settle = 1; return; }
     }
+  },
+
+  // KTX 여행: 출발역으로 옮겨 바로 타고, 도착역에서 자동으로 내린다. KTX 노선이 아직이면 잠시 기다린다
+  startTrip(t, tries = 0) {
+    const l = Transit.lines.find((q) => q.id === t.line);
+    const KL = KTX_LINES.find((q) => q.id === t.line), s0 = KL.stations.find((q) => q[0] === t.from);
+    if (!l) {
+      if (tries === 0) { if (Ride.active) Ride.stop(); const w = GEO.toWorld(s0[1], s0[2]); Player.setMode('walk'); Player.teleport(w.x + 3, w.z + 3); UI.toast('KTX 노선을 만드는 중입니다. 잠시 뒤 탑니다.'); }
+      if (tries < 120) setTimeout(() => this.startTrip(t, tries + 1), 500);
+      return;
+    }
+    const i = l.stops.findIndex((q) => q.name === t.from), j = l.stops.findIndex((q) => q.name === t.to);
+    if (i < 0 || j < 0 || i === j) return;
+    if (Ride.active) Ride.stop();
+    Player.setMode('walk');
+    Player.teleport(l.stops[i].x + 3, l.stops[i].z + 3);
+    Ride.startSubway(l, i, Math.sign(j - i), j);
+    if (!G.touch && !G.xr && G.state === 'play') this.lockPointer();
+  },
+  tripsMenu() {
+    return {
+      title: 'KTX 여행', sub: '고르면 출발역으로 옮겨 바로 탑니다. 도착역에서 자동으로 내립니다. 탑승 중 G: 빨리 가기, N: 다음 역 앞까지.',
+      items: KTX_TRIPS.map((t) => {
+        const l = Transit.lines.find((q) => q.id === t.line);
+        const dur = l ? Transit.travelTime(l, l.stops.findIndex((q) => q.name === t.from), l.stops.findIndex((q) => q.name === t.to)) : 0;
+        const KL = KTX_LINES.find((q) => q.id === t.line);
+        return { icon: `<span class="badge" style="background:${KL.color}">${KL.short}</span>`, label: t.name, detail: `${t.sub}${l ? ` · 약 ${fmtDur(dur)}` : ' · 노선 준비 중'}`, right: '타기', disabled: !l, onSelect: () => { UI.closeMenu(); this.startTrip(t); }, keep: true };
+      }),
+    };
   },
 
   // ---------------------------------------------------------------- 상호작용
@@ -4731,6 +4791,14 @@ const Game = {
         items.push({ icon: `<span class="badge" style="background:${line.color}">${line.short}</span>`, label: `${term} 방면`, detail, right: '타기', onSelect: () => { UI.closeMenu(); Ride.startSubway(line, idx, dir); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true });
       }
     }
+    // 이 역에 안 서는 KTX는 가까운 역으로 옮겨 타기 (부산역 → 부전역의 강릉행 등)
+    for (const x of KTX_TRANSFERS) {
+      if (!st.lines.some((o) => o.line.stops[o.idx].name === x.at && o.line.ktx) || st.lines.some((o) => o.line.id === x.line)) continue;
+      const t = KTX_TRIPS.find((q) => q.id === x.trip), l = Transit.lines.find((q) => q.id === x.line);
+      if (!l) continue;
+      const dur = Transit.travelTime(l, l.stops.findIndex((q) => q.name === t.from), l.stops.findIndex((q) => q.name === t.to));
+      items.push({ icon: `<span class="badge" style="background:${l.color}">${l.short}</span>`, label: x.label, detail: `${x.note} · ${t.to}까지 약 ${fmtDur(dur)}`, right: `${t.from}역에서 타기`, onSelect: () => { UI.closeMenu(); this.startTrip(t); }, keep: true });
+    }
     return { title: stationLabel(st.name), sub: st.ktx ? '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다. KTX 안에서는 G로 시간을 빨리 흘리고 N으로 다음 역 앞까지 건너뛸 수 있습니다.' : '탈 방향을 고르세요. 바로 출발하는 열차에 탑니다.', items: items.length ? items : [{ text: '이 역의 노선 정보를 만들지 못했습니다.' }] };
   },
   openBus(stop) {
@@ -4752,6 +4820,7 @@ const Game = {
         { label: '계속하기', onSelect: () => { UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true },
         { label: '명소로 이동', detail: `부산·울산 명소와 대학교 ${PLACES.length}곳`, onSelect: () => UI.openMenu(() => this.placesMenu()), keep: true },
         { label: '지도 열기', detail: '위성 지도에서 원하는 곳을 눌러 이동', onSelect: () => { UI.closeMenu(); UI.openMap(); }, keep: true, disabled: G.xr },
+        { label: 'KTX 여행', detail: KTX.ready ? '부산 → 강릉, 부산 → 서울 등 골라서 바로 타기' : 'KTX 노선을 만드는 중', disabled: !KTX.ready, onSelect: () => UI.openMenu(() => this.tripsMenu()), keep: true },
         { label: '철도 노선 (지하철·KTX)', detail: Transit.ready ? `${Transit.lines.length}개 노선 · 역으로 바로 이동` : Transit.msg, disabled: !Transit.ready, onSelect: () => UI.openMenu(() => this.linesMenu()), keep: true },
         Ride.isKTX() ? { label: `빨리 가기: ×${Ride.active.ts}`, detail: '고르면 시간 흐름이 1배 → 10배 → 60배로 바뀝니다 (G)', onSelect: () => Ride.cycleSpeed() } : null,
         Ride.isKTX() ? { label: '다음 역 앞까지 건너뛰기', detail: '열차가 다음 역 앞에서 속도를 줄이기 시작하는 곳으로 갑니다 (N)', onSelect: () => { Ride.skipNext(); UI.closeMenu(); if (!G.touch && !G.xr) this.lockPointer(); }, keep: true } : null,

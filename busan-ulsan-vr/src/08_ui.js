@@ -134,7 +134,7 @@ const UI = {
       const term = a.dir > 0 ? l.stops[l.stops.length - 1].name : l.stops[0].name;
       const here = a.phase === 'dwell';
       const st = here ? l.stops[a.idx] : l.stops[a.next];
-      $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${term} 방면</span>`;
+      $('r-top').innerHTML = `<span class="badge" style="background:${l.color}">${l.short}</span><span>${l.name} · ${a.dest != null ? `${stationLabel(l.stops[a.dest].name)}까지` : `${term} 방면`}</span>`;
       let small = here ? (Ride.canExit() ? 'E로 내리기' : '') : '';
       if (l.ktx) {
         const left = Math.abs(l.stopD[a.next] - a.d), vmax = l.segV[Math.min(a.idx, a.next)] || 40;

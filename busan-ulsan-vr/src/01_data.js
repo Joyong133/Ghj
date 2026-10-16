@@ -213,6 +213,23 @@ const KTX_LINES = [
     ] },
 ];
 
+// 바로 타는 KTX 여행 (도착역에서 자동으로 내린다)
+const KTX_TRIPS = [
+  { id: 'busan-gangneung', line: 'KTXE', from: '부전', to: '강릉', name: '부산 → 강릉', sub: 'KTX-이음 동해선 · 부전역 출발' },
+  { id: 'gangneung-busan', line: 'KTXE', from: '강릉', to: '부전', name: '강릉 → 부산', sub: 'KTX-이음 동해선 · 부전역 도착' },
+  { id: 'busan-seoul', line: 'KTX', from: '부산', to: '서울', name: '부산 → 서울', sub: 'KTX 경부선' },
+  { id: 'seoul-busan', line: 'KTX', from: '서울', to: '부산', name: '서울 → 부산', sub: 'KTX 경부선' },
+  { id: 'busan-daegu', line: 'KTX', from: '부산', to: '동대구', name: '부산 → 대구', sub: 'KTX 경부선 · 동대구역 도착' },
+  { id: 'daegu-busan', line: 'KTX', from: '동대구', to: '부산', name: '대구 → 부산', sub: 'KTX 경부선' },
+  { id: 'busan-gyeongju', line: 'KTXE', from: '부전', to: '경주', name: '부산 → 경주', sub: 'KTX-이음 동해선' },
+  { id: 'busan-pohang', line: 'KTXE', from: '부전', to: '포항', name: '부산 → 포항', sub: 'KTX-이음 동해선' },
+];
+// 이 역에 서지 않는 KTX를 가까운 역에서 타도록 안내 (부산역 ↔ 부전역)
+const KTX_TRANSFERS = [
+  { at: '부산', line: 'KTXE', trip: 'busan-gangneung', label: '강릉 방면 (KTX-이음)', note: '동해선 KTX-이음은 부산역이 아니라 부전역에서 떠납니다. 부전역으로 옮겨 바로 탑니다' },
+  { at: '부전', line: 'KTX', trip: 'busan-seoul', label: '서울 방면 (KTX 경부선)', note: 'KTX 경부선은 부산역에서 떠납니다. 부산역으로 옮겨 바로 탑니다' },
+];
+
 // OSM 활주로가 없을 때 쓰는 대략적인 활주로 (중심, 방위각)
 const AIRPORTS = {
   PUS: { name: '김해국제공항', lat: 35.1795, lon: 128.9382, heading: 176, length: 3000 },
