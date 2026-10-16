@@ -6,7 +6,6 @@ const Terrain = {
   NZ: 15, FZ: 12, NG: 40, FG: 32,
   near: new Map(), far: new Map(), elev: new Map(),
   dayColor: new THREE.Color(1, 1, 1),
-  treeGeo: null,
 
   key(z, x, y) { return z + '/' + x + '/' + y; },
   nearRadius() { const q = R.quality; return (q === 'high' ? 1250 : q === 'medium' ? 1000 : 750); },
@@ -31,14 +30,16 @@ const Terrain = {
     return h < 0 ? -3 : h;
   },
   // 게임에서 쓰는 지면 높이 (해수면 아래는 -3)
-  heightAt(x, z) {
+  heightAt(x, z, missing = 0) {
     const lat = GEO.lat(z), lon = GEO.lon(x);
     for (const zz of [14, 12]) {
       const e = this.elev.get(this.key(zz, GEO.tileX(lon, zz), GEO.tileY(lat, zz)));
       if (e) return this.sampleTile(e, x, z);
     }
-    return 0;
+    return missing;
   },
+  // 바다인가: 고도 자료에서 바다는 0 근처(또는 -3)로 나온다. 자료가 아직 없으면 바다가 아닌 것으로
+  isWater(x, z) { return this.heightAt(x, z, 99) < 0.25; },
 
   // ---------------- 갱신
   update(px, pz, alt) {
@@ -131,11 +132,24 @@ const Terrain = {
     geo.userData.mainIndexCount = G * G * 6;
     return { geo, hs, cx, cz };
   },
-  makeMaterial() {
+  makeMaterial(detail) {
     const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
     m.color = this.dayColor; // 모든 지형이 같은 밝기(시간대)를 공유
+    if (detail) {
+      // 가까이서 흐릿한 위성 사진을 가리도록 잔무늬를 곱한다
+      m.onBeforeCompile = (sh) => {
+        sh.vertexShader = 'varying vec3 vWp;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = 'varying vec3 vWp;\nfloat dh(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }\nfloat dn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f); return mix(mix(dh(i), dh(i+vec2(1,0)), u.x), mix(dh(i+vec2(0,1)), dh(i+vec2(1,1)), u.x), u.y); }\n' +
+          sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+            float dd = distance(cameraPosition, vWp);
+            float nn = dn(vWp.xz * 1.3) * 0.55 + dn(vWp.xz * 5.1) * 0.45;
+            diffuseColor.rgb *= mix(0.86 + 0.28 * nn, 1.0, smoothstep(60.0, 260.0, dd));`);
+      };
+      m.customProgramCacheKey = () => 'terrain-detail';
+    }
     return m;
   },
+  shadowMat: null,
 
   async loadNear(x, y, k) {
     const b = GEO.tileBounds(this.NZ, x, y);
@@ -145,11 +159,15 @@ const Terrain = {
     if (t.dead) return;
     const { geo, hs, cx, cz } = this.buildGrid(b, this.NG, (wx, wz) => this.sampleTile(e, wx, wz));
     t.hs = hs; t.cx = cx; t.cz = cz;
-    const mat = this.makeMaterial();
-    mat.map = null;
-    mat.vertexColors = false;
+    const mat = this.makeMaterial(true);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(cx, 0, cz);
+    // 그림자 받는 덧판 (지형 재질이 빛을 받지 않으므로)
+    if (R.renderer.shadowMap.enabled) {
+      if (!this.shadowMat) { this.shadowMat = new THREE.ShadowMaterial({ opacity: 0.34 }); }
+      const sm = new THREE.Mesh(geo, this.shadowMat); sm.position.copy(mesh.position); sm.receiveShadow = true; sm.renderOrder = 2; sm.visible = false;
+      R.world.add(sm); t.shadow = sm;
+    }
     mesh.visible = false; // 사진이 오기 전에는 숨겨 먼 타일이 보이게
     R.world.add(mesh);
     t.mesh = mesh;
@@ -160,6 +178,7 @@ const Terrain = {
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.generateMipmaps = true;
     mat.map = tex; mat.needsUpdate = true;
     mesh.visible = true;
+    if (t.shadow) t.shadow.visible = true;
     t.ready = true;
     this.updateHoles(x >> 3, y >> 3);
     if (canvas.ok) this.plantTrees(t, canvas);
@@ -174,6 +193,7 @@ const Terrain = {
   },
   disposeTile(t) {
     t.dead = true;
+    if (t.shadow) { t.shadow.removeFromParent(); t.shadow = null; }
     for (const m of [t.mesh, t.trees]) {
       if (!m) continue;
       m.removeFromParent();
@@ -222,21 +242,6 @@ const Terrain = {
   // 위성 사진에서 짙은 초록 부분에 나무를 심는다
   plantTrees(t, canvas) {
     try {
-      if (!this.treeGeo) {
-        const parts = [];
-        const trunk = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5).toNonIndexed(); trunk.translate(0, 1.1, 0);
-        const crown = new THREE.IcosahedronGeometry(2.2, 0); crown.scale(1, 1.25, 1); crown.translate(0, 4.2, 0);
-        const paint = (g, c) => { const col = new Float32Array(g.attributes.position.count * 3); const cc = new THREE.Color(c); for (let i = 0; i < col.length; i += 3) { col[i] = cc.r; col[i + 1] = cc.g; col[i + 2] = cc.b; } g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); return g; };
-        parts.push(paint(trunk, 0x5a4232), paint(crown, 0x3d6a2c));
-        const pos = [], nor = [], col = [];
-        for (const p of parts) { pos.push(...p.attributes.position.array); col.push(...p.attributes.color.array); }
-        const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-        g.computeVertexNormals();
-        g.userData.shared = true;
-        this.treeGeo = g;
-      }
       const W = canvas.width;
       const g = canvas.getContext('2d', { willReadFrequently: true });
       const data = g.getImageData(0, 0, W, W).data;
@@ -258,11 +263,22 @@ const Terrain = {
         mats.push(dummy.matrix.clone());
       }
       if (!mats.length) return;
-      const im = new THREE.InstancedMesh(this.treeGeo, Mats.tree, mats.length);
-      mats.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, new THREE.Color().setHSL(0.25 + rnd() * 0.08, 0.35 + rnd() * 0.2, 0.55 + rnd() * 0.25)); });
-      im.position.set(t.cx, 0, t.cz);
-      R.world.add(im);
-      t.trees = im;
+      // 가로수와 같은 잎 덩어리 모양. 산의 나무는 짙은 초록, 가을이면 일부가 물든다
+      const grp = new THREE.Group();
+      const trunk = new THREE.InstancedMesh(Decor.G('trunk'), Decor.trunkMat(), mats.length);
+      const crown = new THREE.InstancedMesh(Decor.G('crown'), Decor.crownMat(), mats.length);
+      const autumn = season() === 'autumn', winter = season() === 'winter';
+      mats.forEach((m, i) => {
+        trunk.setMatrixAt(i, m); crown.setMatrixAt(i, m);
+        const r = rnd();
+        const c = autumn && r < 0.28 ? new THREE.Color().setHSL(0.03 + rnd() * 0.1, 0.65, 0.42) : winter && r < 0.5 ? new THREE.Color().setHSL(0.08, 0.2, 0.32) : new THREE.Color().setHSL(0.26 + rnd() * 0.07, 0.35 + rnd() * 0.15, 0.26 + rnd() * 0.12);
+        crown.setColorAt(i, c);
+      });
+      crown.castShadow = trunk.castShadow = R.quality === 'high';
+      grp.add(trunk, crown);
+      grp.position.set(t.cx, 0, t.cz);
+      R.world.add(grp);
+      t.trees = grp;
     } catch (e) { /* CORS 등으로 픽셀을 못 읽으면 나무 없이 */ }
   },
 };

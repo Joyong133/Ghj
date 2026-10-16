@@ -483,7 +483,7 @@ const Traffic = {
   ways: new Map(), nodeWays: new Map(), cars: [], carMesh: null, busMesh: null, MAX: 0,
   DRIVE: /^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link|living_street)$/,
 
-  addWay(tileKey, el, prof) {
+  addWay(tileKey, el, prof, width) {
     const tg = el.tags || {};
     if (!this.DRIVE.test(tg.highway || '') || tg.tunnel === 'yes' || !el.nodes) return;
     let w = this.ways.get(el.id);
@@ -495,6 +495,7 @@ const Traffic = {
       for (const n of [el.nodes[0], el.nodes[el.nodes.length - 1]]) { let a = this.nodeWays.get(n); if (!a) { a = []; this.nodeWays.set(n, a); } a.push(w); }
     }
     if (prof && prof.bridge) w.h = prof.h;
+    if (width) w.width = width;
     w.tiles.add(tileKey);
   },
   removeTile(tileKey) {

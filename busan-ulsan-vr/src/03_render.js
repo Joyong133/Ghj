@@ -26,6 +26,9 @@ const R = {
     this.world = new THREE.Group(); this.scene.add(this.world);
     this.hemi = new THREE.HemisphereLight(0xdfefff, 0x5a5a48, 1.0); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff2dd, 2.4); this.scene.add(this.sun); this.scene.add(this.sun.target);
+    const sc = this.sun.shadow.camera; sc.left = -170; sc.right = 170; sc.top = 170; sc.bottom = -170; sc.near = 50; sc.far = 2600;
+    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.6;
+    r.shadowMap.type = THREE.PCFSoftShadowMap;
     this.buildSky();
     this.buildSea();
     this.applyQuality();
@@ -37,6 +40,14 @@ const R = {
     const q = G.settings.quality === 'auto' ? this.detectQuality() : G.settings.quality;
     this.quality = q;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q === 'high' ? 1.75 : q === 'medium' ? 1.4 : 1));
+    const shadows = q !== 'low';
+    if (this.renderer.shadowMap.enabled !== shadows) {
+      this.renderer.shadowMap.enabled = shadows;
+      this.scene.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { m.needsUpdate = true; }); });
+    }
+    this.sun.castShadow = shadows;
+    const size = q === 'high' ? 2048 : 1024;
+    if (this.sun.shadow.mapSize.x !== size) { this.sun.shadow.mapSize.set(size, size); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; } }
   },
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
@@ -52,10 +63,20 @@ const R = {
       fragmentShader: `
         uniform vec3 top, horizon, sunDir, sunCol; uniform float night, time; varying vec3 vD;
         float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719))) * 43758.5453); }
+        float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+        float n2(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f); return mix(mix(h2(i), h2(i+vec2(1,0)), u.x), mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), u.x), u.y); }
+        float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n2(p); p *= 2.05; a *= 0.5; } return s; }
         void main(){
           vec3 d = normalize(vD); float h = d.y;
           vec3 col = mix(horizon, top, pow(clamp(h, 0.0, 1.0), 0.45));
           if (h < 0.0) col = horizon * 0.9;
+          // clouds
+          if (h > 0.01) {
+            vec2 uv = d.xz / (h + 0.12) * 1.6 + vec2(time * 0.004, time * 0.002);
+            float c = smoothstep(0.52, 0.82, fbm(uv));
+            vec3 cc = mix(vec3(1.0, 0.98, 0.95), horizon * 1.1, 0.35) * (1.0 - night * 0.85);
+            col = mix(col, cc, c * 0.85 * smoothstep(0.01, 0.12, h));
+          }
           float sd = max(dot(d, normalize(sunDir)), 0.0);
           col += sunCol * (pow(sd, 1200.0) * 8.0 + pow(sd, 12.0) * 0.35) * (1.0 - night * 0.8);
           if (night > 0.3 && h > 0.05) { vec3 cell = floor(d * 400.0); float s = step(0.9975, hash(cell)); col += vec3(s) * (night - 0.3) * 1.2; }
@@ -167,47 +188,91 @@ const R = {
 // 공용 재질과 텍스처
 // ---------------------------------------------------------------------------
 const Mats = {
+  signMats: [], lampMats: [],
   init() {
-    // 건물 벽: 층마다 창문 줄이 있는 텍스처. UV는 (가로 m/8, 세로 m/3.2) → 한 칸이 창 2개 × 1층
-    const c = document.createElement('canvas'); c.width = 128; c.height = 64;
-    const g = c.getContext('2d');
-    g.fillStyle = '#d8d8d4'; g.fillRect(0, 0, 128, 64);
-    for (let i = 0; i < 2; i++) { g.fillStyle = '#2a3440'; g.fillRect(8 + i * 64, 14, 48, 34); g.fillStyle = 'rgba(160,190,220,0.35)'; g.fillRect(8 + i * 64, 14, 48, 12); }
-    g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, 60, 128, 4);
-    this.windowTex = new THREE.CanvasTexture(c); this.windowTex.wrapS = this.windowTex.wrapT = THREE.RepeatWrapping; this.windowTex.colorSpace = THREE.SRGBColorSpace; this.windowTex.anisotropy = 4;
-    // 밤 창문 불빛 마스크
-    const e = document.createElement('canvas'); e.width = 128; e.height = 64;
-    const ge = e.getContext('2d'); ge.fillStyle = '#000'; ge.fillRect(0, 0, 128, 64);
-    for (let i = 0; i < 2; i++) { ge.fillStyle = '#ffd9a0'; ge.fillRect(8 + i * 64, 14, 48, 34); }
-    this.lightTex = new THREE.CanvasTexture(e); this.lightTex.wrapS = this.lightTex.wrapT = THREE.RepeatWrapping; this.lightTex.colorSpace = THREE.SRGBColorSpace;
-    this.wall = new THREE.MeshStandardMaterial({ vertexColors: true, map: this.windowTex, emissiveMap: this.lightTex, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.85, metalness: 0.05 });
-    // 밤에는 건물마다 불 켜진 창의 비율이 다르도록 (정점 색 알파 대신 UV.y 해시)
+    const A = Atlas.build();
+    this.facadeTex = A.tex; this.facadeLit = A.lit;
+    this.facadeTex.wrapS = this.facadeTex.wrapT = THREE.ClampToEdgeWrapping;
+    // 건물 벽: 정점 속성 style의 정수부로 아틀라스 칸을, 소수부(건물 씨앗)로 밤 창문 무늬를 고른다.
+    // 셰이더(GLSL) 안에는 한글 주석을 넣지 않는다(일부 드라이버가 ASCII 밖 문자를 거부).
+    // - atlas: 아틀라스 칸 안 좌표. 아래 emissivemap에서도 같은 변수를 쓴다(벽 재질은 map이 늘 있다)
+    // - 사무실은 창 4칸씩 묶어 켜고, 멀어서 창이 한 픽셀보다 작아지면 평균 밝기로 바꿔 반짝임을 막는다
+    // - 상가 1층(style 5)은 늘 켠다
+    this.wall = new THREE.MeshStandardMaterial({ vertexColors: true, map: this.facadeTex, emissiveMap: this.facadeLit, emissive: 0xffffff, roughness: 0.82, metalness: 0.05 });
     this.wall.onBeforeCompile = (sh) => {
       sh.uniforms.night = R.nightU;
-      sh.fragmentShader = 'uniform float night;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `
-        #ifdef USE_EMISSIVEMAP
-          vec4 emissiveColor = texture2D( emissiveMap, vEmissiveMapUv );
-          vec2 cell = floor(vEmissiveMapUv * vec2(2.0, 1.0));
-          float rnd = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-          float on = step(0.62, rnd) * (0.55 + 0.45 * fract(rnd * 7.31));
-          totalEmissiveRadiance = emissiveColor.rgb * on * night * 0.9;
+      sh.vertexShader = 'attribute float style;\nvarying float vStyle;\n' + sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\nvStyle = style;');
+      const atlas = `
+        float sid = floor(vStyle + 0.002), bseed = fract(vStyle + 0.002) * 250.0;
+        vec2 cellXY = vec2(mod(sid, 4.0), floor(sid / 4.0 + 0.001));
+        vec2 fr = fract(vMapUv);
+        vec2 auv = vec2((cellXY.x + 0.01 + fr.x * 0.98) / 4.0, 1.0 - (cellXY.y + 0.01 + (1.0 - fr.y) * 0.98) / 4.0);
+        vec2 gx = dFdx(vMapUv) * 0.245, gy = dFdy(vMapUv) * 0.245;`;
+      sh.fragmentShader = 'uniform float night;\nvarying float vStyle;\n' + sh.fragmentShader
+        .replace('#include <map_fragment>', `#ifdef USE_MAP
+          ${atlas}
+          vec4 sampledDiffuseColor = textureGrad( map, auv, gx, gy );
+          diffuseColor *= sampledDiffuseColor;
+        #endif`)
+        .replace('#include <emissivemap_fragment>', `#ifdef USE_EMISSIVEMAP
+          vec4 emissiveColor = textureGrad( emissiveMap, auv, gx, gy );
+          vec2 cell = floor(vMapUv);
+          bool office = (sid > 2.5 && sid < 4.5) || sid > 14.5;
+          vec2 key = (office ? vec2(floor(cell.x / 4.0), cell.y) : cell) + bseed;
+          float rnd = fract(sin(dot(key + sid * 17.0, vec2(12.9898, 78.233))) * 43758.5453);
+          float rnd2 = fract(sin(dot(cell + bseed, vec2(39.3468, 11.135))) * 24634.6345);
+          float on = step(office ? 0.6 : 0.55, rnd) * (0.55 + 0.45 * rnd2) * (office ? 0.75 : 1.0);
+          vec2 dc = fwidth(vMapUv);
+          on = mix(on, office ? 0.22 : 0.34, smoothstep(0.3, 1.1, max(dc.x, dc.y)));
+          if (sid > 4.5 && sid < 5.5) on = 0.8;
+          totalEmissiveRadiance = emissiveColor.rgb * on * night * 0.75;
         #endif`);
     };
-    this.wall.customProgramCacheKey = () => 'wall-v1';
-    this.roof = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
-    // 도로
-    const rc = document.createElement('canvas'); rc.width = 64; rc.height = 256;
-    const gr = rc.getContext('2d');
-    gr.fillStyle = '#3a3c40'; gr.fillRect(0, 0, 64, 256);
-    for (let i = 0; i < 900; i++) { gr.fillStyle = `rgba(${Math.random() < 0.5 ? 0 : 255},${Math.random() < 0.5 ? 0 : 255},255,${Math.random() * 0.05})`; gr.fillRect(Math.random() * 64, Math.random() * 256, 2, 2); }
-    gr.fillStyle = '#e8e8e0'; gr.fillRect(1, 0, 2, 256); gr.fillRect(61, 0, 2, 256);
-    gr.fillStyle = '#f0c040'; gr.fillRect(30, 0, 4, 256);
-    this.roadTex = new THREE.CanvasTexture(rc); this.roadTex.wrapS = this.roadTex.wrapT = THREE.RepeatWrapping; this.roadTex.colorSpace = THREE.SRGBColorSpace; this.roadTex.anisotropy = 8;
-    this.road = new THREE.MeshStandardMaterial({ map: this.roadTex, roughness: 0.95, });
-    this.path = new THREE.MeshStandardMaterial({ color: 0xb8ae9c, roughness: 1, });
-    this.rail = new THREE.MeshStandardMaterial({ color: 0x6a6258, roughness: 1, });
+    this.wall.customProgramCacheKey = () => 'wall-atlas-v5';
+    this.roof = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+    this.solid = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.1 });
+    // 도로: 아스팔트와 차선
+    const road = (lanes) => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+      const g = c.getContext('2d');
+      g.fillStyle = '#3c3e42'; g.fillRect(0, 0, 128, 256);
+      for (let i = 0; i < 2500; i++) { const v = Math.random() < 0.5 ? 0 : 255; g.fillStyle = `rgba(${v},${v},${v},${Math.random() * 0.06})`; g.fillRect(Math.random() * 128, Math.random() * 256, 2, 2); }
+      for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(Math.random() * 128, Math.random() * 256, 30, 6); }
+      g.fillStyle = '#e8e8e0'; g.fillRect(3, 0, 3, 256); g.fillRect(122, 0, 3, 256);
+      if (lanes) {
+        g.fillStyle = '#f0c040'; g.fillRect(60, 0, 3, 256); g.fillRect(65, 0, 3, 256);
+        g.fillStyle = '#e8e8e0'; for (const x of [32, 95]) for (let y = 0; y < 256; y += 64) g.fillRect(x, y, 3, 32);
+      }
+      const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+      return t;
+    };
+    this.road = new THREE.MeshStandardMaterial({ map: road(true), roughness: 0.95 });
+    this.road2 = new THREE.MeshStandardMaterial({ map: road(false), roughness: 0.95 });
+    // 보도블록
+    const sc = document.createElement('canvas'); sc.width = sc.height = 128;
+    const sg = sc.getContext('2d');
+    // 보도블록: 회색 바탕에 붉은 블록이 드문드문 (한 장 = 보도 폭 2.6m)
+    sg.fillStyle = '#6e6c68'; sg.fillRect(0, 0, 128, 128);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 8; x++) { const r = Math.random(), v = 150 + Math.random() * 18; sg.fillStyle = r < 0.07 ? '#94625a' : `rgb(${v},${v - 2},${v - 6})`; sg.fillRect(x * 16 + 1, y * 8 + 1, 14, 6); }
+    const st = new THREE.CanvasTexture(sc); st.wrapS = st.wrapT = THREE.RepeatWrapping; st.colorSpace = THREE.SRGBColorSpace;
+    this.sidewalk = new THREE.MeshStandardMaterial({ map: st, roughness: 0.95 });
+    this.curb = new THREE.MeshStandardMaterial({ color: 0xb8b4ac, roughness: 0.9 });
+    this.path = new THREE.MeshStandardMaterial({ color: 0xb8ae9c, roughness: 1 });
+    this.rail = new THREE.MeshStandardMaterial({ color: 0x6a6258, roughness: 1 });
     this.bridge = new THREE.MeshStandardMaterial({ color: 0x9a9ea4, roughness: 0.8 });
-    this.tree = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+    this.white = new THREE.MeshStandardMaterial({ color: 0xf0f0ea, roughness: 0.8 });
+    this.metal = new THREE.MeshStandardMaterial({ color: 0x5a6068, roughness: 0.5, metalness: 0.6 });
+    this.lamp = new THREE.MeshStandardMaterial({ color: 0xf4f0e0, emissive: 0xffd8a0, emissiveIntensity: 0 });
+    this.redLight = new THREE.MeshStandardMaterial({ color: 0x601010, emissive: 0xff2020, emissiveIntensity: 0.4 });
+    this.cross = new THREE.MeshStandardMaterial({ color: 0x802020, emissive: 0xff1a1a, emissiveIntensity: 0 });
+    this.lampMats.push(this.lamp);
+  },
+  // 밤낮에 따라 빛나는 재질 갱신
+  updateNight(n) {
+    this.lamp.emissiveIntensity = n > 0.15 ? 2.2 * n : 0;
+    this.cross.emissiveIntensity = n > 0.15 ? 2.5 * n : 0;
+    for (const m of this.signMats) m.emissiveIntensity = 0.12 + 1.1 * n;
+    for (const m of this.lampMats) if (m !== this.lamp) m.emissiveIntensity = n > 0.15 ? 1.4 * n : 0;
   },
 };
 
