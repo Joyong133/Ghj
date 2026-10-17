@@ -1,0 +1,1155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>잠금화면 리더</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="txt 파일을 잠금화면 위에서 열어 읽는 리더입니다. UTF-8과 EUC-KR을 자동으로 구분하고 읽던 위치를 기억합니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@200;300;400;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: 휴대폰 잠금화면 한 장. 위에 날짜와 큰 시계, 그 아래 '읽는 중' 위젯 하나, 맨 아래 독(파일 열기 · 밀어서 읽기 · 배경).
+   읽기 화면은 같은 배경 위로 올라오는 유리 시트. 배경이 곧 화면이라 어두운 한 가지 세계로 고정. */
+:root {
+  --ink: #0a2a33;
+  --text: #f6efe5;
+  --muted: rgba(246, 239, 229, 0.7);
+  --faint: rgba(246, 239, 229, 0.46);
+  --line: rgba(246, 239, 229, 0.18);
+  --glass: rgba(8, 24, 30, 0.36);
+  --glass-hi: rgba(246, 239, 229, 0.12);
+  --sheet: rgba(8, 20, 25, 0.78);
+  --scrim: rgba(3, 8, 10, 0.32);
+  --shade: rgba(3, 9, 11, 0.5);
+  --accent: #ffb48e;
+  --accent-deep: #a9502c;
+  --paper: #f3ece0;
+  --paper-ink: #29251f;
+  --paper-muted: #776d60;
+  --paper-line: rgba(41, 37, 31, 0.14);
+
+  --f-display: "Hahmlet", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  color-scheme: dark;
+}
+:root[data-wall="pine"] {
+  --ink: #0c1c14;
+  --accent: #e8d27c;
+  --accent-deep: #7a6618;
+  --glass: rgba(8, 24, 15, 0.36);
+  --sheet: rgba(8, 21, 14, 0.8);
+}
+:root[data-wall="ink"] {
+  --ink: #141311;
+  --accent: #ecdcbf;
+  --accent-deep: #6e5b3f;
+  --glass: rgba(22, 20, 17, 0.38);
+  --sheet: rgba(19, 17, 15, 0.82);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { height: 100%; box-sizing: border-box; }
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 15px;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+::selection { background: var(--accent); color: var(--ink); }
+.ic {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+/* ── 배경 ─────────────────────────────── */
+.wall { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: var(--ink); }
+.veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--shade), transparent 36%, transparent 56%, var(--shade));
+}
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  background-size: 140px 140px;
+}
+
+/* ── 잠금화면 ─────────────────────────── */
+.lock {
+  position: relative;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+.lock-inner {
+  height: 100%;
+  max-width: 27rem;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2.6vh, 26px);
+  padding-block: clamp(14px, 3vh, 30px) clamp(12px, 2.4vh, 22px);
+  transition: transform 0.55s var(--ease), opacity 0.4s;
+}
+.is-reading .lock-inner { transform: translateY(-3%) scale(0.94); opacity: 0.3; }
+
+.status { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.lock-ic { width: 20px; height: 20px; }
+.lock-ic .shackle { transition: transform 0.5s var(--ease); transform-origin: 16px 10.5px; }
+.is-reading .lock-ic .shackle { transform: translateY(-2px) rotate(24deg); }
+.status-label { font-size: 12px; letter-spacing: 0.06em; color: var(--muted); }
+
+.clock-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: clamp(0px, 1.5vh, 18px);
+}
+.date {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 14px var(--shade);
+}
+.clock {
+  font-family: var(--f-display);
+  font-weight: 200;
+  font-size: clamp(5.2rem, 24vw, 8.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-shadow: 0 2px 34px var(--shade);
+  padding: 0 0.08em;
+  border-radius: 24px;
+}
+
+.widget {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px 16px;
+  border-radius: 26px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  transition: transform 0.2s var(--ease);
+}
+.widget:active { transform: scale(0.985); }
+.w-hit { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.w-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); min-height: 32px; }
+.w-head .ic { width: 16px; height: 16px; color: var(--accent); }
+.w-state { font-weight: 500; letter-spacing: 0.02em; }
+.chip {
+  font-family: var(--f-num), var(--f-ui);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.w-eye {
+  position: relative;
+  z-index: 2;
+  margin-left: auto;
+  margin-right: -8px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.w-eye:hover { color: var(--text); background: var(--glass-hi); }
+.w-eye .ic { width: 18px; height: 18px; color: inherit; }
+.w-eye .slash { display: none; }
+.is-private .w-eye .slash { display: inline; }
+.w-title {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: 1.24rem;
+  line-height: 1.3;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.w-preview {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 300;
+  font-size: 0.98rem;
+  line-height: 1.62;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.is-private .w-title, .is-private .w-preview { color: var(--faint); }
+.w-foot { display: flex; align-items: center; gap: 10px; }
+.track { flex: 1; height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.track span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width 0.3s var(--ease); }
+.pct {
+  font-family: var(--f-num);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.4em;
+  text-align: right;
+}
+.w-meta { margin: 0; font-size: 12px; color: var(--faint); }
+
+.hint {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-shadow: 0 1px 10px var(--shade);
+}
+.spacer { flex: 1; min-height: 0; }
+
+.dock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.round {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  transition: transform 0.2s var(--ease), background 0.2s;
+}
+.round:hover { background: var(--glass-hi); }
+.round:active { transform: scale(0.9); }
+.round:focus-visible, .clock:focus-visible, .w-eye:focus-visible { outline-offset: 4px; }
+.swipe {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 4px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  border-radius: 14px;
+}
+.swipe-text { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.swipe-text .ic { width: 15px; height: 15px; animation: nudge 2.6s var(--ease) infinite; }
+.swipe .bar { width: 134px; max-width: 100%; height: 5px; border-radius: 5px; background: var(--text); opacity: 0.9; }
+@keyframes nudge {
+  0%, 55%, 100% { transform: translateY(0); }
+  28% { transform: translateY(-4px); }
+}
+
+/* ── 읽기 화면 ────────────────────────── */
+.reader {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  background: var(--scrim);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s, visibility 0s linear 0.55s;
+}
+.is-reading .reader { opacity: 1; visibility: visible; transition: opacity 0.35s; }
+.sheet {
+  --r-bg: var(--sheet);
+  --r-solid: var(--ink);
+  --r-fg: var(--text);
+  --r-muted: var(--muted);
+  --r-line: var(--line);
+  --r-accent: var(--accent);
+  width: 100%;
+  max-width: 48rem;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--r-bg);
+  color: var(--r-fg);
+  border: 1px solid var(--r-line);
+  border-bottom: 0;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -24px 60px var(--shade);
+  -webkit-backdrop-filter: blur(30px) saturate(130%);
+  backdrop-filter: blur(30px) saturate(130%);
+  transform: translateY(100%);
+  transition: transform 0.55s var(--ease), background-color 0.3s, color 0.3s;
+}
+.is-reading .sheet { transform: none; }
+.sheet[data-surface="paper"] {
+  --r-bg: var(--paper);
+  --r-solid: var(--paper);
+  --r-fg: var(--paper-ink);
+  --r-muted: var(--paper-muted);
+  --r-line: var(--paper-line);
+  --r-accent: var(--accent-deep);
+}
+.sheet[data-surface="paper"] ::selection { background: var(--accent-deep); color: var(--paper); }
+
+.r-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--r-line);
+}
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--r-fg);
+  transition: background 0.2s;
+}
+.icon-btn:hover { background: color-mix(in srgb, var(--r-fg) 9%, transparent); }
+.icon-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--r-fg) 14%, transparent); }
+.r-titles { min-width: 0; padding-inline: 4px; }
+.r-title {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.r-meta {
+  margin: 1px 0 0;
+  font-size: 11.5px;
+  color: var(--r-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  padding: 12px 20px 14px;
+  border-bottom: 1px solid var(--r-line);
+  font-size: 13px;
+}
+.set { display: flex; align-items: center; gap: 10px; }
+.set-label { color: var(--r-muted); min-width: 4.4em; }
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--r-line);
+}
+.seg button {
+  min-width: 46px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--r-muted);
+  transition: background 0.2s, color 0.2s;
+}
+.seg button:hover { color: var(--r-fg); }
+.seg button[aria-pressed="true"] { background: var(--r-fg); color: var(--r-solid); }
+.seg button:disabled { opacity: 0.35; cursor: default; }
+.seg output { min-width: 2.6em; text-align: center; font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.sz-s { font-size: 12px; }
+.sz-l { font-size: 18px; }
+
+.r-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 30px 22px 64px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--r-line) transparent;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.r-scroll:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--r-accent); }
+.r-text {
+  max-width: 34em;
+  margin: 0 auto;
+  font-family: var(--read-font, var(--f-display));
+  font-size: var(--read-size, 18px);
+  line-height: var(--read-lh, 1.85);
+  font-weight: 400;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.r-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--r-line);
+  font-size: 12px;
+  color: var(--r-muted);
+}
+.r-foot .track { background: var(--r-line); }
+.r-foot .track span { background: var(--r-accent); }
+.r-foot .pct { color: var(--r-fg); }
+.r-left { white-space: nowrap; }
+
+/* ── 끌어다 놓기 · 알림 ───────────────── */
+.drop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0s linear 0.2s;
+}
+.drop.on { opacity: 1; visibility: visible; transition: opacity 0.2s; }
+.drop-box {
+  width: min(26rem, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 48px 24px;
+  border: 1.5px dashed var(--text);
+  border-radius: 28px;
+  text-align: center;
+  background: var(--glass);
+}
+.drop-box .ic { width: 34px; height: 34px; color: var(--accent); }
+.drop-box strong { font-family: var(--f-display); font-weight: 600; font-size: 1.3rem; }
+.drop-box span { font-size: 13px; color: var(--muted); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  z-index: 50;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 0.25s, transform 0.25s var(--ease);
+  pointer-events: none;
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-height: 680px) {
+  .clock { font-size: clamp(4.2rem, 15vh, 6.4rem); }
+  .w-preview { -webkit-line-clamp: 2; }
+}
+@media (max-height: 580px) {
+  .hint, .status { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; }
+}
+</style>
+
+<canvas class="wall" id="wall" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+<div class="grain" id="grain" aria-hidden="true"></div>
+
+<main class="lock" id="lock">
+  <div class="lock-inner" id="lockInner">
+    <div class="status">
+      <svg class="lock-ic" viewBox="0 0 24 24" aria-hidden="true">
+        <path class="shackle" d="M8 10.5V7.5a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        <rect x="5" y="10" width="14" height="11" rx="3.2" fill="currentColor"/>
+      </svg>
+      <span class="status-label" id="statusLabel">잠김</span>
+    </div>
+
+    <div class="clock-block">
+      <p class="date" id="date">&nbsp;</p>
+      <button class="clock" id="clock" type="button" title="눌러서 12시간·24시간 전환">0:00</button>
+    </div>
+
+    <section class="widget" id="widget" aria-label="읽는 중인 글">
+      <button class="w-hit" id="widgetOpen" type="button" aria-label="이어 읽기"></button>
+      <div class="w-head">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v14H6a2 2 0 0 0-2 2.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H19v-4"/></svg>
+        <span class="w-state" id="wState">읽는 중</span>
+        <span class="chip" id="wChip">예시</span>
+        <button class="w-eye" id="eyeBtn" type="button" aria-pressed="false" aria-label="미리보기 숨기기">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/><path class="slash" d="M4 4l16 16"/></svg>
+        </button>
+      </div>
+      <h1 class="w-title" id="wTitle">서시와 진달래꽃</h1>
+      <p class="w-preview" id="wPreview">죽는 날까지 하늘을 우러러 한 점 부끄럼이 없기를,</p>
+      <div class="w-foot">
+        <div class="track"><span id="wBar"></span></div>
+        <span class="pct" id="wPct">0%</span>
+      </div>
+      <p class="w-meta" id="wMeta">&nbsp;</p>
+    </section>
+
+    <p class="hint">txt 파일은 왼쪽 아래 버튼으로 열거나 화면에 끌어다 놓으세요.<br>복사한 글을 붙여넣어도 바로 열려요.</p>
+
+    <div class="spacer"></div>
+
+    <div class="dock">
+      <button class="round" id="openBtn" type="button" aria-label="txt 파일 열기" title="txt 파일 열기">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      </button>
+      <button class="swipe" id="swipe" type="button" aria-label="읽기 화면 열기">
+        <span class="swipe-text"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>위로 밀어서 읽기</span>
+        <span class="bar" aria-hidden="true"></span>
+      </button>
+      <button class="round" id="wallBtn" type="button" aria-label="배경 바꾸기" title="배경 바꾸기">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+  </div>
+</main>
+
+<section class="reader" id="reader" role="dialog" aria-modal="true" aria-labelledby="rTitle" inert>
+  <div class="sheet" id="sheet" data-surface="glass">
+    <header class="r-top">
+      <button class="icon-btn" id="closeBtn" type="button" aria-label="잠금화면으로 돌아가기" title="잠금화면으로 (Esc)">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="r-titles">
+        <h2 class="r-title" id="rTitle">&nbsp;</h2>
+        <p class="r-meta" id="rMeta">&nbsp;</p>
+      </div>
+      <button class="icon-btn" id="openBtn2" type="button" aria-label="다른 txt 파일 열기" title="다른 txt 파일 열기">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>
+      </button>
+      <button class="icon-btn" id="setBtn" type="button" aria-label="보기 설정" title="보기 설정" aria-expanded="false" aria-controls="settings">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <div class="settings" id="settings" hidden>
+      <div class="set">
+        <span class="set-label">글자 크기</span>
+        <div class="seg">
+          <button class="sz-s" id="sizeDown" type="button" aria-label="글자 작게">가</button>
+          <output id="sizeOut" aria-live="polite">18</output>
+          <button class="sz-l" id="sizeUp" type="button" aria-label="글자 크게">가</button>
+        </div>
+      </div>
+      <div class="set">
+        <span class="set-label">글꼴</span>
+        <div class="seg" id="fontSeg" role="group" aria-label="글꼴">
+          <button type="button" data-v="serif">명조</button>
+          <button type="button" data-v="sans">고딕</button>
+        </div>
+      </div>
+      <div class="set">
+        <span class="set-label">줄 간격</span>
+        <div class="seg" id="lhSeg" role="group" aria-label="줄 간격">
+          <button type="button" data-v="normal">보통</button>
+          <button type="button" data-v="wide">넓게</button>
+        </div>
+      </div>
+      <div class="set">
+        <span class="set-label">바탕</span>
+        <div class="seg" id="surfSeg" role="group" aria-label="바탕">
+          <button type="button" data-v="glass">유리</button>
+          <button type="button" data-v="paper">종이</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="r-scroll" id="rScroll" tabindex="0" aria-label="본문">
+      <div class="r-text" id="rText"></div>
+    </div>
+
+    <footer class="r-foot">
+      <div class="track"><span id="rBar"></span></div>
+      <span class="pct" id="rPct">0%</span>
+      <span class="r-left" id="rLeft">&nbsp;</span>
+    </footer>
+  </div>
+</section>
+
+<div class="drop" id="drop" aria-hidden="true">
+  <div class="drop-box">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 14.5L12 17l2.5-2.5"/></svg>
+    <strong>여기에 놓으면 바로 열려요</strong>
+    <span>txt 파일 · UTF-8, EUC-KR 모두 읽어요</span>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileInput" accept=".txt,text/plain" hidden>
+
+<script>
+(() => {
+  'use strict';
+  document.documentElement.lang = 'ko';
+  const root = document.documentElement;
+  const $ = (id) => document.getElementById(id);
+  const E = {};
+  ['wall', 'grain', 'lock', 'lockInner', 'statusLabel', 'date', 'clock', 'widget', 'widgetOpen', 'wState', 'wChip',
+   'eyeBtn', 'wTitle', 'wPreview', 'wBar', 'wPct', 'wMeta', 'openBtn', 'swipe', 'wallBtn', 'reader', 'sheet',
+   'closeBtn', 'rTitle', 'rMeta', 'openBtn2', 'setBtn', 'settings', 'sizeDown', 'sizeUp', 'sizeOut', 'fontSeg',
+   'lhSeg', 'surfSeg', 'rScroll', 'rText', 'rBar', 'rPct', 'rLeft', 'drop', 'toast', 'fileInput']
+    .forEach((id) => { E[id] = $(id); });
+
+  /* ── 저장 (이 브라우저에만 남는 편의 기능) ── */
+  const NS = 'lockreader:';
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(NS + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+    del(k) { try { localStorage.removeItem(NS + k); } catch (e) { /* 무시 */ } },
+  };
+
+  const SAMPLE_TEXT = [
+    '서시',
+    '윤동주',
+    '',
+    '죽는 날까지 하늘을 우러러',
+    '한 점 부끄럼이 없기를,',
+    '잎새에 이는 바람에도',
+    '나는 괴로워했다.',
+    '별을 노래하는 마음으로',
+    '모든 죽어 가는 것을 사랑해야지',
+    '그리고 나한테 주어진 길을',
+    '걸어가야겠다.',
+    '',
+    '오늘 밤에도 별이 바람에 스치운다.',
+    '',
+    '',
+    '진달래꽃',
+    '김소월',
+    '',
+    '나 보기가 역겨워',
+    '가실 때에는',
+    '말없이 고이 보내 드리우리다',
+    '',
+    '영변에 약산',
+    '진달래꽃',
+    '아름 따다 가실 길에 뿌리우리다',
+    '',
+    '가시는 걸음 걸음',
+    '놓인 그 꽃을',
+    '사뿐히 즈려밟고 가시옵소서',
+    '',
+    '나 보기가 역겨워',
+    '가실 때에는',
+    '죽어도 아니 눈물 흘리우리다',
+    '',
+    '',
+    '― 이 화면 사용법 ―',
+    '',
+    '· 왼쪽 아래 문서 버튼으로 txt 파일을 열어요. 컴퓨터에서는 화면에 끌어다 놓아도 돼요.',
+    '· 글을 복사해 이 화면에 붙여넣으면 바로 읽을 수 있어요.',
+    '· UTF-8과 EUC-KR(CP949)로 저장된 한국어 파일을 알아서 구분해요.',
+    '· 읽던 위치는 이 브라우저에 저장돼서, 같은 파일을 다시 열면 이어서 읽어요.',
+    '· 오른쪽 위 보기 설정에서 글자 크기, 글꼴, 줄 간격, 바탕을 바꿀 수 있어요.',
+    '· 잠금화면 오른쪽 아래 버튼은 배경을, 시계는 12시간·24시간 표시를 바꿔요.',
+    '· 위젯의 눈 모양 버튼을 누르면 잠금화면에서 글 내용을 가려요.',
+  ].join('\n');
+
+  const WALLS = {
+    sea:  { name: '새벽 바다', base: '#0a2a33', blobs: ['#1c6170', '#e0774f', '#f1c08f', '#0e3747', '#3f8d8a'] },
+    pine: { name: '솔숲',     base: '#0c1c14', blobs: ['#2b5a3d', '#b4943a', '#6d8c55', '#163020', '#d9c278'] },
+    ink:  { name: '먹',       base: '#141311', blobs: ['#3a362f', '#8b8070', '#5a534a', '#221f1b', '#bcae96'] },
+  };
+  const WALL_ORDER = ['sea', 'pine', 'ink'];
+  const SIZES = [14, 15, 16, 17, 18, 20, 22, 24, 27, 30];
+  const CHARS_PER_MIN = 500; // 공백을 뺀 한국어 글자 기준, 보통 속도로 읽을 때
+  const MAX_BYTES = 30 * 1024 * 1024;
+  const WEEK = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  const nf = new Intl.NumberFormat('ko-KR');
+
+  const prefs = Object.assign(
+    { wall: 'sea', h24: false, hide: false, font: 'serif', size: 18, lh: 'normal', surface: 'glass' },
+    store.get('prefs', {})
+  );
+  if (!WALLS[prefs.wall]) prefs.wall = 'sea';
+  if (!SIZES.includes(prefs.size)) prefs.size = 18;
+  const savePrefs = () => store.set('prefs', prefs);
+
+  let positions = store.get('pos', {});
+  if (!positions || typeof positions !== 'object') positions = {};
+
+  /* ── 문서 ─────────────────────────────── */
+  function makeDoc(d) {
+    const text = String(d.text).replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+    const name = d.name || '제목 없음.txt';
+    return {
+      name,
+      text,
+      enc: d.enc || 'UTF-8',
+      size: d.size || new Blob([text]).size,
+      sample: !!d.sample,
+      key: d.sample ? 'sample' : name + '|' + text.length,
+      chars: text.replace(/\s/g, '').length,
+    };
+  }
+
+  function decode(buffer) {
+    const b = new Uint8Array(buffer);
+    if (b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return { text: new TextDecoder('utf-8').decode(b.subarray(3)), enc: 'UTF-8' };
+    if (b[0] === 0xFF && b[1] === 0xFE) return { text: new TextDecoder('utf-16le').decode(b.subarray(2)), enc: 'UTF-16' };
+    if (b[0] === 0xFE && b[1] === 0xFF) return { text: new TextDecoder('utf-16be').decode(b.subarray(2)), enc: 'UTF-16' };
+    try { return { text: new TextDecoder('utf-8', { fatal: true }).decode(b), enc: 'UTF-8' }; } catch (e) { /* UTF-8이 아님 */ }
+    try { return { text: new TextDecoder('euc-kr').decode(b), enc: 'EUC-KR' }; } catch (e) { /* 지원 안 함 */ }
+    return { text: new TextDecoder('utf-8').decode(b), enc: 'UTF-8' };
+  }
+
+  const saved = store.get('doc', null);
+  let doc = saved && typeof saved.text === 'string' && saved.text.length
+    ? makeDoc(saved)
+    : makeDoc({ name: '서시와 진달래꽃.txt', text: SAMPLE_TEXT, sample: true });
+  let ratio = 0;
+  let readerOpen = false;
+
+  const clamp01 = (v) => Math.min(1, Math.max(0, Number(v) || 0));
+  const baseName = (n) => n.replace(/\.txt$/i, '');
+  const getPos = (key) => (Array.isArray(positions[key]) ? clamp01(positions[key][0]) : 0);
+  let posTimer = 0;
+  function setPos(key, r) {
+    positions[key] = [Math.round(r * 10000) / 10000, Date.now()];
+    const keys = Object.keys(positions);
+    if (keys.length > 40) {
+      keys.sort((a, b) => positions[a][1] - positions[b][1]).slice(0, keys.length - 40).forEach((k) => delete positions[k]);
+    }
+    clearTimeout(posTimer);
+    posTimer = setTimeout(() => store.set('pos', positions), 300);
+  }
+
+  function fmtSize(n) {
+    if (n < 1024) return n + 'B';
+    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + 'KB';
+    return (n / 1048576).toFixed(1) + 'MB';
+  }
+  function leftText(r) {
+    const left = Math.round(doc.chars * (1 - r));
+    if (r >= 0.995 || left <= 0) return '다 읽었어요';
+    const min = Math.ceil(left / CHARS_PER_MIN);
+    if (min <= 1) return '1분 안에 끝나요';
+    if (min < 60) return '약 ' + min + '분 남음';
+    const h = Math.floor(min / 60), m = min % 60;
+    return '약 ' + h + '시간' + (m ? ' ' + m + '분' : '') + ' 남음';
+  }
+  function previewAt(r) {
+    const t = doc.text;
+    const i = Math.min(t.length - 1, Math.floor(r * t.length));
+    let s = t.lastIndexOf('\n', i);
+    s = s < 0 ? 0 : s + 1;
+    const out = t.slice(s, s + 240).replace(/\s+/g, ' ').trim();
+    return out || t.slice(0, 240).replace(/\s+/g, ' ').trim();
+  }
+
+  function saveDoc() {
+    if (doc.sample) { store.del('doc'); return true; }
+    if (store.set('doc', doc)) return true;
+    store.del('doc');
+    return false;
+  }
+
+  function setDoc(d) {
+    doc = d;
+    E.rText.textContent = doc.text;
+    E.rTitle.textContent = baseName(doc.name);
+    E.rMeta.textContent = (doc.sample ? '예시 글 · ' : '') + doc.enc + ' · ' + nf.format(doc.text.length) + '자 · ' + fmtSize(doc.size);
+    ratio = getPos(doc.key);
+    if (readerOpen) requestAnimationFrame(() => setScrollRatio(ratio));
+    updateWidget();
+    updateFoot();
+  }
+
+  /* ── 잠금화면 위젯 ────────────────────── */
+  function updateWidget() {
+    const priv = prefs.hide;
+    const pct = Math.round(ratio * 100);
+    E.widget.classList.toggle('is-private', priv);
+    E.wState.textContent = ratio >= 0.995 ? '다 읽음' : ratio > 0.002 ? '읽는 중' : '읽기 전';
+    E.wChip.textContent = doc.sample ? '예시' : doc.enc;
+    E.wTitle.textContent = priv ? 'txt 문서' : baseName(doc.name);
+    E.wPreview.textContent = priv ? '미리보기를 숨겼어요. 눌러서 이어 읽으세요.' : previewAt(ratio);
+    E.wBar.style.width = pct + '%';
+    E.wPct.textContent = pct + '%';
+    E.wMeta.textContent = nf.format(doc.text.length) + '자 · ' + leftText(ratio);
+    E.eyeBtn.setAttribute('aria-pressed', String(priv));
+    E.eyeBtn.setAttribute('aria-label', priv ? '미리보기 보이기' : '미리보기 숨기기');
+    E.eyeBtn.title = priv ? '미리보기 보이기' : '미리보기 숨기기';
+    E.widgetOpen.setAttribute('aria-label', (priv ? '' : baseName(doc.name) + ', ') + pct + '% 읽음. 이어 읽기');
+  }
+
+  /* ── 시계 ─────────────────────────────── */
+  function tick() {
+    const d = new Date();
+    const h = d.getHours();
+    const hh = prefs.h24 ? String(h).padStart(2, '0') : String(h % 12 || 12);
+    E.clock.textContent = hh + ':' + String(d.getMinutes()).padStart(2, '0');
+    E.clock.setAttribute('aria-label', (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시 ' + d.getMinutes() + '분. 눌러서 ' + (prefs.h24 ? '12시간' : '24시간') + ' 표시로 바꾸기');
+    E.date.textContent = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + WEEK[d.getDay()];
+    setTimeout(tick, 1000 - d.getMilliseconds() + 8);
+  }
+  E.clock.addEventListener('click', () => {
+    prefs.h24 = !prefs.h24;
+    savePrefs();
+    const d = new Date(), h = d.getHours();
+    E.clock.textContent = (prefs.h24 ? String(h).padStart(2, '0') : String(h % 12 || 12)) + ':' + String(d.getMinutes()).padStart(2, '0');
+    toast(prefs.h24 ? '24시간으로 표시해요' : '12시간으로 표시해요');
+  });
+
+  /* ── 배경 (작은 캔버스를 크게 늘려 부드럽게) ── */
+  const ctx = E.wall.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const BLOBS = [
+    { sx: 0.21, sy: 0.17, px: 0.0, py: 1.1, r: 0.62, a: 0.85 },
+    { sx: 0.13, sy: 0.23, px: 2.2, py: 0.4, r: 0.52, a: 0.72 },
+    { sx: 0.17, sy: 0.11, px: 4.1, py: 2.6, r: 0.46, a: 0.55 },
+    { sx: 0.09, sy: 0.15, px: 1.3, py: 3.7, r: 0.72, a: 0.8 },
+    { sx: 0.25, sy: 0.19, px: 5.0, py: 5.2, r: 0.4, a: 0.5 },
+  ];
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  let cur = null, tgt = null, raf = 0, lastFrame = 0, wallT = 7;
+  const t0 = performance.now();
+
+  function setWallColors(id, instant) {
+    const w = WALLS[id];
+    tgt = [w.base].concat(w.blobs).map(hexRgb);
+    if (!cur || instant) cur = tgt.map((c) => c.slice());
+  }
+  function sizeWall() {
+    E.wall.width = Math.max(40, Math.ceil(innerWidth / 9));
+    E.wall.height = Math.max(40, Math.ceil(innerHeight / 9));
+  }
+  function drawWall(t) {
+    const W = E.wall.width, H = E.wall.height, M = Math.max(W, H);
+    const rgb = (c) => c.map(Math.round).join(',');
+    ctx.fillStyle = 'rgb(' + rgb(cur[0]) + ')';
+    ctx.fillRect(0, 0, W, H);
+    BLOBS.forEach((b, i) => {
+      const c = rgb(cur[i + 1]);
+      const x = W * (0.5 + 0.42 * Math.sin(t * b.sx + b.px));
+      const y = H * (0.5 + 0.42 * Math.cos(t * b.sy + b.py));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, M * b.r);
+      g.addColorStop(0, 'rgba(' + c + ',' + b.a + ')');
+      g.addColorStop(1, 'rgba(' + c + ',0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    });
+  }
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    if (now - lastFrame < 50) return;
+    lastFrame = now;
+    let moving = false;
+    cur.forEach((c, i) => c.forEach((v, j) => {
+      const d = tgt[i][j] - v;
+      if (Math.abs(d) > 0.5) { c[j] = v + d * 0.08; moving = true; } else c[j] = tgt[i][j];
+    }));
+    if (!reduceMotion.matches) wallT = 7 + ((now - t0) / 1000) * 0.22;
+    drawWall(wallT);
+    if ((reduceMotion.matches || readerOpen) && !moving) stopWall();
+  }
+  function startWall() { if (!raf && !document.hidden) raf = requestAnimationFrame(frame); }
+  function stopWall() { cancelAnimationFrame(raf); raf = 0; }
+
+  (function makeGrain() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 140;
+    const g = c.getContext('2d');
+    const img = g.createImageData(140, 140);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = (Math.random() * 255) | 0;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    E.grain.style.backgroundImage = 'url(' + c.toDataURL() + ')';
+  })();
+
+  E.wallBtn.addEventListener('click', () => {
+    const next = WALL_ORDER[(WALL_ORDER.indexOf(prefs.wall) + 1) % WALL_ORDER.length];
+    prefs.wall = next;
+    savePrefs();
+    root.dataset.wall = next;
+    setWallColors(next, reduceMotion.matches);
+    startWall();
+    toast('배경: ' + WALLS[next].name);
+  });
+
+  /* ── 읽기 화면 ────────────────────────── */
+  function scrollRatio() {
+    const s = E.rScroll, max = s.scrollHeight - s.clientHeight;
+    return max <= 1 ? 1 : clamp01(s.scrollTop / max);
+  }
+  function setScrollRatio(r) {
+    const s = E.rScroll;
+    s.scrollTop = r * Math.max(0, s.scrollHeight - s.clientHeight);
+  }
+  function updateFoot() {
+    const pct = Math.round(ratio * 100);
+    E.rBar.style.width = pct + '%';
+    E.rPct.textContent = pct + '%';
+    E.rLeft.textContent = leftText(ratio);
+  }
+  let scrollQueued = false;
+  E.rScroll.addEventListener('scroll', () => {
+    if (!readerOpen || scrollQueued) return;
+    scrollQueued = true;
+    requestAnimationFrame(() => {
+      scrollQueued = false;
+      ratio = scrollRatio();
+      updateFoot();
+      setPos(doc.key, ratio);
+    });
+  }, { passive: true });
+
+  function openReader() {
+    if (readerOpen) return;
+    readerOpen = true;
+    root.classList.add('is-reading');
+    E.statusLabel.textContent = '열림';
+    E.reader.inert = false;
+    E.lock.inert = true;
+    stopWall();
+    setScrollRatio(ratio);
+    ratio = scrollRatio();
+    updateFoot();
+    E.rScroll.focus({ preventScroll: true });
+  }
+  function closeReader() {
+    if (!readerOpen) return;
+    ratio = scrollRatio();
+    setPos(doc.key, ratio);
+    readerOpen = false;
+    root.classList.remove('is-reading');
+    E.statusLabel.textContent = '잠김';
+    E.reader.inert = true;
+    E.lock.inert = false;
+    toggleSettings(false);
+    updateWidget();
+    startWall();
+    E.widgetOpen.focus({ preventScroll: true });
+  }
+
+  function toggleSettings(force) {
+    const open = typeof force === 'boolean' ? force : E.settings.hidden;
+    E.settings.hidden = !open;
+    E.setBtn.setAttribute('aria-expanded', String(open));
+  }
+  function applyPrefs() {
+    root.dataset.wall = prefs.wall;
+    const s = E.rText.style;
+    s.setProperty('--read-size', prefs.size + 'px');
+    s.setProperty('--read-font', prefs.font === 'sans' ? 'var(--f-ui)' : 'var(--f-display)');
+    s.setProperty('--read-lh', prefs.lh === 'wide' ? '2.1' : '1.85');
+    E.sheet.dataset.surface = prefs.surface;
+    E.sizeOut.value = prefs.size;
+    E.sizeDown.disabled = prefs.size === SIZES[0];
+    E.sizeUp.disabled = prefs.size === SIZES[SIZES.length - 1];
+    [[E.fontSeg, prefs.font], [E.lhSeg, prefs.lh], [E.surfSeg, prefs.surface]].forEach(([seg, v]) => {
+      seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+    });
+  }
+  function changePref(fn) {
+    const keep = readerOpen ? scrollRatio() : ratio;
+    fn();
+    savePrefs();
+    applyPrefs();
+    if (readerOpen) setScrollRatio(keep);
+  }
+  E.sizeDown.addEventListener('click', () => changePref(() => { prefs.size = SIZES[Math.max(0, SIZES.indexOf(prefs.size) - 1)]; }));
+  E.sizeUp.addEventListener('click', () => changePref(() => { prefs.size = SIZES[Math.min(SIZES.length - 1, SIZES.indexOf(prefs.size) + 1)]; }));
+  [[E.fontSeg, 'font'], [E.lhSeg, 'lh'], [E.surfSeg, 'surface']].forEach(([seg, key]) => {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (b) changePref(() => { prefs[key] = b.dataset.v; });
+    });
+  });
+  E.setBtn.addEventListener('click', () => toggleSettings());
+  E.closeBtn.addEventListener('click', closeReader);
+  E.widgetOpen.addEventListener('click', openReader);
+  E.swipe.addEventListener('click', openReader);
+  E.eyeBtn.addEventListener('click', () => {
+    prefs.hide = !prefs.hide;
+    savePrefs();
+    updateWidget();
+    toast(prefs.hide ? '잠금화면에서 글 내용을 가렸어요' : '잠금화면에 미리보기를 보여 줘요');
+  });
+
+  /* 위로 밀어서 열기 */
+  let drag = null;
+  E.lock.addEventListener('pointerdown', (e) => {
+    if (readerOpen || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const b = e.target.closest('button');
+    if (b && b !== E.swipe) return;
+    drag = { id: e.pointerId, y: e.clientY, dy: 0, onHandle: b === E.swipe };
+    try { E.lock.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
+    E.lockInner.style.transition = 'none';
+  });
+  E.lock.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.dy = Math.min(0, e.clientY - drag.y);
+    E.lockInner.style.transform = 'translateY(' + drag.dy * 0.45 + 'px)';
+    E.lockInner.style.opacity = String(Math.max(0.35, 1 + drag.dy / 480));
+  });
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { dy, onHandle } = drag;
+    drag = null;
+    E.lockInner.style.transition = '';
+    E.lockInner.style.transform = '';
+    E.lockInner.style.opacity = '';
+    if (e.type === 'pointerup' && (dy < -60 || (onHandle && dy > -6))) openReader();
+  }
+  E.lock.addEventListener('pointerup', endDrag);
+  E.lock.addEventListener('pointercancel', endDrag);
+
+  /* ── 파일 열기 · 끌어다 놓기 · 붙여넣기 ── */
+  const isTxt = (f) => /\.txt$/i.test(f.name) || (f.type || '').startsWith('text/');
+  async function openFile(file) {
+    if (!file) return;
+    if (!isTxt(file)) { toast('txt 파일만 열 수 있어요. 다른 문서는 txt로 저장한 뒤 열어 주세요.'); return; }
+    if (file.size > MAX_BYTES) { toast('30MB보다 큰 파일은 열 수 없어요.'); return; }
+    let decoded;
+    try { decoded = decode(await file.arrayBuffer()); } catch (e) { toast('파일을 읽지 못했어요. 다시 선택해 주세요.'); return; }
+    if (!decoded.text.trim()) { toast('빈 파일이에요.'); return; }
+    loadText({ name: file.name, text: decoded.text, enc: decoded.enc, size: file.size }, baseName(file.name) + ' 열었어요 · ' + decoded.enc);
+  }
+  function loadText(d, message) {
+    setDoc(makeDoc(d));
+    const kept = saveDoc();
+    toast(kept ? message : message + '. 파일이 커서 다음에는 다시 열어야 해요. 읽던 위치는 기억해요.');
+    openReader();
+  }
+  E.openBtn.addEventListener('click', () => E.fileInput.click());
+  E.openBtn2.addEventListener('click', () => E.fileInput.click());
+  E.fileInput.addEventListener('change', () => {
+    const f = E.fileInput.files && E.fileInput.files[0];
+    E.fileInput.value = '';
+    openFile(f);
+  });
+
+  let dragDepth = 0;
+  const hasFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; E.drop.classList.add('on'); });
+  addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) E.drop.classList.remove('on'); });
+  addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    E.drop.classList.remove('on');
+    openFile(e.dataTransfer.files[0]);
+  });
+  addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const f = Array.from(cd.files || []).find(isTxt);
+    if (f) { e.preventDefault(); openFile(f); return; }
+    const t = cd.getData('text/plain');
+    if (t && t.trim()) {
+      e.preventDefault();
+      const d = new Date();
+      const stamp = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + d.getHours() + '시 ' + String(d.getMinutes()).padStart(2, '0') + '분';
+      loadText({ name: '붙여넣은 글 (' + stamp + ').txt', text: t, enc: '붙여넣기', size: new Blob([t]).size }, '붙여넣은 글을 열었어요');
+    }
+  });
+
+  /* ── 알림 ─────────────────────────────── */
+  let toastTimer = 0;
+  function toast(msg) {
+    E.toast.textContent = msg;
+    E.toast.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => E.toast.classList.remove('on'), 2600);
+  }
+
+  /* ── 키보드 · 창 ──────────────────────── */
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (readerOpen && !E.settings.hidden) toggleSettings(false);
+      else closeReader();
+    } else if (e.key === 'ArrowUp' && !readerOpen && !e.target.closest('button')) {
+      e.preventDefault();
+      openReader();
+    }
+  });
+  addEventListener('resize', () => {
+    sizeWall();
+    drawWall(wallT);
+    if (readerOpen) requestAnimationFrame(() => setScrollRatio(ratio));
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopWall();
+    else if (!readerOpen) startWall();
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { if (readerOpen) setScrollRatio(ratio); });
+  }
+
+  /* ── 시작 ─────────────────────────────── */
+  applyPrefs();
+  setWallColors(prefs.wall, true);
+  sizeWall();
+  drawWall(wallT);
+  setDoc(doc);
+  tick();
+  if (!reduceMotion.matches) startWall();
+})();
+</script>
+</html>
