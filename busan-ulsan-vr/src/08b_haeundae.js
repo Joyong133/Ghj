@@ -103,6 +103,7 @@ const AptHost = {
 
   // ---------------- 들어가고 나오기 (검은 화면으로 바꾸는 동안 처리)
   fade(on, then) {
+    if (G.xr) VRFade.set(on, 2.6); // VR에서는 화면 요소가 안 보이므로 눈앞을 가린다
     if (!this.fadeEl) { const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:60;transition:opacity .45s'; document.body.appendChild(d); this.fadeEl = d; }
     this.fadeEl.style.opacity = on ? '1' : '0';
     if (then) setTimeout(then, 480);

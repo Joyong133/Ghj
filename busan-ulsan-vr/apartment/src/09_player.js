@@ -12,6 +12,13 @@ const Physics = {
     return !roomAt(x, z);
   },
   // 미끄러지며 움직이기
+  // 벽·닫힌 문·집 밖만 (가구 제외)
+  wall(x, z, r = 0.1) {
+    const hit = (b) => x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1;
+    for (const b of Build.colliders) if (hit(b)) return true;
+    for (const b of Build.doorBlockers()) if (hit(b)) return true;
+    return !roomAt(x, z);
+  },
   move(p, dx, dz, r) {
     if (!this.blocked(p.x + dx, p.z + dz, r)) { p.x += dx; p.z += dz; return; }
     if (!this.blocked(p.x + dx, p.z, r)) p.x += dx;
@@ -115,7 +122,7 @@ const Player = {
       Object.assign(c.userData, { aptLine: line, idx: i });
       c.addEventListener('connected', (e) => { c.userData.hand = e.data.handedness; c.userData.gamepad = e.data.gamepad; });
       c.addEventListener('disconnected', () => { c.userData.gamepad = null; });
-      c.addEventListener('selectstart', () => { if (APTSTATE.active) this.xrSelect(c); });
+      c.addEventListener('selectstart', () => { if (APTSTATE.active && G.xr) this.xrSelect(c); });
       X.ctrls.push(c);
     }
     // 순간이동 표시: 포물선과 바닥 고리
@@ -133,19 +140,30 @@ const Player = {
   syncXR() { R.rig.position.set(this.pos.x, this.pos.y, this.pos.z); R.rig.rotation.set(0, this.yaw, 0); },
   xrSelect(c) {
     Sound.init();
+    { const g = this.gp(c.userData.hand || 'right'), h = g && g.hapticActuators && g.hapticActuators[0]; try { if (h && h.pulse && (c.userData.hoverIt || this.xr.menu)) h.pulse(0.35, 30); } catch (e) { /* 진동 없음 */ } }
     if (this.xr.menu && UI.vrMenuSelect(c)) return;
     const it = c.userData.hoverIt;
     if (it) it.act();
+  },
+  // 손으로 입력 장치 찾기: 세션의 입력 장치에서 바로 읽는다 (연결 이벤트를 놓쳐도 동작하게)
+  gp(hand) {
+    const s = R.renderer.xr.getSession && R.renderer.xr.getSession();
+    if (s) for (const src of s.inputSources) if (src.handedness === hand && src.gamepad) return src.gamepad;
+    const c = this.xrHand(hand); return c && c.userData.gamepad;
   },
   updateXR(dt) {
     const X = this.xr;
     this.yaw = R.rig.rotation.y;
     // 머리 위치 (방 안에서 실제로 걸어 다닌 만큼 포함)
     const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position); // 집 좌표
+    // 실제로 걸어서 머리가 벽 속으로 들어가면 받침을 밀어 벽 앞에 머문다 (가구 위로 몸을 숙이는 것은 그대로)
+    if (X.lastHead && Physics.wall(head.x, head.z, 0.1) && !Physics.wall(X.lastHead.x, X.lastHead.z, 0.1)) {
+      R.rig.position.x += X.lastHead.x - head.x; R.rig.position.z += X.lastHead.z - head.z; head.x = X.lastHead.x; head.z = X.lastHead.z;
+    }
+    // 광선: 두 손 모두 (어느 손인지 몰라도 된다)
     let hoverAny = null;
     for (const c of X.ctrls) {
-      const gp = c.userData.gamepad, hand = c.userData.hand; if (!hand) continue;
-      // 광선 조준
+      if (!c.visible) { c.userData.hoverIt = null; continue; }
       const o = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), d = new THREE.Vector3(0, 0, -1).transformDirection(c.matrixWorld);
       let len = 3;
       const mh = X.menu && UI.vrPanel && UI.vrPanel.visible && UI.vrPanel.parent !== c ? new THREE.Raycaster(o, d, 0, 2).intersectObject(UI.vrPanel)[0] : null;
@@ -153,34 +171,39 @@ const Player = {
       else {
         const h = this.pick(o, d);
         c.userData.hoverIt = h ? h.object.userData.it : null;
-        if (h) { len = h.distance; if (hand === 'right' || !hoverAny) hoverAny = { it: h.object.userData.it, p: h.point }; }
+        if (h) { len = h.distance; if (c.userData.hand === 'right' || !hoverAny) hoverAny = { it: h.object.userData.it, p: h.point }; }
       }
       c.userData.aptLine.scale.z = len;
-      if (!gp) continue;
-      const ax = gp.axes[2] || 0, ay = gp.axes[3] || 0;
-      const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
-      const edge = (i) => { const k = hand + i, now = b(i), was = X.btn[k]; X.btn[k] = now; return now && !was; };
-      if (hand === 'left') {
-        // 왼쪽 스틱: 머리가 보는 쪽 기준으로 걷기
-        if (Math.hypot(ax, ay) > 0.15) {
-          const f = new THREE.Vector3(); R.camera.getWorldDirection(f); f.y = 0; f.normalize();
-          const rgt = new THREE.Vector3(-f.z, 0, f.x), sp = 1.5 * dt;
-          const mv = new THREE.Vector3().addScaledVector(f, -ay * sp).addScaledVector(rgt, ax * sp);
-          const hp = { x: head.x, z: head.z }; Physics.move(hp, mv.x, mv.z, 0.2);
-          R.rig.position.x += hp.x - head.x; R.rig.position.z += hp.z - head.z;
-        }
-        const y = edge(5), x = edge(4);
-        if (y || x) UI.toggleVRMenu();
-      } else {
-        // 오른쪽 스틱: 좌우 30° 회전, 앞으로 밀면 순간이동 조준
-        if (Math.abs(ax) > 0.7 && !X.turnLatch) { X.turnLatch = true; this.snapTurn(ax > 0 ? -Math.PI / 6 : Math.PI / 6); }
-        if (Math.abs(ax) < 0.3) X.turnLatch = false;
-        if (ay < -0.6) { X.aiming = true; this.aimTeleport(R.local(o), d); }
-        else if (X.aiming) { X.aiming = false; X.arc.visible = X.ringMesh.visible = false; if (X.tpTarget) this.xrTeleport(X.tpTarget); }
-        if (edge(4)) UI.toggleVRMenu();
-        if (edge(5)) UI.vrQuick();
-      }
     }
+    const L = this.gp('left'), Rg = this.gp('right');
+    const ax = (g) => (g ? [g.axes.length >= 4 ? g.axes[2] : g.axes[0] || 0, g.axes.length >= 4 ? g.axes[3] : g.axes[1] || 0] : [0, 0]);
+    const edge = (g, hand, i) => { const k = hand + i, now = !!(g && g.buttons[i] && g.buttons[i].pressed), was = X.btn[k]; X.btn[k] = now; return now && !was; };
+    // 왼쪽 스틱: 머리가 보는 쪽 기준으로 걷기 (데드존 뒤로 부드럽게 시작)
+    const [lx, ly] = ax(L), lm = Math.hypot(lx, ly);
+    const want = new THREE.Vector3();
+    if (lm > 0.15) {
+      const k = Math.min(1, (lm - 0.15) / 0.85) / lm;
+      const f = new THREE.Vector3(); R.camera.getWorldDirection(f); f.y = 0; f.normalize();
+      const rgt = new THREE.Vector3(-f.z, 0, f.x);
+      want.addScaledVector(f, -ly * k * 1.6).addScaledVector(rgt, lx * k * 1.6);
+    }
+    X.vel = (X.vel || new THREE.Vector3()).lerp(want, 1 - Math.exp(-dt * 12));
+    if (X.vel.lengthSq() > 1e-6) {
+      const hp = { x: head.x, z: head.z }; Physics.move(hp, X.vel.x * dt, X.vel.z * dt, 0.2);
+      R.rig.position.x += hp.x - head.x; R.rig.position.z += hp.z - head.z; head.x = hp.x; head.z = hp.z;
+    }
+    const lY = edge(L, 'left', 5), lX = edge(L, 'left', 4);
+    if (lY || lX) UI.toggleVRMenu();
+    // 오른쪽 스틱: 좌우 30° 회전, 앞으로 밀면 순간이동 조준, 놓으면 이동
+    const [rx, ry] = ax(Rg);
+    if (Math.abs(rx) > 0.7 && !X.turnLatch && !X.aiming) { X.turnLatch = true; this.snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6, head); }
+    if (Math.abs(rx) < 0.3) X.turnLatch = false;
+    const rc = this.xrHand('right') || X.ctrls.find((c) => c.visible);
+    if (ry < -0.6 && Math.abs(rx) < 0.6 && rc) { X.aiming = true; const o = new THREE.Vector3().setFromMatrixPosition(rc.matrixWorld), d = new THREE.Vector3(0, 0, -1).transformDirection(rc.matrixWorld); this.aimTeleport(R.local(o), d); }
+    else if (X.aiming && ry > -0.3) { X.aiming = false; X.arc.visible = X.ringMesh.visible = false; if (X.tpTarget) { this.xrTeleport(X.tpTarget, head); head.x = X.tpTarget.x; head.z = X.tpTarget.z; } }
+    const rA = edge(Rg, 'right', 4), rB = edge(Rg, 'right', 5);
+    if (rA) UI.toggleVRMenu();
+    if (rB) UI.vrQuick();
     // 광선이 닿은 조작 대상 이름
     if (hoverAny && !X.menu) {
       const txt = hoverAny.it.hint();
@@ -190,10 +213,12 @@ const Player = {
     // 바닥 높이 (현관 단차)
     R.rig.position.y = lerp(R.rig.position.y, Build.floorY(head.x, head.z), 1 - Math.exp(-dt * 10));
     this.pos.set(head.x, R.rig.position.y, head.z);
+    X.lastHead = { x: head.x, z: head.z };
+    XRBlink.update(dt);
   },
-  snapTurn(a) {
+  snapTurn(a, h) {
     // 머리 위치를 축으로 돈다
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
+    const head = h ? h.clone() : (() => { const v = new THREE.Vector3(); R.camera.getWorldPosition(v); return v.sub(R.root.position); })();
     const off = new THREE.Vector3().subVectors(R.rig.position, head).applyAxisAngle(new THREE.Vector3(0, 1, 0), a);
     R.rig.position.copy(head).add(off); R.rig.position.y = this.pos.y;
     R.rig.rotation.y += a;
@@ -214,11 +239,21 @@ const Player = {
     X.ringMesh.visible = !!ok; if (ok) X.ringMesh.position.set(hit.x, hit.y + 0.01, hit.z);
     X.arc.material.color.setHex(ok ? 0xd8b27c : 0xff6a5a);
   },
-  xrTeleport(t) {
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
+  xrTeleport(t, h) {
+    const head = h ? h.clone() : (() => { const v = new THREE.Vector3(); R.camera.getWorldPosition(v); return v.sub(R.root.position); })();
     R.rig.position.x += t.x - head.x; R.rig.position.z += t.z - head.z;
-    UI.flash('#000', 0.18);
+    UI.flash('#000', 0.18); XRBlink.blink();
   },
+};
+
+// VR 순간이동 때 잠깐 눈앞을 어둡게 (머리에 붙은 검은 구)
+const XRBlink = {
+  mesh: null, k: 0,
+  blink() {
+    if (!this.mesh) { this.mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 8), new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false })); this.mesh.renderOrder = 998; this.mesh.frustumCulled = false; R.camera.add(this.mesh); }
+    this.k = 1;
+  },
+  update(dt) { if (!this.mesh) return; this.k = Math.max(0, this.k - dt * 5); this.mesh.material.opacity = this.k; this.mesh.visible = this.k > 0.001; },
 };
 
 // ---------------------------------------------------------------------------

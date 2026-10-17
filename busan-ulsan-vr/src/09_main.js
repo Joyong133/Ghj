@@ -278,11 +278,14 @@ const Game = {
   // ---------------------------------------------------------------- VR
   setupXR() {
     if (!navigator.xr || !navigator.xr.isSessionSupported) return;
+    Player.initXR(); // 세션 전에 컨트롤러를 만들어 연결 이벤트를 놓치지 않게
+    R.renderer.xr.setFoveation(1); // 가장자리 해상도를 낮춰 VR 프레임을 지킨다
     navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; this.vrOk = true; } }).catch(() => {});
     const xr = R.renderer.xr;
     xr.addEventListener('sessionstart', () => {
-      if (G.state === 'apt') { G.xr = true; Player.initXR(); Apt.xrStart(); return; } // 해운대 아파트 안
-      G.xr = true; Player.initXR(); UI.show(false);
+      Player.btnPrev = {};
+      if (G.state === 'apt') { G.xr = true; Apt.xrStart(); return; } // 해운대 아파트 안
+      G.xr = true; UI.show(false);
       R.camera.position.set(0, 0, 0); R.camera.rotation.set(0, 0, 0);
       R.rig.rotation.set(0, Player.yaw, 0);
       Player.syncRigXR(true);
@@ -325,12 +328,13 @@ const Game = {
       Player.groundY = 0;
     } else if (G.state === 'apt') {
       AptHost.update(dt); // 해운대 아파트 안: 집 코드가 카메라와 화면을 맡는다
+      if (G.xr) UI.updateVRBanner(dt);
     } else {
       if (G.xr && G.state === 'play') Player.beginXRFrame();
       if (G.state === 'play') Player.update(dt);
       if (G.state === 'play' || G.state === 'menu') Ride.update(G.state === 'play' ? dt : 0);
       Player.updateCamera();
-      if (G.xr) { UI.updateVRMenu(); Player.updateWrist(dt); }
+      if (G.xr) { if (G.state === 'menu') Player.menuInputXR(); UI.updateVRMenu(); Player.updateWrist(dt); }
       this.tPlaces -= dt; if (this.tPlaces <= 0) { this.tPlaces = 0.25; Places.update(); this.unstick(); }
       UI.update(dt);
       this.tSave -= dt; if (this.tSave <= 0) { this.tSave = 10; if (!Ride.active) Store.set(POS_KEY, JSON.stringify({ x: Player.pos.x, z: Player.pos.z })); }
@@ -351,6 +355,8 @@ const Game = {
     Decor.update(G.time, n);
     if (G.state !== 'title') { People.update(dt); Gulls.update(dt); }
     Ships.update(dt);
+    VRFade.update(dt);
+    City.frameTick();
     const cam = R.camera.getWorldPosition(new THREE.Vector3());
     R.follow(cam);
     R.setFogForAltitude(cam.y - Player.groundY);

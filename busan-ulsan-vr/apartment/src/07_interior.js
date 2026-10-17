@@ -3,15 +3,19 @@
 // 스피커·스탠드·샤워·욕조·로봇청소기를 눌러서 쓸 수 있게 등록한다
 // ---------------------------------------------------------------------------
 const Interact = {
-  items: [],
+  items: [], cache: null,
   // root 아래 모든 메시를 하나의 조작 대상으로 묶는다. hint: () => 문구, act: () => 실행
   add(root, o) {
     const it = Object.assign({ root }, o);
     root.traverse((m) => { if (m.isMesh || m.isLineSegments) m.userData.it = it; });
-    this.items.push(it);
+    this.items.push(it); this.cache = null;
     return it;
   },
-  meshes() { const out = []; for (const it of this.items) it.root.traverse((m) => { if (m.isMesh && m.userData.it === it && m.visible !== false) out.push(m); }); return out; },
+  // 조작 메시 목록은 한 번만 모아 두고, 보이는 것만 골라 쓴다 (VR에서 매 프레임 두 손으로 광선을 쏘므로)
+  meshes() {
+    if (!this.cache) { this.cache = []; for (const it of this.items) it.root.traverse((m) => { if (m.isMesh && m.userData.it === it) this.cache.push(m); }); }
+    return this.cache.filter((m) => m.visible !== false && m.userData.it);
+  },
 };
 
 const Interior = {
@@ -234,6 +238,7 @@ const Interior = {
       const it = Interact.add(d.leaves ? d.group : root, { name: d.name, hint: () => `${d.name} ${d.open ? '닫기' : '열기'}`, act: () => this.toggleDoor(d) });
       // 문틀은 누르지 않게: 문짝 메시만 남긴다
       if (d.hitMeshes) d.group.traverse((m) => { if (m.userData.it === it && !d.hitMeshes.includes(m)) delete m.userData.it; });
+      Interact.cache = null;
     }
   },
   toggleDoor(d, force) {

@@ -12,6 +12,7 @@ const Game = {
     R.setTime(G.tod);
     UI.init();
     this.setupTitle(); this.bindInput(); this.setupXR();
+    if (navigator.xr) Player.initXR(); // 세션 전에 컨트롤러를 만들어 두어 연결 이벤트를 놓치지 않게
     // 처음 상태: 방문은 열고 욕실·현관·다용도실 문은 닫는다
     for (const id of ['d-room2', 'd-room3', 'd-master', 'd-mbath']) { const d = Interior.doorById(id); d.open = true; d.k = 1; Interior.applyDoor(d); }
     if (TOD[G.tod].night > 0.1) this.autoLights();
@@ -171,8 +172,9 @@ const Game = {
     if (!navigator.xr || !navigator.xr.isSessionSupported) return;
     navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; $('dock').querySelector('[data-k="vr"]').hidden = false; } }).catch(() => {});
     const xr = R.renderer.xr;
+    R.renderer.xr.setFoveation(1);
     xr.addEventListener('sessionstart', () => {
-      G.xr = true; Sound.init();
+      G.xr = true; Sound.init(); Player.xr.btn = {};
       if (Tour.active) Tour.stop(); if (G.state === 'doll') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); }
       if (G.mode) Tools.setMode(null);
       G.state = 'walk'; $('title').hidden = true; UI.show(false); UI.closePanel();
@@ -240,6 +242,7 @@ const Game = {
     for (const id of ['d-room2', 'd-room3', 'd-master', 'd-mbath']) { const d = Interior.doorById(id); d.open = true; d.k = 1; Interior.applyDoor(d); }
     R.setLights(false);
     UI.show(false);
+    Player.initXR(); Player.showXRLines(false); // 바깥 앱이 만든 컨트롤러에 집 광선을 붙여 둔다
     G.state = 'walk';
   },
   hostEnter() {
@@ -253,6 +256,7 @@ const Game = {
     Player.teleport(3.3, -3.8); Player.lookAt(3.3, 0); Player.pitch = -0.03; Player.sit = false;
     if (R.night > 0.3) this.autoLights();
     UI.lastRoom = undefined;
+    G.xr = HOST.xr(); // VR로 보던 중에 들어오면 바로 VR 조작으로
     if (G.xr) this.hostXRStart(); else { UI.show(true); Player.applyCamera(); }
     Sound.init();
     setTimeout(() => UI.toast(G.touch ? '문·스위치·가전을 누르면 조작됩니다. 아래 막대에서 스타일, 조명, 인형집 뷰, 투어를 골라 보세요.' : 'WASD로 걷고 클릭이나 E로 문·스위치·가전을 조작하세요. 화면을 누르면 시점이 고정되고, Esc로 풀립니다.'), 600);
@@ -271,7 +275,7 @@ const Game = {
     UI.show(false);
   },
   hostXRStart() {
-    G.xr = true; Player.initXR(); Player.showXRLines(true); UI.show(false); UI.closePanel();
+    G.xr = true; Player.initXR(); Player.showXRLines(true); Player.xr.btn = {}; Player.xr.lastHead = null; UI.show(false); UI.closePanel();
     if (Tour.active) Tour.stop(); if (G.mode) Tools.setMode(null);
     if (G.state === 'doll' || G.state === 'dollout') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); HOST.setDoll(false); G.state = 'walk'; }
     R.camera.position.set(0, 0, 0); R.camera.rotation.set(0, 0, 0);

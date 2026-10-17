@@ -227,13 +227,14 @@ const UI = {
       const c = document.createElement('canvas'); c.width = 1024; c.height = 860;
       const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.05), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false }));
-      mesh.renderOrder = 60; R.scene.add(mesh);
+      mesh.renderOrder = 60; mesh.visible = false; R.scene.add(mesh); // 처음에는 숨겨 두어야 아래에서 눈앞에 놓인다
       this.vr = { c, tex, mesh, page: 0, rows: [], hover: -1, nav: [] };
     }
     const V = this.vr;
     if (!V.mesh.visible) {
+      // 눈높이보다 조금 아래, 1.2m 앞에 살짝 위를 보게 놓는다
       const cam = R.renderer.xr.getCamera(); const h = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld); const f = Player.forward();
-      V.mesh.position.set(h.x + f[0] * 1.4, h.y - 0.1, h.z + f[1] * 1.4); V.mesh.lookAt(h.x, h.y - 0.1, h.z); V.mesh.visible = true; V.page = 0;
+      V.mesh.position.set(h.x + f[0] * 1.2, h.y - 0.25, h.z + f[1] * 1.2); V.mesh.lookAt(h.x, h.y - 0.05, h.z); V.mesh.visible = true; V.page = 0;
     }
     if (Player.ctrls) for (const c of Player.ctrls) c.userData.ray.visible = true;
     V.def = def; V.items = items; this.drawVR();
@@ -268,24 +269,40 @@ const UI = {
     const ny = H - 70; V.nav = [];
     const btn = (label, x, w, fn) => { const hov = V.hover === 100 + V.nav.length; g.fillStyle = hov ? 'rgba(255,180,58,0.3)' : 'rgba(255,255,255,0.08)'; g.fillRect(x, ny, w, 54); g.fillStyle = '#eef4f8'; g.font = '600 26px "Gothic A1", sans-serif'; g.textAlign = 'center'; g.fillText(label, x + w / 2, ny + 27); g.textAlign = 'left'; V.nav.push({ x0: x, x1: x + w, fn }); };
     if (pages > 1) { btn('◀ 이전', 30, 200, () => { V.page--; this.drawVR(); }); btn('다음 ▶', 794, 200, () => { V.page++; this.drawVR(); }); }
-    btn(this.stack.length > 1 ? '뒤로' : '닫기', 412, 200, () => this.back());
+    btn(this.stack.length > 1 ? '뒤로 (B)' : '닫기 (B)', 412, 200, () => this.back());
+    if (pages > 1) { g.fillStyle = '#93a7b8'; g.font = '500 22px "Gothic A1", sans-serif'; g.textAlign = 'center'; g.fillText(`${V.page + 1} / ${pages} · 오른쪽 스틱 좌우로 넘기기`, W / 2, ny - 18); g.textAlign = 'left'; }
     V.tex.needsUpdate = true;
   },
-  updateVRMenu() {
-    if (!G.xr || G.state !== 'menu' || !this.vr || !this.vr.mesh.visible) return;
-    const c = Player.rightCtrl || (Player.ctrls && Player.ctrls[0]); if (!c) return;
+  // 컨트롤러 c의 광선이 가리키는 메뉴 칸 (-1: 없음, 100+: 아래 단추, 200+: 탭). 패널에 닿지 않으면 null
+  vrHoverFor(c) {
     const o = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), d = new THREE.Vector3(0, 0, -1).transformDirection(c.matrixWorld);
-    const hit = new THREE.Raycaster(o, d).intersectObject(this.vr.mesh)[0];
+    const hit = new THREE.Raycaster(o, d, 0, 6).intersectObject(this.vr.mesh)[0];
+    c.userData.ray.scale.z = hit ? hit.distance / 5 : 1;
+    if (!hit || !hit.uv) return null;
     let hov = -1;
-    if (hit && hit.uv) {
-      const px = hit.uv.x * 1024, py = (1 - hit.uv.y) * 860;
-      if (py > 860 - 70) this.vr.nav.forEach((n, i) => { if (px >= n.x0 && px <= n.x1) hov = 100 + i; });
-      else { this.vr.tabs.forEach((t, i) => { if (px >= t.x0 && px <= t.x1 && py >= t.y0 && py <= t.y1) hov = 200 + i; }); if (hov < 0) this.vr.rows.forEach((r, i) => { if (r.it && py >= r.y0 && py < r.y1) hov = i; }); }
+    const px = hit.uv.x * 1024, py = (1 - hit.uv.y) * 860;
+    if (py > 860 - 70) this.vr.nav.forEach((n, i) => { if (px >= n.x0 && px <= n.x1) hov = 100 + i; });
+    else { this.vr.tabs.forEach((t, i) => { if (px >= t.x0 && px <= t.x1 && py >= t.y0 && py <= t.y1) hov = 200 + i; }); if (hov < 0) this.vr.rows.forEach((r, i) => { if (r.it && py >= r.y0 && py < r.y1) hov = i; }); }
+    return hov;
+  },
+  // 두 손 모두 가리킬 수 있다. 오른손이 패널에 닿아 있으면 오른손 우선
+  updateVRMenu() {
+    if (!G.xr || G.state !== 'menu' || !this.vr || !this.vr.mesh.visible || !Player.ctrls) return;
+    let hov = -1, by = null;
+    for (const c of [Player.ctrl('right'), Player.ctrl('left')]) {
+      if (!c || by) continue;
+      const h = this.vrHoverFor(c);
+      if (h !== null) { hov = h; by = c; }
     }
+    this.vr.by = by;
     if (hov !== this.vr.hover) { this.vr.hover = hov; this.drawVR(); }
   },
-  vrSelect() {
-    const V = this.vr; if (!V || V.hover < 0) return;
+  vrPage(d) { const V = this.vr; if (!V || !V.mesh.visible) return; V.page += d; this.drawVR(); },
+  vrSelect(c) {
+    const V = this.vr; if (!V || !V.mesh.visible) return;
+    // 누른 손이 가리키는 칸을 고른다 (다른 손이 가리키던 칸이 아니라)
+    if (c && c !== V.by) { const h = this.vrHoverFor(c); if (h === null) return; V.hover = h; V.by = c; this.drawVR(); }
+    if (V.hover < 0) return;
     if (V.hover >= 200) { V.tabs[V.hover - 200].t.onSelect(); this.refresh(); return; }
     if (V.hover >= 100) { V.nav[V.hover - 100].fn(); return; }
     const r = V.rows[V.hover]; if (r && r.it) { r.it.onSelect(); if (this.stack.length && !r.it.keep) this.refresh(); }

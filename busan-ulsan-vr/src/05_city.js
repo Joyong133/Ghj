@@ -64,6 +64,9 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     BridgeFX.removeTile(t.k);
     this.tiles.delete(t.k);
   },
+  waiters: [],
+  frames(n) { return new Promise((r) => this.waiters.push({ n, r })); },
+  frameTick() { for (let i = this.waiters.length - 1; i >= 0; i--) { const w = this.waiters[i]; if (--w.n <= 0) { this.waiters.splice(i, 1); w.r(); } } },
   async pumpBuild() {
     if (this.building) return;
     this.building = true;
@@ -72,7 +75,9 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
       const job = this.buildQueue.shift();
       if (job.rec.dead) continue;
       try { this.buildTile(job.rec, job.data); this.status.loaded++; } catch (e) { console.warn('tile build', e); this.status.failed++; }
-      await new Promise((r) => requestAnimationFrame(() => r()));
+      // 다음 타일은 몇 프레임 뒤에. window.requestAnimationFrame은 VR 중에 멈추므로 메인 루프의 프레임으로 센다.
+      // VR에서는 한 타일을 지을 때 생기는 끊김이 몰리지 않게 더 띄운다
+      await this.frames(G.xr ? 8 : 1);
     }
     this.building = false;
   },

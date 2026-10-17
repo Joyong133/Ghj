@@ -8,7 +8,7 @@ const Terrain = {
   dayColor: new THREE.Color(1, 1, 1),
 
   key(z, x, y) { return z + '/' + x + '/' + y; },
-  nearRadius() { const q = R.quality; return (q === 'high' ? 1250 : q === 'medium' ? 1000 : 750); },
+  nearRadius() { const q = R.quality, r = q === 'high' ? 1250 : q === 'medium' ? 1000 : 750; return G.xr ? Math.min(r, 650) : r; }, // VR에서는 프레임을 지키려고 가까운 타일을 덜 불러온다
 
   // ---------------- 고도
   async getElev(z, x, y) {
