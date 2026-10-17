@@ -62,6 +62,8 @@ const Game = {
   },
   goPlace(p, quiet) {
     if (Ride.active) Ride.stop();
+    // 해운대 아파트: 1층 입구 앞(해변 쪽)에 서서 타워를 올려다본다
+    if (p.id === 'haeapt') { const e = AptHost.entrance(); Player.teleport(e.x, e.z + 9, { x: e.x, z: e.z }); this.pendingPlace = p; UI.banner(p.name, '입구로 걸어가 E를 누르면 38층 집으로 올라갑니다', 3200); return; }
     // 명소 바로 앞(남쪽 60m)에 내려 명소를 바라보게
     let x = p.wx, z = p.wz + 60;
     if (p.cat === 'beach') z = p.wz + 20;
@@ -72,7 +74,7 @@ const Game = {
   // 건물 안에 서 있게 되면 가장 가까운 바깥으로 옮긴다
   unstick() {
     if (Player.mode !== 'walk' || Ride.active) return;
-    if (!City.insideBuilding(Player.pos.x, Player.pos.z)) return;
+    if (!City.insideBuilding(Player.pos.x, Player.pos.z) && !AptHost.blocks(Player.pos.x, Player.pos.z)) return;
     for (let r = 3; r < 200; r += 3) for (let k = 0; k < 16; k++) {
       const a = (k / 16) * TAU, x = Player.pos.x + Math.cos(a) * r, z = Player.pos.z + Math.sin(a) * r;
       if (!City.insideBuilding(x, z)) { Player.pos.x = x; Player.pos.z = z; Player.settle = 1; return; }
@@ -113,6 +115,7 @@ const Game = {
     if (Ride.active) return Ride.canExit() ? { label: '여기서 내리기', short: '내리기', fn: () => Ride.exitHere() } : null;
     if (Player.mode === 'fly' && Player.alt() > 8) return null;
     const P = Player.pos;
+    const home = AptHost.action(P.x, P.z); if (home) return home;
     if (Transit.ready) { const st = Transit.nearestStation(P.x, P.z, 70); if (st) { const what = st.ktx ? (st.lines.some((o) => !o.line.ktx) ? '지하철·KTX' : 'KTX') : '지하철'; return { label: `${stationLabel(st.name)} · ${what} 타기`, short: st.ktx ? 'KTX' : '지하철', fn: () => UI.openMenu(() => this.stationMenu(st)) }; } }
     let bs = null, bd = 20;
     for (const s of City.stops) { const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; bs = s; } }
@@ -275,9 +278,10 @@ const Game = {
   // ---------------------------------------------------------------- VR
   setupXR() {
     if (!navigator.xr || !navigator.xr.isSessionSupported) return;
-    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) $('b-vr').hidden = false; }).catch(() => {});
+    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; this.vrOk = true; } }).catch(() => {});
     const xr = R.renderer.xr;
     xr.addEventListener('sessionstart', () => {
+      if (G.state === 'apt') { G.xr = true; Player.initXR(); Apt.xrStart(); return; } // 해운대 아파트 안
       G.xr = true; Player.initXR(); UI.show(false);
       R.camera.position.set(0, 0, 0); R.camera.rotation.set(0, 0, 0);
       R.rig.rotation.set(0, Player.yaw, 0);
@@ -285,6 +289,7 @@ const Game = {
       UI.banner(UI.placeName || '부산', '왼쪽 스틱으로 걷고 Y로 하늘을 나세요', 4000);
     });
     xr.addEventListener('sessionend', () => {
+      if (G.state === 'apt') { G.xr = false; Apt.xrEnd(); return; }
       G.xr = false; Player.yaw = R.rig.rotation.y; R.rig.rotation.set(0, 0, 0);
       if (UI.vr) UI.vr.mesh.visible = false;
       if (G.state !== 'title') UI.show(true);
@@ -318,6 +323,8 @@ const Game = {
       R.rig.position.copy(Player.pos); R.rig.rotation.set(0, 0, 0);
       R.camera.position.set(0, 0, 0); R.camera.lookAt(c.x, 40, c.z);
       Player.groundY = 0;
+    } else if (G.state === 'apt') {
+      AptHost.update(dt); // 해운대 아파트 안: 집 코드가 카메라와 화면을 맡는다
     } else {
       if (G.xr && G.state === 'play') Player.beginXRFrame();
       if (G.state === 'play') Player.update(dt);
@@ -333,6 +340,7 @@ const Game = {
     if (this.tTerrain <= 0 && R.world.visible) { this.tTerrain = 0.35; Terrain.update(Player.pos.x, Player.pos.z, Player.alt()); }
     this.tTrain -= dt; if (this.tTrain <= 0) { this.tTrain = 0.033; Transit.updateTrains(clock); }
     Traffic.update(dt);
+    AptHost.tick(dt);
     Planes.update(clock);
     this.tTime -= dt; if (this.tTime <= 0) { this.tTime = 2; R.updateTime(); }
     const n = R.nightU.value;
@@ -350,5 +358,5 @@ const Game = {
   },
 };
 
-if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, KTX, Ships, People, Gulls, THREE };
+if (location.search.includes('debug')) window.__buvr = { PLACES, LINES, G, Game, Player, Terrain, City, Transit, Traffic, Planes, Ride, Bus, UI, R, Net, GEO, Places, Mats, Atlas, Decor, BridgeFX, KTX, Apt, AptHost, Ships, People, Gulls, THREE };
 Game.init();

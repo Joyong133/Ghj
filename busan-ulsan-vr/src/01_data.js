@@ -14,6 +14,7 @@ const CITY_GROUP = {
 const CATS = {
   beach: { name: '해변', color: '#3aa0d8' },
   sight: { name: '명소', color: '#ffb43a' },
+  home: { name: '집 구경', color: '#d8b27c' },
   market: { name: '시장·거리', color: '#ff7a5a' },
   culture: { name: '문화', color: '#c88aff' },
   nature: { name: '공원·자연', color: '#5fd28a' },
@@ -28,6 +29,7 @@ const PLACES = [
   { id: 'haeundae', city: '부산', cat: 'beach', name: '해운대해수욕장', lat: 35.1587, lon: 129.1604, q: ['해운대해수욕장'], desc: '부산을 대표하는 해수욕장. 1.5km 남짓한 백사장을 따라 고층 빌딩이 늘어서 있다.' },
   { id: 'gwangalli', city: '부산', cat: 'beach', name: '광안리해수욕장', lat: 35.1532, lon: 129.1186, q: ['광안리해수욕장'], desc: '광안대교가 정면으로 보이는 해변. 밤이면 다리에 조명이 켜진다.' },
   { id: 'gwangan', city: '부산', cat: 'sight', name: '광안대교', lat: 35.1475, lon: 129.1300, q: ['광안대교'], desc: '수영구 남천동과 해운대구 우동을 잇는 2층 현수교. 길이는 약 7.4km이고 2003년에 개통했다.' },
+  { id: 'haeapt', city: '부산', cat: 'home', name: '해운대 아파트 (집 구경)', lat: 35.1600, lon: 129.1585, q: [], desc: '해수욕장 앞 45층 타워. 1층 입구에서 E를 누르면 38층 쓰리룸에 올라가 집 안을 구경할 수 있다. 가상으로 꾸민 집이다.' },
   { id: 'lct', city: '부산', cat: 'sight', name: '해운대 엘시티', lat: 35.1608, lon: 129.1693, q: ['엘시티', 'LCT'], desc: '해운대해수욕장 동쪽 끝의 초고층 복합 건물. 랜드마크 타워 높이는 411m.' },
   { id: 'dongbaek', city: '부산', cat: 'nature', name: '동백섬·누리마루 APEC하우스', lat: 35.1527, lon: 129.1522, q: ['누리마루', '동백섬'], desc: '2005년 APEC 정상회의가 열린 누리마루가 있는 섬 공원. 해안 산책로에서 광안대교가 보인다.' },
   { id: 'marine', city: '부산', cat: 'sight', name: '마린시티·더베이101', lat: 35.1562, lon: 129.1490, q: ['더베이101', '더베이 101'], desc: '바다에 붙은 초고층 주거 단지. 밤에 수영만 건너편에서 보는 야경이 유명하다.' },
@@ -177,7 +179,7 @@ const PLACES = [
   { id: 'gnmarket', city: '강릉', cat: 'market', name: '강릉중앙시장', lat: 37.7540, lon: 128.8990, q: ['강릉중앙시장', '중앙시장'], desc: '강릉 도심의 전통시장.' },
 ];
 
-const STARTS = ['busanstn', 'haeundae', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam', 'seoulstn', 'dongdaegu', 'bulguksa', 'gangneungstn'];
+const STARTS = ['busanstn', 'haeundae', 'haeapt', 'gwangalli', 'seomyeon', 'jagalchi', 'pus', 'pnu', 'taehwa', 'daewangam', 'seoulstn', 'dongdaegu', 'bulguksa', 'gangneungstn'];
 
 // 부산·울산 도시철도와 광역철도. 역 이름 순서대로 OSM 역 지점과 철길을 찾아 노선을 만든다.
 const LINES = [

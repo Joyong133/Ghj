@@ -1,5 +1,7 @@
 # 빛이 머무는 쓰리룸 · VR 하우스 투어
 
+부산·울산 VR(`../`)의 **해운대 아파트** 집 안입니다. 부산·울산 VR에서는 해운대 해수욕장 앞 45층 타워의 38층으로 들어가고, 이 폴더의 `index.html`을 열면 집만 따로(창밖은 꾸민 도시) 볼 수도 있습니다.
+
 24층 남향 아파트의 쓰리룸 한 채를 브라우저와 VR 헤드셋으로 둘러보는 하우스 투어입니다.
 PC 브라우저, 휴대폰, VR 헤드셋(Meta Quest 브라우저 등)에서 실행됩니다.
 
@@ -89,8 +91,9 @@ PC 브라우저, 휴대폰, VR 헤드셋(Meta Quest 브라우저 등)에서 실�
 | `src/11_main.js` | 시작 화면, 입력 연결, 스타일·시간 바꾸기, VR 세션, 메인 루프 |
 
 ```sh
-cd apartment-vr
-node build.mjs
+cd busan-ulsan-vr/apartment
+node build.mjs   # 혼자 열리는 index.html
+cd .. && node build.mjs   # 부산·울산 VR에 넣어서
 ```
 
 주소 끝에 `?debug`를 붙이면 콘솔에서 `window.__apt`로 내부 상태를 볼 수 있습니다.

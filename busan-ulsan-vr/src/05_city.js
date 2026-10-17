@@ -188,13 +188,14 @@ node["name"]["natural"~"^(peak|beach|cape)$"](${bb});
     const signable = [];
     for (const o of outlines) {
       const bb = bbox(o.rings[0]);
+      if (AptHost.overlaps(bb)) continue; // 해운대 아파트 자리
       const inside = partGrid.queryRect(bb).some((p) => pointInRing(p.c.x, p.c.z, o.rings[0]));
       this.addCollider(rec, o.rings[0], bb);
       if (inside) continue;
       const info = this.extrude(W, Rf, Solid, I, o, cx, cz, false, addSign);
       if (info) { signable.push(info); for (const e of info.edges) edges.add((e.a.x + e.b.x) / 2, (e.a.z + e.b.z) / 2, e); }
     }
-    for (const p of parts) this.extrude(W, Rf, Solid, I, p, cx, cz, true, addSign);
+    for (const p of parts) if (!AptHost.overlaps(bbox(p.rings[0]))) this.extrude(W, Rf, Solid, I, p, cx, cz, true, addSign);
     // 실제 상호 간판 (가장 가까운 벽에)
     shops.sort((a, b) => a.name.length - b.name.length);
     const used = new Map();

@@ -68,8 +68,8 @@ const STYLE_KEYS = ['warm', 'scandi', 'dark', 'japandi'];
 const Mats = {
   all: [],
   texCache: new Map(),
-  std(o = {}, envK = 1) { const m = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.8 }, o)); m.userData.envK = envK; this.all.push(m); return m; },
-  phys(o = {}, envK = 1) { const m = new THREE.MeshPhysicalMaterial(o); m.userData.envK = envK; this.all.push(m); return m; },
+  std(o = {}, envK = 1) { const m = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.8, envMap: R.envTex }, o)); m.userData.envK = envK; this.all.push(m); return m; },
+  phys(o = {}, envK = 1) { const m = new THREE.MeshPhysicalMaterial(Object.assign({ envMap: R.envTex }, o)); m.userData.envK = envK; this.all.push(m); return m; },
   t(key, canvasFn, opts) { if (!this.texCache.has(key)) this.texCache.set(key, Tex.tex(canvasFn(), opts)); return this.texCache.get(key); },
 
   init() {
@@ -119,7 +119,7 @@ const Mats = {
     this.shadow = new THREE.MeshBasicMaterial({ map: Tex.tex(this.blobCanvas(), { srgb: false }), transparent: true, depthWrite: false, color: 0x000000, opacity: 0.55 });
     // 빛나는 재질 (간접조명, 다운라이트, 스위치 표시)
     this.led = new THREE.MeshBasicMaterial({ color: 0xffd8a8 });
-    this.ledOff = new THREE.MeshStandardMaterial({ color: 0xdedad2, roughness: 0.4 });
+    this.ledOff = new THREE.MeshStandardMaterial({ color: 0xdedad2, roughness: 0.4, envMap: R.envTex });
     this.downOn = new THREE.MeshBasicMaterial({ color: 0xfff1dc });
     this.art = [0, 1, 2].map(() => S({ map: this.whiteTex, roughness: 0.85 }, 0.2));
   },

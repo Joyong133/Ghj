@@ -77,7 +77,7 @@ const Player = {
   },
   tryMove(dx, dz) {
     const can = (x, z) => {
-      if (City.insideBuilding(x, z)) return false;
+      if (City.insideBuilding(x, z) || AptHost.blocks(x, z)) return false;
       const deck = City.deckAt(x, z, this.pos.y);
       if (deck === null && Terrain.heightAt(x, z) < 0.1 && Terrain.heightAt(this.pos.x, this.pos.z) >= 0.1) return false; // 바다로는 못 걸어 들어간다
       return true;

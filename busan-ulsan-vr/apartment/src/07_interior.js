@@ -37,7 +37,7 @@ const Interior = {
   accent(zone, mesh) { (this.zoneAccents[zone] ||= []).push(mesh); },
 
   init() {
-    this.group = new THREE.Group(); R.scene.add(this.group);
+    this.group = new THREE.Group(); R.root.add(this.group);
     this.living(); this.kitchen(); this.master(); this.bedrooms(); this.baths(); this.entry();
     this.switches(); this.doorsInteract(); this.curtainsBuild();
     this.robotInit();
@@ -229,6 +229,8 @@ const Interior = {
   doorsInteract() {
     for (const d of Build.doors) {
       const root = d.leaf || d.group;
+      // 바깥 앱 안: 현관문은 밖(1층 로비)으로 나가는 문
+      if (HOST && d.id === 'd-front') { Interact.add(root, { name: '현관문', hint: () => '현관문 열고 나가기 (1층 로비로)', act: () => HOST.exit() }); continue; }
       const it = Interact.add(d.leaves ? d.group : root, { name: d.name, hint: () => `${d.name} ${d.open ? '닫기' : '열기'}`, act: () => this.toggleDoor(d) });
       // 문틀은 누르지 않게: 문짝 메시만 남긴다
       if (d.hitMeshes) d.group.traverse((m) => { if (m.userData.it === it && !d.hitMeshes.includes(m)) delete m.userData.it; });

@@ -83,6 +83,7 @@ const Game = {
 
   // ---------------- 입력
   lockPointer() { const c = R.renderer.domElement; if (G.touch || !c.requestPointerLock) return; try { const p = c.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* 무시 */ } },
+  locked() { return document.pointerLockElement === R.renderer.domElement; },
   escape() {
     if (!$('help').hidden) { $('help').hidden = true; return; }
     if (Tools.holding) { const m = Tools.holding; if (m.orig) { m.group.position.x = m.orig.x; m.group.position.z = m.orig.z; m.group.rotation.y = m.orig.r; } Tools.drop(true); return; }
@@ -93,11 +94,11 @@ const Game = {
   },
   bindInput() {
     const c = R.renderer.domElement;
+    // 바깥 앱 안에서는 그 앱이 키·마우스 이동을 Input에 모아 주므로 여기서는 집 안에 있을 때의 동작만 처리한다
     addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-      if (!e.repeat) Input.pressed.add(e.code);
-      Input.keys.add(e.code);
-      if (G.state === 'title' || G.xr) return;
+      if (!HOST) { if (!e.repeat) Input.pressed.add(e.code); Input.keys.add(e.code); }
+      if (!APTSTATE.active || G.state === 'title' || G.xr) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
       if (Tour.active && /^(Key[WASD]|Arrow)/.test(e.code)) { Tour.stop(); return; }
       const k = e.code;
@@ -114,16 +115,17 @@ const Game = {
       else if (k === 'KeyE' && G.mode !== 'edit') { if (G.mode === 'measure') Tools.measureClick(); else Player.use(); }
       else if (/^Digit[1-8]$/.test(k)) { const n = +k.slice(5); if (n <= 4) this.setStyle(STYLE_KEYS[n - 1]); else this.setTime(TOD_KEYS[n - 5]); }
     });
-    addEventListener('keyup', (e) => Input.keys.delete(e.code));
-    addEventListener('blur', () => Input.keys.clear());
-    document.addEventListener('pointerlockchange', () => { G.pointerLocked = document.pointerLockElement === c; });
-    addEventListener('mousemove', (e) => { if (G.pointerLocked) { Input.mouseDX += e.movementX; Input.mouseDY += e.movementY; } });
-    c.addEventListener('wheel', (e) => { if (G.state !== 'title') { e.preventDefault(); Input.wheel += Math.sign(e.deltaY); } }, { passive: false });
-    c.addEventListener('contextmenu', (e) => { e.preventDefault(); if (G.mode) Tools.setMode(null); });
+    if (!HOST) {
+      addEventListener('keyup', (e) => Input.keys.delete(e.code));
+      addEventListener('blur', () => Input.keys.clear());
+      addEventListener('mousemove', (e) => { if (this.locked()) { Input.mouseDX += e.movementX; Input.mouseDY += e.movementY; } });
+    }
+    c.addEventListener('wheel', (e) => { if (APTSTATE.active && G.state !== 'title') { e.preventDefault(); Input.wheel += Math.sign(e.deltaY); } }, { passive: false });
+    c.addEventListener('contextmenu', (e) => { if (!APTSTATE.active) return; e.preventDefault(); if (G.mode) Tools.setMode(null); });
     // 마우스·터치: 끌면 둘러보기(인형집에서는 궤도), 짧게 누르면 조작
     let down = null;
     c.addEventListener('pointerdown', (e) => {
-      if (G.state === 'title' || G.xr) return;
+      if (!APTSTATE.active || G.state === 'title' || G.xr) return;
       Sound.init();
       down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), id: e.pointerId, moved: false };
       if (G.state === 'doll') Doll.drag = true;
@@ -133,7 +135,7 @@ const Game = {
       const dx = e.clientX - down.lx, dy = e.clientY - down.ly; down.lx = e.clientX; down.ly = e.clientY;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.moved = true;
       if (G.state === 'doll') { Doll.az -= dx * 0.006; Doll.el = clamp(Doll.el + dy * 0.004, 0.35, 1.45); }
-      else if (G.state === 'walk' && !G.pointerLocked) { Input.lookDX += dx * (G.touch ? 1 : 0.55); Input.lookDY += dy * (G.touch ? 1 : 0.55); }
+      else if (G.state === 'walk' && !this.locked()) { Input.lookDX += dx * (G.touch ? 1 : 0.55); Input.lookDY += dy * (G.touch ? 1 : 0.55); }
     });
     addEventListener('pointerup', (e) => {
       if (!down || e.pointerId !== down.id) return;
@@ -144,7 +146,7 @@ const Game = {
       if (G.state !== 'walk') return;
       if (G.mode === 'measure') { Tools.measureClick(); return; }
       if (G.mode === 'edit') { Tools.editClick(); return; }
-      if (G.pointerLocked) { Player.use(); return; }
+      if (this.locked()) { Player.use(); return; }
       // 시점이 고정되지 않았으면: 누른 곳의 물건을 조작하고, 없으면 시점 고정
       const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), R.camera);
       const h = Player.pick(rc.ray.origin, rc.ray.direction);
@@ -167,7 +169,7 @@ const Game = {
   // ---------------- VR
   setupXR() {
     if (!navigator.xr || !navigator.xr.isSessionSupported) return;
-    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; document.querySelector('#dock [data-k="vr"]').hidden = false; } }).catch(() => {});
+    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; $('dock').querySelector('[data-k="vr"]').hidden = false; } }).catch(() => {});
     const xr = R.renderer.xr;
     xr.addEventListener('sessionstart', () => {
       G.xr = true; Sound.init();
@@ -218,9 +220,81 @@ const Game = {
       UI.updateRoom(); UI.updateHint();
       this.planT -= dt; if (this.planT <= 0) { this.planT = 0.1; UI.drawPlan(); }
     }
-    Input.endFrame();
+    if (!HOST) Input.endFrame(); // 바깥 앱은 자기 프레임 끝에서 비운다
+  },
+
+  // ---------------- 바깥 앱(부산·울산 VR) 안에서 쓰는 부분
+  hostInit() {
+    if (this.built) return;
+    this.built = true;
+    loadSettings();
+    G.touch = HOST.touch;
+    if (LABEL.tourLast) Object.assign(TOUR[TOUR.length - 1], LABEL.tourLast);
+    R.init(); Mats.init(); Mats.apply(G.style);
+    Build.init(); Interior.init();
+    R.syncHostTime();
+    UI.init();
+    $('rc-top').textContent = LABEL.top;
+    $('dock').querySelector('[data-k="exit"]').hidden = false;
+    this.bindInput();
+    for (const id of ['d-room2', 'd-room3', 'd-master', 'd-mbath']) { const d = Interior.doorById(id); d.open = true; d.k = 1; Interior.applyDoor(d); }
+    R.setLights(false);
+    UI.show(false);
+    G.state = 'walk';
+  },
+  hostEnter() {
+    this.hostInit();
+    APTSTATE.active = true;
+    R.setLights(true);
+    R.root.add(R.rig); // 카메라 받침을 집 좌표계로 옮긴다
+    R.syncHostTime();
+    $('dock').querySelector('[data-k="vr"]').hidden = !HOST.vrOk();
+    G.state = 'walk'; G.mode = null;
+    Player.teleport(3.3, -3.8); Player.lookAt(3.3, 0); Player.pitch = -0.03; Player.sit = false;
+    if (R.night > 0.3) this.autoLights();
+    UI.lastRoom = undefined;
+    if (G.xr) this.hostXRStart(); else { UI.show(true); Player.applyCamera(); }
+    Sound.init();
+    setTimeout(() => UI.toast(G.touch ? '문·스위치·가전을 누르면 조작됩니다. 아래 막대에서 스타일, 조명, 인형집 뷰, 투어를 골라 보세요.' : 'WASD로 걷고 클릭이나 E로 문·스위치·가전을 조작하세요. 화면을 누르면 시점이 고정되고, Esc로 풀립니다.'), 600);
+  },
+  hostExit() {
+    if (!APTSTATE.active) return;
+    if (Tour.active) Tour.stop();
+    if (G.mode) Tools.setMode(null);
+    if (G.state === 'doll' || G.state === 'dollout') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); HOST.setDoll(false); G.state = 'walk'; }
+    UI.closePanel(); $('help').hidden = true;
+    APTSTATE.active = false;
+    R.setLights(false);
+    Sound.toggleMusic(false); for (const k of [...Sound.loops.keys()]) if (k !== 'room') Sound.stopLoop(k);
+    if (Player.xr.ctrls.length) Player.showXRLines(false);
+    if (UI.vrPanel) UI.vrPanel.visible = false; Player.xr.menu = false;
+    UI.show(false);
+  },
+  hostXRStart() {
+    G.xr = true; Player.initXR(); Player.showXRLines(true); UI.show(false); UI.closePanel();
+    if (Tour.active) Tour.stop(); if (G.mode) Tools.setMode(null);
+    if (G.state === 'doll' || G.state === 'dollout') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); HOST.setDoll(false); G.state = 'walk'; }
+    R.camera.position.set(0, 0, 0); R.camera.rotation.set(0, 0, 0);
+    Player.syncXR();
+  },
+  hostXREnd() {
+    G.xr = false; Player.yaw = R.rig.rotation.y; Player.pitch = 0;
+    if (UI.vrPanel) UI.vrPanel.visible = false; Player.xr.menu = false; Player.showXRLines(false);
+    UI.show(true); Player.applyCamera();
+  },
+  hostUpdate(dt) {
+    if (!APTSTATE.active) return;
+    this.timeT = (this.timeT || 0) - dt; if (this.timeT <= 0) { this.timeT = 2; R.syncHostTime(); }
+    this.logic(dt);
   },
 };
 
-if (location.search.includes('debug')) window.__apt = { THREE, G, R, Mats, Build, Interior, Interact, Player, Doll, Tour, Tools, UI, Home, Sound, Tex, F, STYLES, ROOMS, TOUR, Game, Physics };
-Game.init();
+const APT_DEBUG = { THREE, G, R, Mats, Build, Interior, Interact, Player, Doll, Tour, Tools, UI, Home, Sound, Tex, F, STYLES, ROOMS, TOUR, Game, Physics, APTSTATE };
+if (location.search.includes('debug')) window.__apt = APT_DEBUG;
+// 바깥 앱에 돌려줄 손잡이 (혼자 열 때는 바로 시작)
+const APT_API = HOST ? {
+  build: () => Game.hostInit(), enter: () => Game.hostEnter(), exit: () => Game.hostExit(), update: (dt) => Game.hostUpdate(dt),
+  xrStart: () => Game.hostXRStart(), xrEnd: () => Game.hostXREnd(), get active() { return APTSTATE.active; }, get root() { return R.root; },
+  player: () => Player.pos, debug: APT_DEBUG,
+} : null;
+if (!HOST) Game.init();

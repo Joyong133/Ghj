@@ -6,7 +6,7 @@ const UI = {
   panelKey: null, lastRoom: null, dim: 1, temp: 'warm',
 
   init() {
-    for (const b of document.querySelectorAll('#dock .dk')) b.addEventListener('click', (e) => { e.stopPropagation(); b.blur(); Sound.init(); this.dock(b.dataset.k); }); // 포커스를 남기면 걷는 중 Space·Enter가 버튼을 누른다
+    for (const b of $('dock').querySelectorAll('.dk')) b.addEventListener('click', (e) => { e.stopPropagation(); b.blur(); Sound.init(); this.dock(b.dataset.k); }); // 포커스를 남기면 걷는 중 Space·Enter가 버튼을 누른다
     $('plan-size').addEventListener('click', (e) => { e.stopPropagation(); $('plan').classList.toggle('big'); $('plan-size').textContent = $('plan').classList.contains('big') ? '작게' : '크게'; this.drawPlan(); });
     $('planc').addEventListener('click', (e) => this.planClick(e));
     $('help-close').addEventListener('click', () => { $('help').hidden = true; });
@@ -26,7 +26,7 @@ const UI = {
     ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
     this.planBase = null;
   },
-  show(on) { $('hud').hidden = !on; if (G.touch) $('touch').hidden = !on; },
+  show(on) { $('hud').hidden = !on; if (G.touch) $('touch').hidden = !on; if (HOST) $('ui').hidden = !on; },
 
   toast(text) {
     const d = document.createElement('div'); d.className = 'toast'; d.textContent = text;
@@ -52,14 +52,15 @@ const UI = {
     if (k === 'measure') { Tools.setMode(G.mode === 'measure' ? null : 'measure'); this.closePanel(); return; }
     if (k === 'edit') { Tools.setMode(G.mode === 'edit' ? null : 'edit'); this.closePanel(); return; }
     if (k === 'photo') { Tools.photo(); return; }
-    if (k === 'vr') { Game.enterVR(); return; }
+    if (k === 'vr') { HOST ? HOST.enterVR() : Game.enterVR(); return; }
+    if (k === 'exit') { HOST.exit(); return; }
     if (k === 'help') { $('help').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); return; }
     if (this.panelKey === k) { this.closePanel(); return; }
     this.openPanel(k);
   },
   closePanel() { this.panelKey = null; $('panel').hidden = true; this.markDock(); },
   markDock() {
-    for (const b of document.querySelectorAll('#dock .dk')) {
+    for (const b of $('dock').querySelectorAll('.dk')) {
       const k = b.dataset.k;
       b.classList.toggle('on', k === this.panelKey || (k === 'doll' && (G.state === 'doll')) || (k === 'tour' && Tour.active) || (k === 'measure' && G.mode === 'measure') || (k === 'edit' && G.mode === 'edit') || (k === 'sound' && this.panelKey === 'sound'));
     }
@@ -138,7 +139,7 @@ const UI = {
   updateRoom() {
     const r = G.state === 'doll' ? null : Player.room();
     if (r === this.lastRoom) return; this.lastRoom = r;
-    if (!r) { $('rc-name').textContent = '84㎡ 쓰리룸'; $('rc-area').innerHTML = `실사용 <b>${TOTAL_AREA.toFixed(1)}㎡</b> · 방 3 · 욕실 2`; $('rc-desc').textContent = '24층 남향 판상형, 발코니 확장형.'; return; }
+    if (!r) { $('rc-name').textContent = '84㎡ 쓰리룸'; $('rc-area').innerHTML = `실사용 <b>${TOTAL_AREA.toFixed(1)}㎡</b> · 방 3 · 욕실 2`; $('rc-desc').textContent = LABEL.desc; return; }
     $('rc-name').textContent = r.name;
     $('rc-area').innerHTML = `<b>${roomArea(r).toFixed(1)}㎡</b> · ${pyeong(roomArea(r)).toFixed(1)}평 · ${(r.rect[2] - r.rect[0]).toFixed(1)} × ${(r.rect[3] - r.rect[1]).toFixed(1)} m`;
     $('rc-desc').textContent = r.desc;
@@ -315,14 +316,14 @@ const Tools = {
   measureClick() {
     const [o, d] = Player.centerRay();
     const h = Player.pick(o, d, 'any'); if (!h) return;
-    const p = h.point.clone();
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xf0d3a4, depthTest: false })); dot.position.copy(p); dot.renderOrder = 25; R.scene.add(dot); this.marks.push(dot);
+    const p = R.local(h.point);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xf0d3a4, depthTest: false })); dot.position.copy(p); dot.renderOrder = 25; R.root.add(dot); this.marks.push(dot);
     this.points.push(p); Sound.click();
     if (this.points.length === 2) {
       const [a, b] = this.points, dist = a.distanceTo(b);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, depthTest: false })); line.renderOrder = 25; R.scene.add(line); this.marks.push(line);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, depthTest: false })); line.renderOrder = 25; R.root.add(line); this.marks.push(line);
       const c = Tex.canvas(320, 96), g = c.getContext('2d'); g.fillStyle = 'rgba(18,16,14,0.88)'; g.beginPath(); g.roundRect(4, 4, 312, 88, 40); g.fill(); g.fillStyle = '#f0d3a4'; g.font = '700 46px "Noto Sans KR", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(dist >= 1 ? `${dist.toFixed(2)} m` : `${Math.round(dist * 100)} cm`, 160, 50);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true })); s.position.copy(a).lerp(b, 0.5).add(new THREE.Vector3(0, 0.08, 0)); s.scale.set(0.36, 0.11, 1); s.renderOrder = 26; R.scene.add(s); this.marks.push(s);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true })); s.position.copy(a).lerp(b, 0.5).add(new THREE.Vector3(0, 0.08, 0)); s.scale.set(0.36, 0.11, 1); s.renderOrder = 26; R.root.add(s); this.marks.push(s);
       UI.toast(`거리 ${dist.toFixed(2)} m (가로 ${Math.abs(a.x - b.x).toFixed(2)} · 세로 ${Math.abs(a.z - b.z).toFixed(2)} · 높이 ${Math.abs(a.y - b.y).toFixed(2)})`);
       this.points = [];
     }
@@ -339,8 +340,8 @@ const Tools = {
     const [o, d] = Player.centerRay();
     if (this.holding) {
       // 바닥과 만나는 점으로 따라온다
-      const t = -(o.y - 0.0) / d.y;
-      if (t > 0 && t < 8) { const p = o.clone().addScaledVector(d, t); if (roomAt(p.x, p.z)) { this.holding.group.position.x = p.x; this.holding.group.position.z = p.z; } }
+      const ol = R.local(o), t = -ol.y / d.y;
+      if (t > 0 && t < 8) { const p = ol.addScaledVector(d, t); if (roomAt(p.x, p.z)) { this.holding.group.position.x = p.x; this.holding.group.position.z = p.z; } }
       let rot = 0; if (Input.hit('KeyQ')) rot += Math.PI / 12; if (Input.hit('KeyE')) rot -= Math.PI / 12; rot -= Input.wheel * Math.PI / 24;
       this.holding.group.rotation.y += rot;
       return;

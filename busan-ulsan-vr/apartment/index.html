@@ -148,6 +148,7 @@ input[type=range] { accent-color: var(--accent); width: 160px; }
     <button class="dk" data-k="photo" type="button"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>사진</span></button>
     <button class="dk" data-k="sound" type="button"><svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></svg><span>소리</span></button>
     <button class="dk" data-k="vr" type="button" hidden><svg viewBox="0 0 24 24"><path d="M3 8h18v8h-6l-1.5-2h-3L9 16H3z"/><circle cx="7.5" cy="12" r="1.3"/><circle cx="16.5" cy="12" r="1.3"/></svg><span>VR</span></button>
+    <button class="dk" data-k="exit" type="button" hidden><svg viewBox="0 0 24 24"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h11"/></svg><span>나가기</span></button>
     <button class="dk" data-k="help" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg><span>도움말</span></button>
   </nav>
   <div id="touch" hidden><div id="joy"><i></i></div><button id="tact" class="btn glass" type="button">조작</button></div>
@@ -183,8 +184,10 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+// 부산·울산 VR 안에 들어갈 때는 바깥 앱이 APT_HOST(렌더러, 입력, 위치 등)를 넘겨 준다. 혼자 열면 null
+const HOST = typeof APT_HOST === 'undefined' ? null : APT_HOST;
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
-const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById((HOST ? 'apt-' : '') + id); // 바깥 앱의 같은 이름 요소와 겹치지 않게
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -195,6 +198,10 @@ const fmtM = (m) => `${m.toFixed(2)} m`;
 const pyeong = (m2) => m2 / 3.3058;
 
 // 전역 상태
+// 바깥 앱 안에서 지금 집 안에 있는가 (혼자 열면 늘 참)
+const APTSTATE = { active: !HOST };
+// 집에 관한 문구 (바깥 앱이 해운대 등 자기 위치에 맞게 바꿀 수 있다)
+const LABEL = Object.assign({ top: '84㎡ · 24F', desc: '24층 남향 판상형, 발코니 확장형.', tourLast: null }, (HOST && HOST.labels) || {});
 const G = {
   state: 'loading', // loading | title | walk | doll | tour | menu
   time: 0, xr: false, touch: false, pointerLocked: false,
@@ -209,8 +216,8 @@ function loadSettings() {
 }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ style: G.style, tod: G.tod, sound: G.sound, volume: G.volume })); } catch (e) { /* 무시 */ } }
 
-// 입력
-const Input = {
+// 입력 (바깥 앱 안에서는 그 앱이 모으는 입력을 같이 쓴다)
+const Input = HOST ? HOST.Input : {
   keys: new Set(), pressed: new Set(), mouseDX: 0, mouseDY: 0, wheel: 0,
   joy: { x: 0, y: 0 }, lookDX: 0, lookDY: 0,
   endFrame() { this.pressed.clear(); this.mouseDX = this.mouseDY = this.wheel = 0; this.lookDX = this.lookDY = 0; },
@@ -698,8 +705,8 @@ const STYLE_KEYS = ['warm', 'scandi', 'dark', 'japandi'];
 const Mats = {
   all: [],
   texCache: new Map(),
-  std(o = {}, envK = 1) { const m = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.8 }, o)); m.userData.envK = envK; this.all.push(m); return m; },
-  phys(o = {}, envK = 1) { const m = new THREE.MeshPhysicalMaterial(o); m.userData.envK = envK; this.all.push(m); return m; },
+  std(o = {}, envK = 1) { const m = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.8, envMap: R.envTex }, o)); m.userData.envK = envK; this.all.push(m); return m; },
+  phys(o = {}, envK = 1) { const m = new THREE.MeshPhysicalMaterial(Object.assign({ envMap: R.envTex }, o)); m.userData.envK = envK; this.all.push(m); return m; },
   t(key, canvasFn, opts) { if (!this.texCache.has(key)) this.texCache.set(key, Tex.tex(canvasFn(), opts)); return this.texCache.get(key); },
 
   init() {
@@ -749,7 +756,7 @@ const Mats = {
     this.shadow = new THREE.MeshBasicMaterial({ map: Tex.tex(this.blobCanvas(), { srgb: false }), transparent: true, depthWrite: false, color: 0x000000, opacity: 0.55 });
     // 빛나는 재질 (간접조명, 다운라이트, 스위치 표시)
     this.led = new THREE.MeshBasicMaterial({ color: 0xffd8a8 });
-    this.ledOff = new THREE.MeshStandardMaterial({ color: 0xdedad2, roughness: 0.4 });
+    this.ledOff = new THREE.MeshStandardMaterial({ color: 0xdedad2, roughness: 0.4, envMap: R.envTex });
     this.downOn = new THREE.MeshBasicMaterial({ color: 0xfff1dc });
     this.art = [0, 1, 2].map(() => S({ map: this.whiteTex, roughness: 0.85 }, 0.2));
   },
@@ -828,6 +835,7 @@ const GROUND_Y = -72; // 24층
 
 const R = {
   init() {
+    if (HOST) return this.initHost();
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     r.setSize(innerWidth, innerHeight);
@@ -841,7 +849,10 @@ const R = {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.04, 6000);
     this.rig = new THREE.Group(); this.rig.add(this.camera); this.scene.add(this.rig);
     const pm = new THREE.PMREMGenerator(r);
-    this.scene.environment = pm.fromScene(new RoomEnvironment(r), 0.04).texture;
+    this.envTex = pm.fromScene(new RoomEnvironment(r), 0.04).texture;
+    this.scene.environment = this.envTex;
+    // 집 전체를 담는 그룹 (혼자 열면 원점, 바깥 앱 안에서는 그 앱이 정한 자리)
+    this.root = new THREE.Group(); this.scene.add(this.root);
     // 빛
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = true;
@@ -858,6 +869,25 @@ const R = {
     this.buildSky();
     this.buildCity();
     addEventListener('resize', () => this.resize());
+  },
+  // 바깥 앱 안: 렌더러·장면·카메라를 빌려 쓰고, 하늘·도시·해는 바깥 앱 것을 쓴다
+  initHost() {
+    this.renderer = HOST.renderer; this.scene = HOST.scene; this.camera = HOST.camera; this.rig = HOST.rig;
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.envTex = pm.fromScene(new RoomEnvironment(this.renderer), 0.04).texture; pm.dispose();
+    this.root = new THREE.Group(); this.root.position.copy(HOST.origin()); this.scene.add(this.root);
+    this.bounce = new THREE.HemisphereLight(0x000000, 0xffffff, 0.6); this.root.add(this.bounce);
+    this.night = 0;
+  },
+  // 월드 좌표 → 집 좌표 (그룹은 옮기기만 하고 돌리지 않는다)
+  local(v) { return v.clone().sub(this.root.position); },
+  // 집 안 조명(점광원, 반사광)을 장면에서 빼거나 넣는다. 바깥 앱의 도시를 그릴 때 부담이 되지 않게
+  setLights(on) { this.root.traverse((o) => { if (o.isLight) o.visible = on; }); },
+  // 바깥 앱의 시각을 따라 실내 반사와 반사광을 맞춘다
+  syncHostTime() {
+    const n = HOST.night(); this.night = n; G.tod = HOST.timeKey();
+    Mats.setEnv(lerp(0.65, 0.14, n));
+    this.bounce.groundColor.set(0xf4e6d4).lerp(new THREE.Color(0x40342a), n); this.bounce.intensity = lerp(0.7, 0.15, n);
   },
   resize() { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(innerWidth, innerHeight); },
 
@@ -970,6 +1000,7 @@ const R = {
 
   // ---------------- 시간대 적용
   setTime(key) {
+    if (HOST) { HOST.setTime(key); this.syncHostTime(); return; }
     const t = TOD[key]; G.tod = key;
     const dir = new THREE.Vector3(Math.sin(t.az * DEG) * Math.cos(t.el * DEG), Math.sin(t.el * DEG), -Math.cos(t.az * DEG) * Math.cos(t.el * DEG));
     this.sunDir = dir;
@@ -1001,7 +1032,7 @@ const Build = {
   group: null, colliders: [], doors: [], windows: [], fixtures: [], ceilings: [], lights: {},
 
   init() {
-    this.group = new THREE.Group(); R.scene.add(this.group);
+    this.group = new THREE.Group(); R.root.add(this.group);
     this.floors();
     this.ceilingsBuild();
     this.walls();
@@ -1279,7 +1310,7 @@ const Build = {
       const L = { key: k, on: false, lights: [], fixtures: [], dim: 1 };
       for (const [x, y, zz] of z.lights) {
         const pl = new THREE.PointLight(0xffd8a8, 0, k === 'living' ? 8 : 6.5, 2);
-        pl.position.set(x, y, zz); R.scene.add(pl); L.lights.push(pl);
+        pl.position.set(x, y, zz); R.root.add(pl); L.lights.push(pl);
       }
       this.lights[k] = L;
     }
@@ -1858,7 +1889,7 @@ const Interior = {
   accent(zone, mesh) { (this.zoneAccents[zone] ||= []).push(mesh); },
 
   init() {
-    this.group = new THREE.Group(); R.scene.add(this.group);
+    this.group = new THREE.Group(); R.root.add(this.group);
     this.living(); this.kitchen(); this.master(); this.bedrooms(); this.baths(); this.entry();
     this.switches(); this.doorsInteract(); this.curtainsBuild();
     this.robotInit();
@@ -2050,6 +2081,8 @@ const Interior = {
   doorsInteract() {
     for (const d of Build.doors) {
       const root = d.leaf || d.group;
+      // 바깥 앱 안: 현관문은 밖(1층 로비)으로 나가는 문
+      if (HOST && d.id === 'd-front') { Interact.add(root, { name: '현관문', hint: () => '현관문 열고 나가기 (1층 로비로)', act: () => HOST.exit() }); continue; }
       const it = Interact.add(d.leaves ? d.group : root, { name: d.name, hint: () => `${d.name} ${d.open ? '닫기' : '열기'}`, act: () => this.toggleDoor(d) });
       // 문틀은 누르지 않게: 문짝 메시만 남긴다
       if (d.hitMeshes) d.group.traverse((m) => { if (m.userData.it === it && !d.hitMeshes.includes(m)) delete m.userData.it; });
@@ -2451,25 +2484,29 @@ const Player = {
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, transparent: true, opacity: 0.7 }));
       line.scale.z = 3; c.add(line);
       const grip = r.xr.getControllerGrip(i);
-      const body = new THREE.Mesh(new RoundedBoxGeometry(0.04, 0.03, 0.12, 2, 0.012), new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.4 }));
-      body.position.z = 0.02; grip.add(body);
+      if (!HOST) { // 바깥 앱은 자기 손 모형이 있다
+        const body = new THREE.Mesh(new RoundedBoxGeometry(0.04, 0.03, 0.12, 2, 0.012), new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.4 }));
+        body.position.z = 0.02; grip.add(body);
+      }
       R.rig.add(c); R.rig.add(grip);
-      c.userData = { line, idx: i };
-      c.addEventListener('connected', (e) => { c.userData.hand = e.data.handedness; c.userData.src = e.data; });
-      c.addEventListener('disconnected', () => { c.userData.src = null; });
-      c.addEventListener('selectstart', () => this.xrSelect(c));
+      // 컨트롤러 객체는 바깥 앱과 같이 쓰므로 userData를 바꿔치지 않고 덧붙인다 (hand, gamepad 이름도 같게)
+      Object.assign(c.userData, { aptLine: line, idx: i });
+      c.addEventListener('connected', (e) => { c.userData.hand = e.data.handedness; c.userData.gamepad = e.data.gamepad; });
+      c.addEventListener('disconnected', () => { c.userData.gamepad = null; });
+      c.addEventListener('selectstart', () => { if (APTSTATE.active) this.xrSelect(c); });
       X.ctrls.push(c);
     }
     // 순간이동 표시: 포물선과 바닥 고리
     X.arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(30).fill(0).map(() => new THREE.Vector3())), new THREE.LineBasicMaterial({ color: 0xd8b27c }));
-    X.arc.visible = false; R.scene.add(X.arc);
+    X.arc.visible = false; R.root.add(X.arc);
     X.ringMesh = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.24, 32), new THREE.MeshBasicMaterial({ color: 0xd8b27c, side: THREE.DoubleSide }));
-    X.ringMesh.rotation.x = -Math.PI / 2; X.ringMesh.visible = false; R.scene.add(X.ringMesh);
+    X.ringMesh.rotation.x = -Math.PI / 2; X.ringMesh.visible = false; R.root.add(X.ringMesh);
     // 조작 안내 글씨 (광선이 닿은 곳)
     const c = Tex.canvas(512, 96); X.hintCanvas = c; X.hintTex = Tex.tex(c);
     X.hint = new THREE.Sprite(new THREE.SpriteMaterial({ map: X.hintTex, depthTest: false, transparent: true }));
-    X.hint.scale.set(0.42, 0.08, 1); X.hint.visible = false; X.hint.renderOrder = 20; R.scene.add(X.hint);
+    X.hint.scale.set(0.42, 0.08, 1); X.hint.visible = false; X.hint.renderOrder = 20; R.root.add(X.hint);
   },
+  showXRLines(on) { for (const c of this.xr.ctrls) c.userData.aptLine.visible = on; if (!on && this.xr.hint) { this.xr.hint.visible = this.xr.arc.visible = this.xr.ringMesh.visible = false; } },
   xrHand(h) { return this.xr.ctrls.find((c) => c.userData.hand === h); },
   syncXR() { R.rig.position.set(this.pos.x, this.pos.y, this.pos.z); R.rig.rotation.set(0, this.yaw, 0); },
   xrSelect(c) {
@@ -2482,11 +2519,10 @@ const Player = {
     const X = this.xr;
     this.yaw = R.rig.rotation.y;
     // 머리 위치 (방 안에서 실제로 걸어 다닌 만큼 포함)
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position); // 집 좌표
     let hoverAny = null;
     for (const c of X.ctrls) {
-      const src = c.userData.src; if (!src) continue;
-      const gp = src.gamepad, hand = c.userData.hand;
+      const gp = c.userData.gamepad, hand = c.userData.hand; if (!hand) continue;
       // 광선 조준
       const o = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), d = new THREE.Vector3(0, 0, -1).transformDirection(c.matrixWorld);
       let len = 3;
@@ -2497,7 +2533,7 @@ const Player = {
         c.userData.hoverIt = h ? h.object.userData.it : null;
         if (h) { len = h.distance; if (hand === 'right' || !hoverAny) hoverAny = { it: h.object.userData.it, p: h.point }; }
       }
-      c.userData.line.scale.z = len;
+      c.userData.aptLine.scale.z = len;
       if (!gp) continue;
       const ax = gp.axes[2] || 0, ay = gp.axes[3] || 0;
       const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
@@ -2517,7 +2553,7 @@ const Player = {
         // 오른쪽 스틱: 좌우 30° 회전, 앞으로 밀면 순간이동 조준
         if (Math.abs(ax) > 0.7 && !X.turnLatch) { X.turnLatch = true; this.snapTurn(ax > 0 ? -Math.PI / 6 : Math.PI / 6); }
         if (Math.abs(ax) < 0.3) X.turnLatch = false;
-        if (ay < -0.6) { X.aiming = true; this.aimTeleport(o, d); }
+        if (ay < -0.6) { X.aiming = true; this.aimTeleport(R.local(o), d); }
         else if (X.aiming) { X.aiming = false; X.arc.visible = X.ringMesh.visible = false; if (X.tpTarget) this.xrTeleport(X.tpTarget); }
         if (edge(4)) UI.toggleVRMenu();
         if (edge(5)) UI.vrQuick();
@@ -2527,7 +2563,7 @@ const Player = {
     if (hoverAny && !X.menu) {
       const txt = hoverAny.it.hint();
       if (txt !== X.lastHint) { X.lastHint = txt; const g = X.hintCanvas.getContext('2d'); g.clearRect(0, 0, 512, 96); g.fillStyle = 'rgba(20,18,16,0.85)'; g.beginPath(); g.roundRect(8, 10, 496, 76, 38); g.fill(); g.fillStyle = '#f0d3a4'; g.font = '600 34px "Noto Sans KR", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('트리거 · ' + txt, 256, 50); X.hintTex.needsUpdate = true; }
-      X.hint.visible = true; X.hint.position.copy(hoverAny.p).add(new THREE.Vector3(0, 0.12, 0));
+      X.hint.visible = true; X.hint.position.copy(R.local(hoverAny.p)).add(new THREE.Vector3(0, 0.12, 0));
     } else X.hint.visible = false;
     // 바닥 높이 (현관 단차)
     R.rig.position.y = lerp(R.rig.position.y, Build.floorY(head.x, head.z), 1 - Math.exp(-dt * 10));
@@ -2535,7 +2571,7 @@ const Player = {
   },
   snapTurn(a) {
     // 머리 위치를 축으로 돈다
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
     const off = new THREE.Vector3().subVectors(R.rig.position, head).applyAxisAngle(new THREE.Vector3(0, 1, 0), a);
     R.rig.position.copy(head).add(off); R.rig.position.y = this.pos.y;
     R.rig.rotation.y += a;
@@ -2557,7 +2593,7 @@ const Player = {
     X.arc.material.color.setHex(ok ? 0xd8b27c : 0xff6a5a);
   },
   xrTeleport(t) {
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
     R.rig.position.x += t.x - head.x; R.rig.position.z += t.z - head.z;
     UI.flash('#000', 0.18);
   },
@@ -2571,6 +2607,7 @@ const Doll = {
   enter() {
     if (G.state === 'doll') return;
     G.prev = G.state; G.state = 'doll';
+    if (HOST) HOST.setDoll(true); // 위층을 걷어 낸다
     this.from = this.camPose();
     for (const c of Build.ceilings) c.visible = false;
     this.showLabels(true);
@@ -2582,10 +2619,10 @@ const Doll = {
     if (G.state !== 'doll') return;
     if (toX !== undefined) { Player.teleport(toX, toZ); }
     const target = (() => { const p = Player.pos.clone(); const cam = new THREE.Vector3(p.x, p.y + Player.eye, p.z); const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Player.pitch, Player.yaw, 0, 'YXZ')); return { p: cam, q }; });
-    this.anim = { t: 0, dur: 1.1, from: this.camPose(), to: target, done: () => { for (const c of Build.ceilings) c.visible = true; this.showLabels(false); G.state = 'walk'; Player.applyCamera(); UI.onMode(); } };
+    this.anim = { t: 0, dur: 1.1, from: this.camPose(), to: target, done: () => { for (const c of Build.ceilings) c.visible = true; this.showLabels(false); G.state = 'walk'; Player.applyCamera(); UI.onMode(); if (HOST) HOST.setDoll(false); } };
     G.state = 'dollout';
   },
-  camPose() { const p = new THREE.Vector3(), q = new THREE.Quaternion(); R.camera.getWorldPosition(p); R.camera.getWorldQuaternion(q); return { p, q }; },
+  camPose() { const p = new THREE.Vector3(), q = new THREE.Quaternion(); R.camera.getWorldPosition(p); R.camera.getWorldQuaternion(q); return { p: p.sub(R.root.position), q }; },
   orbitPose() {
     const p = new THREE.Vector3(Math.sin(this.az) * Math.cos(this.el), Math.sin(this.el), Math.cos(this.az) * Math.cos(this.el)).multiplyScalar(this.dist).add(this.target);
     const m = new THREE.Matrix4().lookAt(p, this.target, new THREE.Vector3(0, 1, 0));
@@ -2623,7 +2660,7 @@ const Doll = {
         g2.fillStyle = '#d8b27c'; g2.font = '500 36px "Noto Sans KR", sans-serif'; g2.fillText(`${roomArea(r).toFixed(1)}㎡`, w / 2, 126);
         const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true }));
         const [x0, z0, x1, z1] = r.rect; s.position.set((x0 + x1) / 2, 2.9, (z0 + z1) / 2); s.renderOrder = 30; s.userData.w = w / 160;
-        R.scene.add(s); this.labels.push(s);
+        R.root.add(s); this.labels.push(s);
       }
     }
     for (const l of this.labels) l.visible = on;
@@ -2640,8 +2677,8 @@ const Doll = {
   // 화면 좌표의 바닥 지점
   floorAt(nx, ny) {
     const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), R.camera);
-    const t = -rc.ray.origin.y / rc.ray.direction.y; if (!(t > 0)) return null;
-    const p = rc.ray.origin.clone().addScaledVector(rc.ray.direction, t);
+    const o = R.local(rc.ray.origin), t = -o.y / rc.ray.direction.y; if (!(t > 0)) return null;
+    const p = o.addScaledVector(rc.ray.direction, t);
     return roomAt(p.x, p.z) ? p : null;
   },
 };
@@ -2704,7 +2741,7 @@ const UI = {
   panelKey: null, lastRoom: null, dim: 1, temp: 'warm',
 
   init() {
-    for (const b of document.querySelectorAll('#dock .dk')) b.addEventListener('click', (e) => { e.stopPropagation(); b.blur(); Sound.init(); this.dock(b.dataset.k); }); // 포커스를 남기면 걷는 중 Space·Enter가 버튼을 누른다
+    for (const b of $('dock').querySelectorAll('.dk')) b.addEventListener('click', (e) => { e.stopPropagation(); b.blur(); Sound.init(); this.dock(b.dataset.k); }); // 포커스를 남기면 걷는 중 Space·Enter가 버튼을 누른다
     $('plan-size').addEventListener('click', (e) => { e.stopPropagation(); $('plan').classList.toggle('big'); $('plan-size').textContent = $('plan').classList.contains('big') ? '작게' : '크게'; this.drawPlan(); });
     $('planc').addEventListener('click', (e) => this.planClick(e));
     $('help-close').addEventListener('click', () => { $('help').hidden = true; });
@@ -2724,7 +2761,7 @@ const UI = {
     ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
     this.planBase = null;
   },
-  show(on) { $('hud').hidden = !on; if (G.touch) $('touch').hidden = !on; },
+  show(on) { $('hud').hidden = !on; if (G.touch) $('touch').hidden = !on; if (HOST) $('ui').hidden = !on; },
 
   toast(text) {
     const d = document.createElement('div'); d.className = 'toast'; d.textContent = text;
@@ -2750,14 +2787,15 @@ const UI = {
     if (k === 'measure') { Tools.setMode(G.mode === 'measure' ? null : 'measure'); this.closePanel(); return; }
     if (k === 'edit') { Tools.setMode(G.mode === 'edit' ? null : 'edit'); this.closePanel(); return; }
     if (k === 'photo') { Tools.photo(); return; }
-    if (k === 'vr') { Game.enterVR(); return; }
+    if (k === 'vr') { HOST ? HOST.enterVR() : Game.enterVR(); return; }
+    if (k === 'exit') { HOST.exit(); return; }
     if (k === 'help') { $('help').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); return; }
     if (this.panelKey === k) { this.closePanel(); return; }
     this.openPanel(k);
   },
   closePanel() { this.panelKey = null; $('panel').hidden = true; this.markDock(); },
   markDock() {
-    for (const b of document.querySelectorAll('#dock .dk')) {
+    for (const b of $('dock').querySelectorAll('.dk')) {
       const k = b.dataset.k;
       b.classList.toggle('on', k === this.panelKey || (k === 'doll' && (G.state === 'doll')) || (k === 'tour' && Tour.active) || (k === 'measure' && G.mode === 'measure') || (k === 'edit' && G.mode === 'edit') || (k === 'sound' && this.panelKey === 'sound'));
     }
@@ -2836,7 +2874,7 @@ const UI = {
   updateRoom() {
     const r = G.state === 'doll' ? null : Player.room();
     if (r === this.lastRoom) return; this.lastRoom = r;
-    if (!r) { $('rc-name').textContent = '84㎡ 쓰리룸'; $('rc-area').innerHTML = `실사용 <b>${TOTAL_AREA.toFixed(1)}㎡</b> · 방 3 · 욕실 2`; $('rc-desc').textContent = '24층 남향 판상형, 발코니 확장형.'; return; }
+    if (!r) { $('rc-name').textContent = '84㎡ 쓰리룸'; $('rc-area').innerHTML = `실사용 <b>${TOTAL_AREA.toFixed(1)}㎡</b> · 방 3 · 욕실 2`; $('rc-desc').textContent = LABEL.desc; return; }
     $('rc-name').textContent = r.name;
     $('rc-area').innerHTML = `<b>${roomArea(r).toFixed(1)}㎡</b> · ${pyeong(roomArea(r)).toFixed(1)}평 · ${(r.rect[2] - r.rect[0]).toFixed(1)} × ${(r.rect[3] - r.rect[1]).toFixed(1)} m`;
     $('rc-desc').textContent = r.desc;
@@ -3013,14 +3051,14 @@ const Tools = {
   measureClick() {
     const [o, d] = Player.centerRay();
     const h = Player.pick(o, d, 'any'); if (!h) return;
-    const p = h.point.clone();
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xf0d3a4, depthTest: false })); dot.position.copy(p); dot.renderOrder = 25; R.scene.add(dot); this.marks.push(dot);
+    const p = R.local(h.point);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), new THREE.MeshBasicMaterial({ color: 0xf0d3a4, depthTest: false })); dot.position.copy(p); dot.renderOrder = 25; R.root.add(dot); this.marks.push(dot);
     this.points.push(p); Sound.click();
     if (this.points.length === 2) {
       const [a, b] = this.points, dist = a.distanceTo(b);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, depthTest: false })); line.renderOrder = 25; R.scene.add(line); this.marks.push(line);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, depthTest: false })); line.renderOrder = 25; R.root.add(line); this.marks.push(line);
       const c = Tex.canvas(320, 96), g = c.getContext('2d'); g.fillStyle = 'rgba(18,16,14,0.88)'; g.beginPath(); g.roundRect(4, 4, 312, 88, 40); g.fill(); g.fillStyle = '#f0d3a4'; g.font = '700 46px "Noto Sans KR", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(dist >= 1 ? `${dist.toFixed(2)} m` : `${Math.round(dist * 100)} cm`, 160, 50);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true })); s.position.copy(a).lerp(b, 0.5).add(new THREE.Vector3(0, 0.08, 0)); s.scale.set(0.36, 0.11, 1); s.renderOrder = 26; R.scene.add(s); this.marks.push(s);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true })); s.position.copy(a).lerp(b, 0.5).add(new THREE.Vector3(0, 0.08, 0)); s.scale.set(0.36, 0.11, 1); s.renderOrder = 26; R.root.add(s); this.marks.push(s);
       UI.toast(`거리 ${dist.toFixed(2)} m (가로 ${Math.abs(a.x - b.x).toFixed(2)} · 세로 ${Math.abs(a.z - b.z).toFixed(2)} · 높이 ${Math.abs(a.y - b.y).toFixed(2)})`);
       this.points = [];
     }
@@ -3037,8 +3075,8 @@ const Tools = {
     const [o, d] = Player.centerRay();
     if (this.holding) {
       // 바닥과 만나는 점으로 따라온다
-      const t = -(o.y - 0.0) / d.y;
-      if (t > 0 && t < 8) { const p = o.clone().addScaledVector(d, t); if (roomAt(p.x, p.z)) { this.holding.group.position.x = p.x; this.holding.group.position.z = p.z; } }
+      const ol = R.local(o), t = -ol.y / d.y;
+      if (t > 0 && t < 8) { const p = ol.addScaledVector(d, t); if (roomAt(p.x, p.z)) { this.holding.group.position.x = p.x; this.holding.group.position.z = p.z; } }
       let rot = 0; if (Input.hit('KeyQ')) rot += Math.PI / 12; if (Input.hit('KeyE')) rot -= Math.PI / 12; rot -= Input.wheel * Math.PI / 24;
       this.holding.group.rotation.y += rot;
       return;
@@ -3164,6 +3202,7 @@ const Game = {
 
   // ---------------- 입력
   lockPointer() { const c = R.renderer.domElement; if (G.touch || !c.requestPointerLock) return; try { const p = c.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* 무시 */ } },
+  locked() { return document.pointerLockElement === R.renderer.domElement; },
   escape() {
     if (!$('help').hidden) { $('help').hidden = true; return; }
     if (Tools.holding) { const m = Tools.holding; if (m.orig) { m.group.position.x = m.orig.x; m.group.position.z = m.orig.z; m.group.rotation.y = m.orig.r; } Tools.drop(true); return; }
@@ -3174,11 +3213,11 @@ const Game = {
   },
   bindInput() {
     const c = R.renderer.domElement;
+    // 바깥 앱 안에서는 그 앱이 키·마우스 이동을 Input에 모아 주므로 여기서는 집 안에 있을 때의 동작만 처리한다
     addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-      if (!e.repeat) Input.pressed.add(e.code);
-      Input.keys.add(e.code);
-      if (G.state === 'title' || G.xr) return;
+      if (!HOST) { if (!e.repeat) Input.pressed.add(e.code); Input.keys.add(e.code); }
+      if (!APTSTATE.active || G.state === 'title' || G.xr) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
       if (Tour.active && /^(Key[WASD]|Arrow)/.test(e.code)) { Tour.stop(); return; }
       const k = e.code;
@@ -3195,16 +3234,17 @@ const Game = {
       else if (k === 'KeyE' && G.mode !== 'edit') { if (G.mode === 'measure') Tools.measureClick(); else Player.use(); }
       else if (/^Digit[1-8]$/.test(k)) { const n = +k.slice(5); if (n <= 4) this.setStyle(STYLE_KEYS[n - 1]); else this.setTime(TOD_KEYS[n - 5]); }
     });
-    addEventListener('keyup', (e) => Input.keys.delete(e.code));
-    addEventListener('blur', () => Input.keys.clear());
-    document.addEventListener('pointerlockchange', () => { G.pointerLocked = document.pointerLockElement === c; });
-    addEventListener('mousemove', (e) => { if (G.pointerLocked) { Input.mouseDX += e.movementX; Input.mouseDY += e.movementY; } });
-    c.addEventListener('wheel', (e) => { if (G.state !== 'title') { e.preventDefault(); Input.wheel += Math.sign(e.deltaY); } }, { passive: false });
-    c.addEventListener('contextmenu', (e) => { e.preventDefault(); if (G.mode) Tools.setMode(null); });
+    if (!HOST) {
+      addEventListener('keyup', (e) => Input.keys.delete(e.code));
+      addEventListener('blur', () => Input.keys.clear());
+      addEventListener('mousemove', (e) => { if (this.locked()) { Input.mouseDX += e.movementX; Input.mouseDY += e.movementY; } });
+    }
+    c.addEventListener('wheel', (e) => { if (APTSTATE.active && G.state !== 'title') { e.preventDefault(); Input.wheel += Math.sign(e.deltaY); } }, { passive: false });
+    c.addEventListener('contextmenu', (e) => { if (!APTSTATE.active) return; e.preventDefault(); if (G.mode) Tools.setMode(null); });
     // 마우스·터치: 끌면 둘러보기(인형집에서는 궤도), 짧게 누르면 조작
     let down = null;
     c.addEventListener('pointerdown', (e) => {
-      if (G.state === 'title' || G.xr) return;
+      if (!APTSTATE.active || G.state === 'title' || G.xr) return;
       Sound.init();
       down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), id: e.pointerId, moved: false };
       if (G.state === 'doll') Doll.drag = true;
@@ -3214,7 +3254,7 @@ const Game = {
       const dx = e.clientX - down.lx, dy = e.clientY - down.ly; down.lx = e.clientX; down.ly = e.clientY;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.moved = true;
       if (G.state === 'doll') { Doll.az -= dx * 0.006; Doll.el = clamp(Doll.el + dy * 0.004, 0.35, 1.45); }
-      else if (G.state === 'walk' && !G.pointerLocked) { Input.lookDX += dx * (G.touch ? 1 : 0.55); Input.lookDY += dy * (G.touch ? 1 : 0.55); }
+      else if (G.state === 'walk' && !this.locked()) { Input.lookDX += dx * (G.touch ? 1 : 0.55); Input.lookDY += dy * (G.touch ? 1 : 0.55); }
     });
     addEventListener('pointerup', (e) => {
       if (!down || e.pointerId !== down.id) return;
@@ -3225,7 +3265,7 @@ const Game = {
       if (G.state !== 'walk') return;
       if (G.mode === 'measure') { Tools.measureClick(); return; }
       if (G.mode === 'edit') { Tools.editClick(); return; }
-      if (G.pointerLocked) { Player.use(); return; }
+      if (this.locked()) { Player.use(); return; }
       // 시점이 고정되지 않았으면: 누른 곳의 물건을 조작하고, 없으면 시점 고정
       const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), R.camera);
       const h = Player.pick(rc.ray.origin, rc.ray.direction);
@@ -3248,7 +3288,7 @@ const Game = {
   // ---------------- VR
   setupXR() {
     if (!navigator.xr || !navigator.xr.isSessionSupported) return;
-    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; document.querySelector('#dock [data-k="vr"]').hidden = false; } }).catch(() => {});
+    navigator.xr.isSessionSupported('immersive-vr').then((ok) => { if (ok) { $('b-vr').hidden = false; $('dock').querySelector('[data-k="vr"]').hidden = false; } }).catch(() => {});
     const xr = R.renderer.xr;
     xr.addEventListener('sessionstart', () => {
       G.xr = true; Sound.init();
@@ -3299,12 +3339,84 @@ const Game = {
       UI.updateRoom(); UI.updateHint();
       this.planT -= dt; if (this.planT <= 0) { this.planT = 0.1; UI.drawPlan(); }
     }
-    Input.endFrame();
+    if (!HOST) Input.endFrame(); // 바깥 앱은 자기 프레임 끝에서 비운다
+  },
+
+  // ---------------- 바깥 앱(부산·울산 VR) 안에서 쓰는 부분
+  hostInit() {
+    if (this.built) return;
+    this.built = true;
+    loadSettings();
+    G.touch = HOST.touch;
+    if (LABEL.tourLast) Object.assign(TOUR[TOUR.length - 1], LABEL.tourLast);
+    R.init(); Mats.init(); Mats.apply(G.style);
+    Build.init(); Interior.init();
+    R.syncHostTime();
+    UI.init();
+    $('rc-top').textContent = LABEL.top;
+    $('dock').querySelector('[data-k="exit"]').hidden = false;
+    this.bindInput();
+    for (const id of ['d-room2', 'd-room3', 'd-master', 'd-mbath']) { const d = Interior.doorById(id); d.open = true; d.k = 1; Interior.applyDoor(d); }
+    R.setLights(false);
+    UI.show(false);
+    G.state = 'walk';
+  },
+  hostEnter() {
+    this.hostInit();
+    APTSTATE.active = true;
+    R.setLights(true);
+    R.root.add(R.rig); // 카메라 받침을 집 좌표계로 옮긴다
+    R.syncHostTime();
+    $('dock').querySelector('[data-k="vr"]').hidden = !HOST.vrOk();
+    G.state = 'walk'; G.mode = null;
+    Player.teleport(3.3, -3.8); Player.lookAt(3.3, 0); Player.pitch = -0.03; Player.sit = false;
+    if (R.night > 0.3) this.autoLights();
+    UI.lastRoom = undefined;
+    if (G.xr) this.hostXRStart(); else { UI.show(true); Player.applyCamera(); }
+    Sound.init();
+    setTimeout(() => UI.toast(G.touch ? '문·스위치·가전을 누르면 조작됩니다. 아래 막대에서 스타일, 조명, 인형집 뷰, 투어를 골라 보세요.' : 'WASD로 걷고 클릭이나 E로 문·스위치·가전을 조작하세요. 화면을 누르면 시점이 고정되고, Esc로 풀립니다.'), 600);
+  },
+  hostExit() {
+    if (!APTSTATE.active) return;
+    if (Tour.active) Tour.stop();
+    if (G.mode) Tools.setMode(null);
+    if (G.state === 'doll' || G.state === 'dollout') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); HOST.setDoll(false); G.state = 'walk'; }
+    UI.closePanel(); $('help').hidden = true;
+    APTSTATE.active = false;
+    R.setLights(false);
+    Sound.toggleMusic(false); for (const k of [...Sound.loops.keys()]) if (k !== 'room') Sound.stopLoop(k);
+    if (Player.xr.ctrls.length) Player.showXRLines(false);
+    if (UI.vrPanel) UI.vrPanel.visible = false; Player.xr.menu = false;
+    UI.show(false);
+  },
+  hostXRStart() {
+    G.xr = true; Player.initXR(); Player.showXRLines(true); UI.show(false); UI.closePanel();
+    if (Tour.active) Tour.stop(); if (G.mode) Tools.setMode(null);
+    if (G.state === 'doll' || G.state === 'dollout') { Doll.anim = null; for (const c of Build.ceilings) c.visible = true; Doll.showLabels(false); HOST.setDoll(false); G.state = 'walk'; }
+    R.camera.position.set(0, 0, 0); R.camera.rotation.set(0, 0, 0);
+    Player.syncXR();
+  },
+  hostXREnd() {
+    G.xr = false; Player.yaw = R.rig.rotation.y; Player.pitch = 0;
+    if (UI.vrPanel) UI.vrPanel.visible = false; Player.xr.menu = false; Player.showXRLines(false);
+    UI.show(true); Player.applyCamera();
+  },
+  hostUpdate(dt) {
+    if (!APTSTATE.active) return;
+    this.timeT = (this.timeT || 0) - dt; if (this.timeT <= 0) { this.timeT = 2; R.syncHostTime(); }
+    this.logic(dt);
   },
 };
 
-if (location.search.includes('debug')) window.__apt = { THREE, G, R, Mats, Build, Interior, Interact, Player, Doll, Tour, Tools, UI, Home, Sound, Tex, F, STYLES, ROOMS, TOUR, Game, Physics };
-Game.init();
+const APT_DEBUG = { THREE, G, R, Mats, Build, Interior, Interact, Player, Doll, Tour, Tools, UI, Home, Sound, Tex, F, STYLES, ROOMS, TOUR, Game, Physics, APTSTATE };
+if (location.search.includes('debug')) window.__apt = APT_DEBUG;
+// 바깥 앱에 돌려줄 손잡이 (혼자 열 때는 바로 시작)
+const APT_API = HOST ? {
+  build: () => Game.hostInit(), enter: () => Game.hostEnter(), exit: () => Game.hostExit(), update: (dt) => Game.hostUpdate(dt),
+  xrStart: () => Game.hostXRStart(), xrEnd: () => Game.hostXREnd(), get active() { return APTSTATE.active; }, get root() { return R.root; },
+  player: () => Player.pos, debug: APT_DEBUG,
+} : null;
+if (!HOST) Game.init();
 
 </script>
 </body>

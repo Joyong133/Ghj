@@ -21,4 +21,4 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 - [`skyspire/`](skyspire/): 100층 부유성을 오르는 1인칭 검술 RPG (브라우저·WebXR)
 - [`busan-ulsan-vr/`](busan-ulsan-vr/): 실제 지도 데이터로 부산·울산을 1:1로 둘러보는 VR 여행. KTX로 서울·대구·경주·강릉 등까지 이동 (브라우저·WebXR)
-- [`apartment-vr/`](apartment-vr/): 24층 남향 아파트 쓰리룸을 걷고 꾸며 보는 VR 하우스 투어. 인테리어 스타일 4종, 시간대, 조명·커튼·가전 조작, 인형집 뷰, 가이드 투어 (브라우저·WebXR)
+  - [`busan-ulsan-vr/apartment/`](busan-ulsan-vr/apartment/): 해운대 아파트 38층 쓰리룸 집 구경. 부산·울산 VR 안에서 들어가거나 따로 열 수 있음 (인테리어 스타일 4종, 조명·커튼·가전 조작, 인형집 뷰, 가이드 투어)

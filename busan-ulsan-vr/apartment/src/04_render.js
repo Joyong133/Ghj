@@ -12,6 +12,7 @@ const GROUND_Y = -72; // 24층
 
 const R = {
   init() {
+    if (HOST) return this.initHost();
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     r.setSize(innerWidth, innerHeight);
@@ -25,7 +26,10 @@ const R = {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.04, 6000);
     this.rig = new THREE.Group(); this.rig.add(this.camera); this.scene.add(this.rig);
     const pm = new THREE.PMREMGenerator(r);
-    this.scene.environment = pm.fromScene(new RoomEnvironment(r), 0.04).texture;
+    this.envTex = pm.fromScene(new RoomEnvironment(r), 0.04).texture;
+    this.scene.environment = this.envTex;
+    // 집 전체를 담는 그룹 (혼자 열면 원점, 바깥 앱 안에서는 그 앱이 정한 자리)
+    this.root = new THREE.Group(); this.scene.add(this.root);
     // 빛
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = true;
@@ -42,6 +46,25 @@ const R = {
     this.buildSky();
     this.buildCity();
     addEventListener('resize', () => this.resize());
+  },
+  // 바깥 앱 안: 렌더러·장면·카메라를 빌려 쓰고, 하늘·도시·해는 바깥 앱 것을 쓴다
+  initHost() {
+    this.renderer = HOST.renderer; this.scene = HOST.scene; this.camera = HOST.camera; this.rig = HOST.rig;
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.envTex = pm.fromScene(new RoomEnvironment(this.renderer), 0.04).texture; pm.dispose();
+    this.root = new THREE.Group(); this.root.position.copy(HOST.origin()); this.scene.add(this.root);
+    this.bounce = new THREE.HemisphereLight(0x000000, 0xffffff, 0.6); this.root.add(this.bounce);
+    this.night = 0;
+  },
+  // 월드 좌표 → 집 좌표 (그룹은 옮기기만 하고 돌리지 않는다)
+  local(v) { return v.clone().sub(this.root.position); },
+  // 집 안 조명(점광원, 반사광)을 장면에서 빼거나 넣는다. 바깥 앱의 도시를 그릴 때 부담이 되지 않게
+  setLights(on) { this.root.traverse((o) => { if (o.isLight) o.visible = on; }); },
+  // 바깥 앱의 시각을 따라 실내 반사와 반사광을 맞춘다
+  syncHostTime() {
+    const n = HOST.night(); this.night = n; G.tod = HOST.timeKey();
+    Mats.setEnv(lerp(0.65, 0.14, n));
+    this.bounce.groundColor.set(0xf4e6d4).lerp(new THREE.Color(0x40342a), n); this.bounce.intensity = lerp(0.7, 0.15, n);
   },
   resize() { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(innerWidth, innerHeight); },
 
@@ -154,6 +177,7 @@ const R = {
 
   // ---------------- 시간대 적용
   setTime(key) {
+    if (HOST) { HOST.setTime(key); this.syncHostTime(); return; }
     const t = TOD[key]; G.tod = key;
     const dir = new THREE.Vector3(Math.sin(t.az * DEG) * Math.cos(t.el * DEG), Math.sin(t.el * DEG), -Math.cos(t.az * DEG) * Math.cos(t.el * DEG));
     this.sunDir = dir;

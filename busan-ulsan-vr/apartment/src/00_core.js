@@ -6,8 +6,10 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+// 부산·울산 VR 안에 들어갈 때는 바깥 앱이 APT_HOST(렌더러, 입력, 위치 등)를 넘겨 준다. 혼자 열면 null
+const HOST = typeof APT_HOST === 'undefined' ? null : APT_HOST;
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
-const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById((HOST ? 'apt-' : '') + id); // 바깥 앱의 같은 이름 요소와 겹치지 않게
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -18,6 +20,10 @@ const fmtM = (m) => `${m.toFixed(2)} m`;
 const pyeong = (m2) => m2 / 3.3058;
 
 // 전역 상태
+// 바깥 앱 안에서 지금 집 안에 있는가 (혼자 열면 늘 참)
+const APTSTATE = { active: !HOST };
+// 집에 관한 문구 (바깥 앱이 해운대 등 자기 위치에 맞게 바꿀 수 있다)
+const LABEL = Object.assign({ top: '84㎡ · 24F', desc: '24층 남향 판상형, 발코니 확장형.', tourLast: null }, (HOST && HOST.labels) || {});
 const G = {
   state: 'loading', // loading | title | walk | doll | tour | menu
   time: 0, xr: false, touch: false, pointerLocked: false,
@@ -32,8 +38,8 @@ function loadSettings() {
 }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ style: G.style, tod: G.tod, sound: G.sound, volume: G.volume })); } catch (e) { /* 무시 */ } }
 
-// 입력
-const Input = {
+// 입력 (바깥 앱 안에서는 그 앱이 모으는 입력을 같이 쓴다)
+const Input = HOST ? HOST.Input : {
   keys: new Set(), pressed: new Set(), mouseDX: 0, mouseDY: 0, wheel: 0,
   joy: { x: 0, y: 0 }, lookDX: 0, lookDY: 0,
   endFrame() { this.pressed.clear(); this.mouseDX = this.mouseDY = this.wheel = 0; this.lookDX = this.lookDY = 0; },

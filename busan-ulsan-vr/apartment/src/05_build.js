@@ -6,7 +6,7 @@ const Build = {
   group: null, colliders: [], doors: [], windows: [], fixtures: [], ceilings: [], lights: {},
 
   init() {
-    this.group = new THREE.Group(); R.scene.add(this.group);
+    this.group = new THREE.Group(); R.root.add(this.group);
     this.floors();
     this.ceilingsBuild();
     this.walls();
@@ -284,7 +284,7 @@ const Build = {
       const L = { key: k, on: false, lights: [], fixtures: [], dim: 1 };
       for (const [x, y, zz] of z.lights) {
         const pl = new THREE.PointLight(0xffd8a8, 0, k === 'living' ? 8 : 6.5, 2);
-        pl.position.set(x, y, zz); R.scene.add(pl); L.lights.push(pl);
+        pl.position.set(x, y, zz); R.root.add(pl); L.lights.push(pl);
       }
       this.lights[k] = L;
     }

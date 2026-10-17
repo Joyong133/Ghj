@@ -106,25 +106,29 @@ const Player = {
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xf0d3a4, transparent: true, opacity: 0.7 }));
       line.scale.z = 3; c.add(line);
       const grip = r.xr.getControllerGrip(i);
-      const body = new THREE.Mesh(new RoundedBoxGeometry(0.04, 0.03, 0.12, 2, 0.012), new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.4 }));
-      body.position.z = 0.02; grip.add(body);
+      if (!HOST) { // 바깥 앱은 자기 손 모형이 있다
+        const body = new THREE.Mesh(new RoundedBoxGeometry(0.04, 0.03, 0.12, 2, 0.012), new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.4 }));
+        body.position.z = 0.02; grip.add(body);
+      }
       R.rig.add(c); R.rig.add(grip);
-      c.userData = { line, idx: i };
-      c.addEventListener('connected', (e) => { c.userData.hand = e.data.handedness; c.userData.src = e.data; });
-      c.addEventListener('disconnected', () => { c.userData.src = null; });
-      c.addEventListener('selectstart', () => this.xrSelect(c));
+      // 컨트롤러 객체는 바깥 앱과 같이 쓰므로 userData를 바꿔치지 않고 덧붙인다 (hand, gamepad 이름도 같게)
+      Object.assign(c.userData, { aptLine: line, idx: i });
+      c.addEventListener('connected', (e) => { c.userData.hand = e.data.handedness; c.userData.gamepad = e.data.gamepad; });
+      c.addEventListener('disconnected', () => { c.userData.gamepad = null; });
+      c.addEventListener('selectstart', () => { if (APTSTATE.active) this.xrSelect(c); });
       X.ctrls.push(c);
     }
     // 순간이동 표시: 포물선과 바닥 고리
     X.arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(30).fill(0).map(() => new THREE.Vector3())), new THREE.LineBasicMaterial({ color: 0xd8b27c }));
-    X.arc.visible = false; R.scene.add(X.arc);
+    X.arc.visible = false; R.root.add(X.arc);
     X.ringMesh = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.24, 32), new THREE.MeshBasicMaterial({ color: 0xd8b27c, side: THREE.DoubleSide }));
-    X.ringMesh.rotation.x = -Math.PI / 2; X.ringMesh.visible = false; R.scene.add(X.ringMesh);
+    X.ringMesh.rotation.x = -Math.PI / 2; X.ringMesh.visible = false; R.root.add(X.ringMesh);
     // 조작 안내 글씨 (광선이 닿은 곳)
     const c = Tex.canvas(512, 96); X.hintCanvas = c; X.hintTex = Tex.tex(c);
     X.hint = new THREE.Sprite(new THREE.SpriteMaterial({ map: X.hintTex, depthTest: false, transparent: true }));
-    X.hint.scale.set(0.42, 0.08, 1); X.hint.visible = false; X.hint.renderOrder = 20; R.scene.add(X.hint);
+    X.hint.scale.set(0.42, 0.08, 1); X.hint.visible = false; X.hint.renderOrder = 20; R.root.add(X.hint);
   },
+  showXRLines(on) { for (const c of this.xr.ctrls) c.userData.aptLine.visible = on; if (!on && this.xr.hint) { this.xr.hint.visible = this.xr.arc.visible = this.xr.ringMesh.visible = false; } },
   xrHand(h) { return this.xr.ctrls.find((c) => c.userData.hand === h); },
   syncXR() { R.rig.position.set(this.pos.x, this.pos.y, this.pos.z); R.rig.rotation.set(0, this.yaw, 0); },
   xrSelect(c) {
@@ -137,11 +141,10 @@ const Player = {
     const X = this.xr;
     this.yaw = R.rig.rotation.y;
     // 머리 위치 (방 안에서 실제로 걸어 다닌 만큼 포함)
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position); // 집 좌표
     let hoverAny = null;
     for (const c of X.ctrls) {
-      const src = c.userData.src; if (!src) continue;
-      const gp = src.gamepad, hand = c.userData.hand;
+      const gp = c.userData.gamepad, hand = c.userData.hand; if (!hand) continue;
       // 광선 조준
       const o = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), d = new THREE.Vector3(0, 0, -1).transformDirection(c.matrixWorld);
       let len = 3;
@@ -152,7 +155,7 @@ const Player = {
         c.userData.hoverIt = h ? h.object.userData.it : null;
         if (h) { len = h.distance; if (hand === 'right' || !hoverAny) hoverAny = { it: h.object.userData.it, p: h.point }; }
       }
-      c.userData.line.scale.z = len;
+      c.userData.aptLine.scale.z = len;
       if (!gp) continue;
       const ax = gp.axes[2] || 0, ay = gp.axes[3] || 0;
       const b = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
@@ -172,7 +175,7 @@ const Player = {
         // 오른쪽 스틱: 좌우 30° 회전, 앞으로 밀면 순간이동 조준
         if (Math.abs(ax) > 0.7 && !X.turnLatch) { X.turnLatch = true; this.snapTurn(ax > 0 ? -Math.PI / 6 : Math.PI / 6); }
         if (Math.abs(ax) < 0.3) X.turnLatch = false;
-        if (ay < -0.6) { X.aiming = true; this.aimTeleport(o, d); }
+        if (ay < -0.6) { X.aiming = true; this.aimTeleport(R.local(o), d); }
         else if (X.aiming) { X.aiming = false; X.arc.visible = X.ringMesh.visible = false; if (X.tpTarget) this.xrTeleport(X.tpTarget); }
         if (edge(4)) UI.toggleVRMenu();
         if (edge(5)) UI.vrQuick();
@@ -182,7 +185,7 @@ const Player = {
     if (hoverAny && !X.menu) {
       const txt = hoverAny.it.hint();
       if (txt !== X.lastHint) { X.lastHint = txt; const g = X.hintCanvas.getContext('2d'); g.clearRect(0, 0, 512, 96); g.fillStyle = 'rgba(20,18,16,0.85)'; g.beginPath(); g.roundRect(8, 10, 496, 76, 38); g.fill(); g.fillStyle = '#f0d3a4'; g.font = '600 34px "Noto Sans KR", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('트리거 · ' + txt, 256, 50); X.hintTex.needsUpdate = true; }
-      X.hint.visible = true; X.hint.position.copy(hoverAny.p).add(new THREE.Vector3(0, 0.12, 0));
+      X.hint.visible = true; X.hint.position.copy(R.local(hoverAny.p)).add(new THREE.Vector3(0, 0.12, 0));
     } else X.hint.visible = false;
     // 바닥 높이 (현관 단차)
     R.rig.position.y = lerp(R.rig.position.y, Build.floorY(head.x, head.z), 1 - Math.exp(-dt * 10));
@@ -190,7 +193,7 @@ const Player = {
   },
   snapTurn(a) {
     // 머리 위치를 축으로 돈다
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
     const off = new THREE.Vector3().subVectors(R.rig.position, head).applyAxisAngle(new THREE.Vector3(0, 1, 0), a);
     R.rig.position.copy(head).add(off); R.rig.position.y = this.pos.y;
     R.rig.rotation.y += a;
@@ -212,7 +215,7 @@ const Player = {
     X.arc.material.color.setHex(ok ? 0xd8b27c : 0xff6a5a);
   },
   xrTeleport(t) {
-    const head = new THREE.Vector3(); R.camera.getWorldPosition(head);
+    const head = new THREE.Vector3(); R.camera.getWorldPosition(head); head.sub(R.root.position);
     R.rig.position.x += t.x - head.x; R.rig.position.z += t.z - head.z;
     UI.flash('#000', 0.18);
   },
@@ -226,6 +229,7 @@ const Doll = {
   enter() {
     if (G.state === 'doll') return;
     G.prev = G.state; G.state = 'doll';
+    if (HOST) HOST.setDoll(true); // 위층을 걷어 낸다
     this.from = this.camPose();
     for (const c of Build.ceilings) c.visible = false;
     this.showLabels(true);
@@ -237,10 +241,10 @@ const Doll = {
     if (G.state !== 'doll') return;
     if (toX !== undefined) { Player.teleport(toX, toZ); }
     const target = (() => { const p = Player.pos.clone(); const cam = new THREE.Vector3(p.x, p.y + Player.eye, p.z); const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Player.pitch, Player.yaw, 0, 'YXZ')); return { p: cam, q }; });
-    this.anim = { t: 0, dur: 1.1, from: this.camPose(), to: target, done: () => { for (const c of Build.ceilings) c.visible = true; this.showLabels(false); G.state = 'walk'; Player.applyCamera(); UI.onMode(); } };
+    this.anim = { t: 0, dur: 1.1, from: this.camPose(), to: target, done: () => { for (const c of Build.ceilings) c.visible = true; this.showLabels(false); G.state = 'walk'; Player.applyCamera(); UI.onMode(); if (HOST) HOST.setDoll(false); } };
     G.state = 'dollout';
   },
-  camPose() { const p = new THREE.Vector3(), q = new THREE.Quaternion(); R.camera.getWorldPosition(p); R.camera.getWorldQuaternion(q); return { p, q }; },
+  camPose() { const p = new THREE.Vector3(), q = new THREE.Quaternion(); R.camera.getWorldPosition(p); R.camera.getWorldQuaternion(q); return { p: p.sub(R.root.position), q }; },
   orbitPose() {
     const p = new THREE.Vector3(Math.sin(this.az) * Math.cos(this.el), Math.sin(this.el), Math.cos(this.az) * Math.cos(this.el)).multiplyScalar(this.dist).add(this.target);
     const m = new THREE.Matrix4().lookAt(p, this.target, new THREE.Vector3(0, 1, 0));
@@ -278,7 +282,7 @@ const Doll = {
         g2.fillStyle = '#d8b27c'; g2.font = '500 36px "Noto Sans KR", sans-serif'; g2.fillText(`${roomArea(r).toFixed(1)}㎡`, w / 2, 126);
         const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Tex.tex(c), depthTest: false, transparent: true }));
         const [x0, z0, x1, z1] = r.rect; s.position.set((x0 + x1) / 2, 2.9, (z0 + z1) / 2); s.renderOrder = 30; s.userData.w = w / 160;
-        R.scene.add(s); this.labels.push(s);
+        R.root.add(s); this.labels.push(s);
       }
     }
     for (const l of this.labels) l.visible = on;
@@ -295,8 +299,8 @@ const Doll = {
   // 화면 좌표의 바닥 지점
   floorAt(nx, ny) {
     const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), R.camera);
-    const t = -rc.ray.origin.y / rc.ray.direction.y; if (!(t > 0)) return null;
-    const p = rc.ray.origin.clone().addScaledVector(rc.ray.direction, t);
+    const o = R.local(rc.ray.origin), t = -o.y / rc.ray.direction.y; if (!(t > 0)) return null;
+    const p = o.addScaledVector(rc.ray.direction, t);
     return roomAt(p.x, p.z) ? p : null;
   },
 };
