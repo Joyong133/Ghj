@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2a33">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="잠금화면">
+<link rel="manifest" href="lockscreen.webmanifest">
+<link rel="icon" type="image/png" href="lockscreen-icon-192.png">
+<link rel="apple-touch-icon" href="lockscreen-icon-180.png">
 <title>잠금화면 리더</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="txt 파일을 잠금화면 위에서 열어 읽는 리더입니다. UTF-8과 EUC-KR을 자동으로 구분하고 읽던 위치를 기억합니다.">
@@ -52,11 +60,17 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { height: 100%; box-sizing: border-box; }
+html {
+  height: 100%;
+  box-sizing: border-box;
+  padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: var(--ink);
   color: var(--text);
   font-family: var(--f-ui);
@@ -71,7 +85,16 @@ button {
   border: 0;
   padding: 0;
   cursor: pointer;
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 ::selection { background: var(--accent); color: var(--ink); }
@@ -110,6 +133,7 @@ button {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 0;
@@ -245,6 +269,8 @@ button {
   color: var(--muted);
   text-shadow: 0 1px 10px var(--shade);
 }
+.fine-only { display: none; }
+@media (hover: hover) and (pointer: fine) { .fine-only { display: inline; } }
 .spacer { flex: 1; min-height: 0; }
 
 .dock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 12px; }
@@ -381,7 +407,7 @@ button {
   font-size: 13px;
 }
 .set { display: flex; align-items: center; gap: 10px; }
-.set-label { color: var(--r-muted); min-width: 4.4em; }
+.set-label { color: var(--r-muted); min-width: 5.8em; }
 .seg {
   display: inline-flex;
   align-items: center;
@@ -441,6 +467,86 @@ button {
 .r-foot .pct { color: var(--r-fg); }
 .r-left { white-space: nowrap; }
 
+/* ── 새 글 열기 창 ────────────────────── */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 8vh) max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s, visibility 0s linear 0.3s;
+}
+.is-sheet .modal { opacity: 1; visibility: visible; transition: opacity 0.25s; }
+.modal-card {
+  --r-fg: var(--text);
+  width: 100%;
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 18px 18px;
+  border-radius: 26px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 60px var(--shade);
+  -webkit-backdrop-filter: blur(30px) saturate(130%);
+  backdrop-filter: blur(30px) saturate(130%);
+  transform: translateY(-12px) scale(0.98);
+  transition: transform 0.35s var(--ease);
+}
+.is-sheet .modal-card { transform: none; }
+.m-head { display: flex; align-items: center; justify-content: space-between; margin-right: -10px; }
+.m-head h2 { margin: 0; font-family: var(--f-display); font-weight: 600; font-size: 1.2rem; }
+.m-file {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--glass-hi);
+  border: 1px solid var(--line);
+  text-align: left;
+  transition: background 0.2s;
+}
+.m-file:hover { background: color-mix(in srgb, var(--text) 18%, transparent); }
+.m-file .ic { width: 28px; height: 28px; color: var(--accent); }
+.m-file strong { display: block; font-size: 15px; font-weight: 600; }
+.m-file small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.m-or { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--faint); }
+.m-or::before, .m-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.m-area {
+  width: 100%;
+  min-height: 9.5rem;
+  resize: vertical;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--text);
+  font-family: var(--f-display);
+  font-size: 16px;
+  line-height: 1.6;
+}
+.m-area::placeholder { color: var(--faint); }
+.m-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.m-go {
+  height: 48px;
+  border-radius: 14px;
+  background: var(--text);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.m-go:disabled { opacity: 0.35; cursor: default; }
+
 /* ── 끌어다 놓기 · 알림 ───────────────── */
 .drop {
   position: fixed;
@@ -497,6 +603,9 @@ button {
 }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+@media (min-height: 760px) {
+  .w-preview { -webkit-line-clamp: 5; }
+}
 @media (max-height: 680px) {
   .clock { font-size: clamp(4.2rem, 15vh, 6.4rem); }
   .w-preview { -webkit-line-clamp: 2; }
@@ -547,12 +656,12 @@ button {
       <p class="w-meta" id="wMeta">&nbsp;</p>
     </section>
 
-    <p class="hint">txt 파일은 왼쪽 아래 버튼으로 열거나 화면에 끌어다 놓으세요.<br>복사한 글을 붙여넣어도 바로 열려요.</p>
+    <p class="hint">왼쪽 아래 버튼으로 txt 파일을 열거나 글을 붙여넣으세요.<span class="fine-only"><br>컴퓨터에서는 화면에 끌어다 놓거나 Ctrl+V로 붙여넣어도 돼요.</span></p>
 
     <div class="spacer"></div>
 
     <div class="dock">
-      <button class="round" id="openBtn" type="button" aria-label="txt 파일 열기" title="txt 파일 열기">
+      <button class="round" id="openBtn" type="button" aria-label="새 글 열기" title="새 글 열기">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
       </button>
       <button class="swipe" id="swipe" type="button" aria-label="읽기 화면 열기">
@@ -576,7 +685,7 @@ button {
         <h2 class="r-title" id="rTitle">&nbsp;</h2>
         <p class="r-meta" id="rMeta">&nbsp;</p>
       </div>
-      <button class="icon-btn" id="openBtn2" type="button" aria-label="다른 txt 파일 열기" title="다른 txt 파일 열기">
+      <button class="icon-btn" id="openBtn2" type="button" aria-label="새 글 열기" title="새 글 열기">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>
       </button>
       <button class="icon-btn" id="setBtn" type="button" aria-label="보기 설정" title="보기 설정" aria-expanded="false" aria-controls="settings">
@@ -614,6 +723,13 @@ button {
           <button type="button" data-v="paper">종이</button>
         </div>
       </div>
+      <div class="set">
+        <span class="set-label">화면 켜두기</span>
+        <div class="seg" id="awakeSeg" role="group" aria-label="화면 켜두기">
+          <button type="button" data-v="off">끔</button>
+          <button type="button" data-v="on">켬</button>
+        </div>
+      </div>
     </div>
 
     <div class="r-scroll" id="rScroll" tabindex="0" aria-label="본문">
@@ -625,6 +741,25 @@ button {
       <span class="pct" id="rPct">0%</span>
       <span class="r-left" id="rLeft">&nbsp;</span>
     </footer>
+  </div>
+</section>
+
+<section class="modal" id="openSheet" role="dialog" aria-modal="true" aria-labelledby="openTitle" inert>
+  <div class="modal-card">
+    <div class="m-head">
+      <h2 id="openTitle">새 글 열기</h2>
+      <button class="icon-btn" id="openClose" type="button" aria-label="닫기" title="닫기">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <button class="m-file" id="pickFile" type="button">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      <span><strong>txt 파일 고르기</strong><small>파일 앱이나 다운로드 폴더에서 · UTF-8, EUC-KR</small></span>
+    </button>
+    <div class="m-or">또는 글 붙여넣기</div>
+    <label class="sr-only" for="pasteArea">붙여넣을 글</label>
+    <textarea class="m-area" id="pasteArea" placeholder="여기를 길게 눌러 붙여넣으세요"></textarea>
+    <button class="m-go" id="pasteGo" type="button" disabled>이 글 읽기</button>
   </div>
 </section>
 
@@ -648,7 +783,8 @@ button {
   ['wall', 'grain', 'lock', 'lockInner', 'statusLabel', 'date', 'clock', 'widget', 'widgetOpen', 'wState', 'wChip',
    'eyeBtn', 'wTitle', 'wPreview', 'wBar', 'wPct', 'wMeta', 'openBtn', 'swipe', 'wallBtn', 'reader', 'sheet',
    'closeBtn', 'rTitle', 'rMeta', 'openBtn2', 'setBtn', 'settings', 'sizeDown', 'sizeUp', 'sizeOut', 'fontSeg',
-   'lhSeg', 'surfSeg', 'rScroll', 'rText', 'rBar', 'rPct', 'rLeft', 'drop', 'toast', 'fileInput']
+   'lhSeg', 'surfSeg', 'awakeSeg', 'rScroll', 'rText', 'rBar', 'rPct', 'rLeft', 'openSheet', 'openClose', 'pickFile',
+   'pasteArea', 'pasteGo', 'drop', 'toast', 'fileInput']
     .forEach((id) => { E[id] = $(id); });
 
   /* ── 저장 (이 브라우저에만 남는 편의 기능) ── */
@@ -697,11 +833,12 @@ button {
     '',
     '― 이 화면 사용법 ―',
     '',
-    '· 왼쪽 아래 문서 버튼으로 txt 파일을 열어요. 컴퓨터에서는 화면에 끌어다 놓아도 돼요.',
-    '· 글을 복사해 이 화면에 붙여넣으면 바로 읽을 수 있어요.',
+    '· 왼쪽 아래 문서 버튼을 누르면 txt 파일을 고르거나 복사한 글을 붙여넣을 수 있어요.',
+    '· 컴퓨터에서는 화면에 파일을 끌어다 놓거나 Ctrl+V로 바로 붙여넣어도 돼요.',
     '· UTF-8과 EUC-KR(CP949)로 저장된 한국어 파일을 알아서 구분해요.',
     '· 읽던 위치는 이 브라우저에 저장돼서, 같은 파일을 다시 열면 이어서 읽어요.',
     '· 오른쪽 위 보기 설정에서 글자 크기, 글꼴, 줄 간격, 바탕을 바꿀 수 있어요.',
+    '· 보기 설정의 화면 켜두기를 켜면 이 화면이 열려 있는 동안 휴대폰 화면이 꺼지지 않아요.',
     '· 잠금화면 오른쪽 아래 버튼은 배경을, 시계는 12시간·24시간 표시를 바꿔요.',
     '· 위젯의 눈 모양 버튼을 누르면 잠금화면에서 글 내용을 가려요.',
   ].join('\n');
@@ -719,7 +856,7 @@ button {
   const nf = new Intl.NumberFormat('ko-KR');
 
   const prefs = Object.assign(
-    { wall: 'sea', h24: false, hide: false, font: 'serif', size: 18, lh: 'normal', surface: 'glass' },
+    { wall: 'sea', h24: false, hide: false, font: 'serif', size: 18, lh: 'normal', surface: 'glass', awake: false },
     store.get('prefs', {})
   );
   if (!WALLS[prefs.wall]) prefs.wall = 'sea';
@@ -962,7 +1099,7 @@ button {
     if (readerOpen) return;
     readerOpen = true;
     root.classList.add('is-reading');
-    E.statusLabel.textContent = '열림';
+    updateStatus();
     E.reader.inert = false;
     E.lock.inert = true;
     stopWall();
@@ -977,7 +1114,7 @@ button {
     setPos(doc.key, ratio);
     readerOpen = false;
     root.classList.remove('is-reading');
-    E.statusLabel.textContent = '잠김';
+    updateStatus();
     E.reader.inert = true;
     E.lock.inert = false;
     toggleSettings(false);
@@ -1001,7 +1138,7 @@ button {
     E.sizeOut.value = prefs.size;
     E.sizeDown.disabled = prefs.size === SIZES[0];
     E.sizeUp.disabled = prefs.size === SIZES[SIZES.length - 1];
-    [[E.fontSeg, prefs.font], [E.lhSeg, prefs.lh], [E.surfSeg, prefs.surface]].forEach(([seg, v]) => {
+    [[E.fontSeg, prefs.font], [E.lhSeg, prefs.lh], [E.surfSeg, prefs.surface], [E.awakeSeg, prefs.awake ? 'on' : 'off']].forEach(([seg, v]) => {
       seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
     });
   }
@@ -1021,6 +1158,52 @@ button {
     });
   });
   E.setBtn.addEventListener('click', () => toggleSettings());
+
+  /* 화면 켜두기 (Wake Lock: 화면이 보이는 동안만 유지되고, 다시 보이면 새로 요청) */
+  let wake = null;
+  function updateStatus() {
+    E.statusLabel.textContent = (readerOpen ? '열림' : '잠김') + (wake ? ' · 화면 켜둠' : '');
+  }
+  async function syncWake() {
+    if (prefs.awake && !document.hidden) {
+      if (wake) return true;
+      if (!('wakeLock' in navigator)) return false;
+      try {
+        wake = await navigator.wakeLock.request('screen');
+        wake.addEventListener('release', () => { wake = null; updateStatus(); });
+        updateStatus();
+        return true;
+      } catch (e) {
+        wake = null;
+        updateStatus();
+        return false;
+      }
+    }
+    if (wake) {
+      const w = wake;
+      wake = null;
+      try { await w.release(); } catch (e) { /* 이미 풀림 */ }
+    }
+    updateStatus();
+    return true;
+  }
+  E.awakeSeg.addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    const want = b.dataset.v === 'on';
+    if (want === prefs.awake) return;
+    prefs.awake = want;
+    applyPrefs();
+    const ok = await syncWake();
+    if (want && !ok) {
+      prefs.awake = false;
+      applyPrefs();
+      toast('이 브라우저에서는 화면 켜두기를 쓸 수 없어요.');
+    } else {
+      toast(want ? '이 화면이 열려 있는 동안 화면이 꺼지지 않아요' : '화면 켜두기를 껐어요');
+    }
+    savePrefs();
+  });
   E.closeBtn.addEventListener('click', closeReader);
   E.widgetOpen.addEventListener('click', openReader);
   E.swipe.addEventListener('click', openReader);
@@ -1074,13 +1257,56 @@ button {
     setDoc(makeDoc(d));
     const kept = saveDoc();
     toast(kept ? message : message + '. 파일이 커서 다음에는 다시 열어야 해요. 읽던 위치는 기억해요.');
-    openReader();
+    if (readerOpen) E.rScroll.focus({ preventScroll: true });
+    else openReader();
   }
-  E.openBtn.addEventListener('click', () => E.fileInput.click());
-  E.openBtn2.addEventListener('click', () => E.fileInput.click());
+  function loadPasted(t) {
+    const d = new Date();
+    const stamp = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + d.getHours() + '시 ' + String(d.getMinutes()).padStart(2, '0') + '분';
+    loadText({ name: '붙여넣은 글 (' + stamp + ').txt', text: t, enc: '붙여넣기', size: new Blob([t]).size }, '붙여넣은 글을 열었어요');
+  }
+
+  /* 새 글 열기 창: 파일 고르기 + 붙여넣기 (휴대폰에는 Ctrl+V가 없어서 입력란이 필요) */
+  let sheetOpen = false, sheetReturn = null, sheetPrev = [false, true];
+  function openSheet(from) {
+    if (sheetOpen) return;
+    sheetOpen = true;
+    sheetReturn = from || null;
+    sheetPrev = [E.lock.inert, E.reader.inert];
+    E.lock.inert = true;
+    E.reader.inert = true;
+    E.openSheet.inert = false;
+    root.classList.add('is-sheet');
+    E.pickFile.focus({ preventScroll: true });
+  }
+  function closeSheet(restoreFocus) {
+    if (!sheetOpen) return;
+    sheetOpen = false;
+    E.lock.inert = sheetPrev[0];
+    E.reader.inert = sheetPrev[1];
+    E.openSheet.inert = true;
+    root.classList.remove('is-sheet');
+    E.pasteArea.value = '';
+    E.pasteGo.disabled = true;
+    if (restoreFocus !== false && sheetReturn) sheetReturn.focus({ preventScroll: true });
+  }
+  E.openBtn.addEventListener('click', () => openSheet(E.openBtn));
+  E.openBtn2.addEventListener('click', () => openSheet(E.openBtn2));
+  E.openClose.addEventListener('click', () => closeSheet());
+  E.openSheet.addEventListener('click', (e) => { if (e.target === E.openSheet) closeSheet(); });
+  E.pickFile.addEventListener('click', () => E.fileInput.click());
+  E.pasteArea.addEventListener('input', () => { E.pasteGo.disabled = !E.pasteArea.value.trim(); });
+  E.pasteGo.addEventListener('click', () => {
+    const t = E.pasteArea.value;
+    if (!t.trim()) return;
+    closeSheet(false);
+    loadPasted(t);
+  });
   E.fileInput.addEventListener('change', () => {
     const f = E.fileInput.files && E.fileInput.files[0];
     E.fileInput.value = '';
+    if (!f) return;
+    closeSheet(false);
     openFile(f);
   });
 
@@ -1094,19 +1320,18 @@ button {
     e.preventDefault();
     dragDepth = 0;
     E.drop.classList.remove('on');
+    closeSheet(false);
     openFile(e.dataTransfer.files[0]);
   });
   addEventListener('paste', (e) => {
     const cd = e.clipboardData;
-    if (!cd) return;
+    if (!cd || sheetOpen) return;
     const f = Array.from(cd.files || []).find(isTxt);
     if (f) { e.preventDefault(); openFile(f); return; }
     const t = cd.getData('text/plain');
     if (t && t.trim()) {
       e.preventDefault();
-      const d = new Date();
-      const stamp = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + d.getHours() + '시 ' + String(d.getMinutes()).padStart(2, '0') + '분';
-      loadText({ name: '붙여넣은 글 (' + stamp + ').txt', text: t, enc: '붙여넣기', size: new Blob([t]).size }, '붙여넣은 글을 열었어요');
+      loadPasted(t);
     }
   });
 
@@ -1122,9 +1347,10 @@ button {
   /* ── 키보드 · 창 ──────────────────────── */
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (readerOpen && !E.settings.hidden) toggleSettings(false);
+      if (sheetOpen) closeSheet();
+      else if (readerOpen && !E.settings.hidden) toggleSettings(false);
       else closeReader();
-    } else if (e.key === 'ArrowUp' && !readerOpen && !e.target.closest('button')) {
+    } else if (e.key === 'ArrowUp' && !readerOpen && !sheetOpen && !e.target.closest('button, textarea')) {
       e.preventDefault();
       openReader();
     }
@@ -1135,8 +1361,9 @@ button {
     if (readerOpen) requestAnimationFrame(() => setScrollRatio(ratio));
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopWall();
-    else if (!readerOpen) startWall();
+    if (document.hidden) { stopWall(); return; }
+    if (!readerOpen) startWall();
+    syncWake();
   });
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => { if (readerOpen) setScrollRatio(ratio); });
@@ -1150,6 +1377,7 @@ button {
   setDoc(doc);
   tick();
   if (!reduceMotion.matches) startWall();
+  if (prefs.awake) syncWake();
 })();
 </script>
 </html>
