@@ -21,6 +21,49 @@ static func _prop(name: String) -> MeshInstance3D:
 	return d
 
 
+const STEX := "res://assets/textures/station/"
+static var _tcache := {}
+
+
+## 실제 크기 타일(tile m)로 반복되는 텍스처 재질 (삼면 투영)
+static func _tmat(file: String, tile: float, tint := Color.WHITE, rough := 0.6) -> StandardMaterial3D:
+	var key := "%s_%.2f_%s_%.2f" % [file, tile, tint.to_html(), rough]
+	if _tcache.has(key):
+		return _tcache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(STEX + file)
+	m.albedo_color = tint
+	m.roughness = rough
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3(1.0 / tile, 1.0 / tile, 1.0 / tile)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_tcache[key] = m
+	return m
+
+
+## 사진처럼 한 장을 붙이는 판 (광고, 안내도). 조명 상자처럼 스스로 밝다.
+static func _decal(parent: Node3D, file: String, size: Vector2, pos: Vector3, rot_y: float, lit := true) -> void:
+	var key := "decal_" + file + str(lit)
+	var m: StandardMaterial3D
+	if _tcache.has(key):
+		m = _tcache[key]
+	else:
+		m = StandardMaterial3D.new()
+		m.albedo_texture = load(STEX + file)
+		if lit:
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_tcache[key] = m
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = size
+	mi.mesh = q
+	mi.material_override = m
+	mi.position = pos
+	mi.rotation.y = rot_y
+	parent.add_child(mi)
+
+
 static func apply_line_color(root: Node, col: Color) -> void:
 	var lm := Mats.color(col, 0.4)
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
@@ -136,8 +179,8 @@ static func _name_board(ctx: Dictionary, parent: Node3D, pos: Vector3, face_x: i
 	Mats.box(b, Vector3(w + 0.06, h + 0.06, 0.03), Vector3(0, 0, -0.06), Mats.color(Color(0.3, 0.3, 0.32), 0.5, 0.5))
 	var name_len: int = st["ko"].length()
 	var fs := 120 if name_len <= 4 else (96 if name_len <= 6 else 64)
-	Mats.label(b, st["ko"], Vector3(0.12, 0.13, 0.002), fs, 0.0032, Color(0.08, 0.08, 0.1))
-	Mats.label(b, st["en"], Vector3(0.12, -0.12, 0.002), 34, 0.0032, Color(0.25, 0.25, 0.28), false)
+	Mats.text(b, st["ko"], Vector3(0.12, 0.13, 0.002), fs, 0.0032, Color(0.08, 0.08, 0.1))
+	Mats.text(b, st["en"], Vector3(0.12, -0.12, 0.002), 34, 0.0032, Color(0.25, 0.25, 0.28), false)
 	# 역번호 원
 	var no: String = st["no"]
 	if no != "":
@@ -152,7 +195,7 @@ static func _name_board(ctx: Dictionary, parent: Node3D, pos: Vector3, face_x: i
 		c.position = Vector3(nx, 0.1, 0.0)
 		c.material_override = Mats.unshaded(lc)
 		b.add_child(c)
-		Mats.label(b, no, Vector3(nx, 0.1, 0.008), 40 if no.length() <= 3 else 26, 0.0032, Color.WHITE)
+		Mats.text(b, no, Vector3(nx, 0.1, 0.008), 40 if no.length() <= 3 else 26, 0.0032, Color.WHITE)
 	# 하단 띠: ◀ 이전역 | 다음역 ▶   (진행방향 -Z 기준으로 화살표 방향 결정)
 	var left_name: String
 	var right_name: String
@@ -164,11 +207,9 @@ static func _name_board(ctx: Dictionary, parent: Node3D, pos: Vector3, face_x: i
 		left_name = ctx["next"]
 		right_name = ctx["prev"]
 	if left_name != "":
-		var ll := Mats.label(b, "◀ " + left_name, Vector3(-w * 0.5 + 0.12, -h * 0.5 + 0.11, 0.008), 40, 0.0032, Color.WHITE)
-		ll.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		Mats.text(b, "◀ " + left_name, Vector3(-w * 0.5 + 0.12, -h * 0.5 + 0.11, 0.008), 40, 0.0032, Color.WHITE, true, 0.0, HORIZONTAL_ALIGNMENT_LEFT)
 	if right_name != "":
-		var lr := Mats.label(b, right_name + " ▶", Vector3(w * 0.5 - 0.12, -h * 0.5 + 0.11, 0.008), 40, 0.0032, Color.WHITE)
-		lr.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		Mats.text(b, right_name + " ▶", Vector3(w * 0.5 - 0.12, -h * 0.5 + 0.11, 0.008), 40, 0.0032, Color.WHITE, true, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
 	# 환승 노선
 	var tr: Array = st["tr"]
 	var bx := w * 0.5 - 0.22
@@ -176,25 +217,32 @@ static func _name_board(ctx: Dictionary, parent: Node3D, pos: Vector3, face_x: i
 		Mats.line_badge(b, tr[k], Vector3(bx - k * 0.3, h * 0.5 - 0.2, 0.004), 0.12)
 
 
-## 천장에 매다는 안내판 (남색 바탕, 양면)
+## 천장에 매다는 안내판 (남색 바탕, 양면): 노란 출구 번호 + 방면
 static func _hanging_sign(ctx: Dictionary, parent: Node3D, pos: Vector3, along_x := true) -> void:
 	var b := Node3D.new()
 	b.position = pos
-	if along_x:
-		b.rotation.y = 0.0
 	parent.add_child(b)
-	Mats.box(b, Vector3(2.6, 0.42, 0.08), Vector3.ZERO, Mats.unshaded(Color(0.10, 0.16, 0.32)))
-	for c in [-0.9, 0.9]:
-		Mats.box(b, Vector3(0.03, 0.8, 0.03), Vector3(c, 0.6, 0), Mats.color(Color(0.4, 0.4, 0.42)))
+	Mats.box(b, Vector3(2.9, 0.46, 0.10), Vector3.ZERO, Mats.unshaded(Color(0.08, 0.14, 0.30)))
+	Mats.box(b, Vector3(2.94, 0.04, 0.12), Vector3(0, -0.23, 0), Mats.color(Color(0.55, 0.57, 0.6), 0.3, 0.5))
+	for c in [-1.0, 1.0]:
+		Mats.box(b, Vector3(0.04, 0.9, 0.04), Vector3(c, 0.68, 0), Mats.color(Color(0.4, 0.4, 0.42)))
 	var dest: String = ctx["next"]
+	var exits: int = 2 + int(abs(hash(ctx["st"]["ko"])) % 5)
+	var ex_txt := ""
+	for e in range(1, exits + 1):
+		ex_txt += str(e) + " "
 	for face in [1, -1]:
 		var f := Node3D.new()
-		f.position = Vector3(0, 0, 0.045 * face)
+		f.position = Vector3(0, 0, 0.055 * face)
 		f.rotation.y = 0.0 if face > 0 else PI
 		b.add_child(f)
-		Mats.label(f, "나가는곳 Exit", Vector3(-0.62, 0.0, 0.0), 44, 0.0034, Color(1.0, 0.82, 0.1))
+		# 출구 번호: 노란 바탕 검은 숫자
+		Mats.box(f, Vector3(0.36, 0.30, 0.004), Vector3(-1.22, 0.0, 0.0), Mats.unshaded(Color(1.0, 0.78, 0.0)))
+		Mats.text(f, "출", Vector3(-1.22, 0.0, 0.004), 40, 0.0042, Color(0.05, 0.05, 0.05))
+		Mats.text(f, "나가는곳 " + ex_txt.strip_edges(), Vector3(-0.98, 0.07, 0.003), 34, 0.0034, Color(1.0, 0.8, 0.05), true, 0.0, HORIZONTAL_ALIGNMENT_LEFT)
+		Mats.text(f, "Exit", Vector3(-0.98, -0.11, 0.003), 26, 0.0034, Color(1.0, 0.8, 0.05), false, 0.0, HORIZONTAL_ALIGNMENT_LEFT)
 		if dest != "":
-			Mats.label(f, dest + " 방면", Vector3(0.62, 0.0, 0.0), 44, 0.0034, Color.WHITE)
+			Mats.text(f, dest + " 방면 →", Vector3(1.32, 0.04, 0.003), 38, 0.0034, Color.WHITE, true, 0.0, HORIZONTAL_ALIGNMENT_RIGHT)
 
 
 ## LED 전광판 (도착 안내). main 이 텍스트를 갱신한다.
@@ -232,18 +280,20 @@ static func _psd_row(ctx: Dictionary, x: float, face: int, ours: bool) -> void:
 				root.add_child(leaf)
 				if ours:
 					ctx["leaves"].append({"node": leaf, "base": leaf.position.z, "sign": sgn, "travel": 1.05})
+			# 문 앞 점형 점자블록 (승강장 쪽)
+			Mats.box(root, Vector3(0.6, 0.012, 2.1), Vector3(x - face * 0.42, 0.006, dz), _tmat("tactile_dot.png", 0.6))
 			if not ours:
 				continue
 			# 문 번호 (예: 4-2) — 선로 쪽에서 보이게
 			var car_no := i + 1
 			var door_no := 4 - d
-			Mats.label(root, "%d-%d" % [car_no, door_no], Vector3(x + face * 0.15, 2.36, dz), 48, 0.003,
+			Mats.text(root, "%d-%d" % [car_no, door_no], Vector3(x + face * 0.15, 2.36, dz), 48, 0.003,
 				Color.WHITE, true, _rot_for_side(face))
 		# 고정 유리면의 역명 스티커 (객차 가운데 기둥 부분)
 		if not ours:
 			continue
-		for zoff in [0.0, -5.0]:
-			Mats.label(root, st["ko"] + "\n" + st["en"], Vector3(x + face * 0.012, 1.45, zc + zoff),
+		for zoff in [0.0]:
+			Mats.text(root, st["ko"] + "\n" + st["en"], Vector3(x + face * 0.012, 1.45, zc + zoff),
 				48, 0.0028, Color(0.1, 0.1, 0.12), true, _rot_for_side(face))
 			Mats.box(root, Vector3(0.006, 0.36, 0.95), Vector3(x + face * 0.008, 1.45, zc + zoff),
 				Mats.unshaded(Color(0.96, 0.96, 0.96)))
@@ -252,8 +302,7 @@ static func _psd_row(ctx: Dictionary, x: float, face: int, ours: bool) -> void:
 ## 노란 안전선 + 점자블록 (스크린도어가 없는 지상역)
 static func _edge_safety(root: Node3D, x0: float, inward: int) -> void:
 	Mats.box(root, Vector3(0.12, 0.01, PL), Vector3(x0 + inward * 0.06, 0.003, 0), Mats.color(Color(0.95, 0.8, 0.1)))
-	Mats.box(root, Vector3(0.3, 0.012, PL), Vector3(x0 + inward * 0.75, 0.004, 0), Mats.textured("tactile",
-		Mats.tile_texture(Color(0.95, 0.78, 0.08), Color(0.8, 0.62, 0.05), 6), Vector3(4, 4, 4)))
+	Mats.box(root, Vector3(0.3, 0.012, PL), Vector3(x0 + inward * 0.75, 0.004, 0), _tmat("tactile_line.png", 0.6))
 
 
 # ------------------------------------------------------------------ 지하역
@@ -265,10 +314,10 @@ static func _build_underground(ctx: Dictionary) -> void:
 	var W := 10.0 if island else 5.0
 	ctx["W"] = W
 	var ceil_y := 4.4
-	var floor_mat := Mats.textured("pf_floor", Mats.tile_texture(Color(0.62, 0.62, 0.6), Color(0.5, 0.5, 0.5), 2), Vector3(0.5, 0.5, 0.5))
-	var wall_mat := Mats.textured("pf_wall", Mats.tile_texture(Color(0.86, 0.86, 0.83), Color(0.7, 0.7, 0.7), 4), Vector3(0.7, 0.7, 0.7))
-	var ceil_mat := Mats.color(Color(0.78, 0.79, 0.8), 0.6, 0.3)
-	var light_mat := Mats.emissive(Color(1.0, 0.98, 0.92), 1.4)
+	var floor_mat := _tmat("granite_floor.png", 2.4, Color.WHITE, 0.25)
+	var wall_mat := _tmat("enamel_panel.png", 2.4, Color(1.0, 1.0, 0.98), 0.35)
+	var ceil_mat := Mats.color(Color(0.30, 0.31, 0.33), 0.8)
+	var light_mat := Mats.emissive(Color(1.0, 0.98, 0.94), 1.6)
 	var accent := Mats.color(lc.lerp(Color.WHITE, 0.15), 0.5)
 
 	# 우리 선로
@@ -304,15 +353,15 @@ static func _build_underground(ctx: Dictionary) -> void:
 		Mats.box(root, Vector3(0.02, 0.25, PL), Vector3(xw + inward * 0.01, 0.5, 0), accent)
 	Mats.box(root, Vector3(hall_w, 0.3, PL + 40), Vector3(hall_cx, ceil_y + 0.6, 0), ceil_mat)
 	# 천장 마감판과 조명
-	Mats.box(root, Vector3(hall_w, 0.04, PL), Vector3(hall_cx, ceil_y, 0), Mats.textured("ceil",
-		Mats.tile_texture(Color(0.83, 0.84, 0.85), Color(0.6, 0.6, 0.62), 2), Vector3(0.4, 0.4, 0.4)))
+	Mats.box(root, Vector3(hall_w, 0.04, PL), Vector3(hall_cx, ceil_y, 0), _tmat("ceiling_slats.png", 3.0, Color.WHITE, 0.4))
 	var lights_x: Array = []
 	if island:
 		lights_x = [p * (EDGE + 1.5), p * (EDGE + W * 0.5), p * (EDGE + W - 1.5)]
 	else:
 		lights_x = [p * (EDGE + 1.8), x_opp - p * (EDGE + 1.8), 0.0, x_opp]
 	for lx in lights_x:
-		Mats.box(root, Vector3(0.25, 0.03, PL - 6), Vector3(lx, ceil_y - 0.03, 0), light_mat)
+		Mats.box(root, Vector3(0.32, 0.06, PL - 6), Vector3(lx, ceil_y - 0.04, 0), Mats.color(Color(0.75, 0.76, 0.78), 0.4, 0.5))
+		Mats.box(root, Vector3(0.24, 0.02, PL - 6.5), Vector3(lx, ceil_y - 0.075, 0), light_mat)
 	# 양 끝 벽 (터널 입구 개구부 포함)
 	for e in [-1, 1]:
 		var ze: float = e * (HALF + 20)
@@ -320,7 +369,7 @@ static func _build_underground(ctx: Dictionary) -> void:
 		_end_wall(root, xa, xb, ze, [0.0, x_opp], tunnel_w, floor_y, ceil_y + 0.6, wall_mat)
 
 	# 기둥
-	var col_mat := Mats.textured("col", Mats.tile_texture(Color(0.9, 0.9, 0.88), Color(0.75, 0.75, 0.75), 3), Vector3(1.2, 1.2, 1.2))
+	var col_mat := _tmat("enamel_panel.png", 1.2, Color(0.97, 0.97, 0.95), 0.3)
 	var col_x: float = p * (EDGE + W * 0.5) if island else -p * 1.95
 	var col_z := -HALF + 8.0
 	var ci := 0
@@ -333,7 +382,7 @@ static func _build_underground(ctx: Dictionary) -> void:
 			if island and ci % 2 == 0:
 				# 기둥 역명
 				for f in [1, -1]:
-					Mats.label(root, ctx["st"]["ko"], Vector3(col_x + f * 0.36, 1.9, col_z), 56, 0.003,
+					Mats.text(root, ctx["st"]["ko"], Vector3(col_x + f * 0.36, 1.9, col_z), 56, 0.003,
 						Color(0.1, 0.1, 0.12), true, _rot_for_side(f))
 					Mats.box(root, Vector3(0.01, 0.3, 0.6), Vector3(col_x + f * 0.355, 1.9, col_z), Mats.unshaded(Color(0.97, 0.97, 0.97)))
 		col_z += 8.0 if island else 6.0
@@ -346,7 +395,7 @@ static func _build_underground(ctx: Dictionary) -> void:
 		_psd_row(ctx, x_opp - p * EDGE, p, false)
 
 	# 역명판: 선로 건너편 벽 / 승강장 뒷벽
-	var board_z := -HALF + 15.0
+	var board_z := -HALF + 18.0
 	while board_z < HALF - 10.0:
 		if island:
 			# 우리 선로 뒤 벽 (열차 창밖으로 보임) 과 반대 선로 뒤 벽
@@ -355,19 +404,29 @@ static func _build_underground(ctx: Dictionary) -> void:
 		else:
 			_name_board(ctx, root, Vector3(p * (EDGE + W) - p * 0.02, 1.9, board_z), -p)
 			_name_board(ctx, root, Vector3(x_opp - p * (EDGE + W) + p * 0.02, 1.9, board_z), p)
-			# 선로 사이 기둥 쪽에서 보이는 광고판
-		board_z += 30.0
+		board_z += 42.0
 	# 광고판
-	var ad_z := -HALF + 30.0
-	var ad_cols := [Color(0.85, 0.3, 0.25), Color(0.2, 0.45, 0.8), Color(0.95, 0.7, 0.2), Color(0.3, 0.65, 0.4)]
-	var k := 0
-	while ad_z < HALF - 20.0:
-		var wx: float = xa + 0.03 if island == (p > 0) else xb - 0.03
-		if not island:
-			wx = p * (EDGE + W) - p * 0.03
-		Mats.box(root, Vector3(0.04, 1.2, 2.6), Vector3(wx, 1.6, ad_z + 15.0), Mats.unshaded(ad_cols[k % 4]))
-		k += 1
+	# 광고 조명상자 (포스터) — 승강장 뒷벽 또는 선로 건너편 벽
+	var ad_z := -HALF + 22.0
+	var k := int(abs(hash(ctx["st"]["ko"]))) % 8
+	var walls: Array = []
+	if island:
+		walls = [[xa + 0.04, 1], [xb - 0.04, -1]]
+	else:
+		walls = [[p * (EDGE + W) - p * 0.04, -p], [x_opp - p * (EDGE + W) + p * 0.04, p]]
+	while ad_z < HALF - 12.0:
+		for wl in walls:
+			var wx: float = wl[0]
+			var fx: int = wl[1]
+			for dz in [-1.0, 1.0]:
+				Mats.box(root, Vector3(0.06, 1.86, 1.36), Vector3(wx - fx * 0.03, 1.75, ad_z + dz * 0.8), Mats.color(Color(0.72, 0.73, 0.75), 0.3, 0.5))
+				_decal(root, "poster_%d.png" % (k % 8), Vector2(1.2, 1.7), Vector3(wx + fx * 0.005, 1.75, ad_z + dz * 0.8), _rot_for_side(fx))
+				k += 1
 		ad_z += 30.0
+	# 주변지역 안내도
+	var map_wx: float = walls[0][0]
+	var map_fx: int = walls[0][1]
+	_decal(root, "area_map.png", Vector2(1.6, 1.2), Vector3(map_wx + map_fx * 0.005, 1.6, -HALF * 0.25), _rot_for_side(map_fx))
 
 	# 매달린 안내판, 전광판
 	var sign_x: float = p * (EDGE + W * 0.5)
@@ -431,9 +490,14 @@ static func _stair_up(root: Node3D, pos: Vector3, ceil_y: float, lc: Color) -> v
 	for s in [-1, 1]:
 		Mats.box(n, Vector3(0.12, 1.1, length + 1.5), Vector3(s * 1.26, 0.55, -length * 0.5 - 0.4), Mats.color(Color(0.75, 0.76, 0.78), 0.3, 0.6))
 		Mats.box(n, Vector3(0.02, 0.9, length + 1.5), Vector3(s * 1.26, 1.55, -length * 0.5 - 0.4), glass)
-	# 계단 뒤쪽 막힌 벽 (노선색)
-	Mats.box(n, Vector3(2.6, ceil_y, 0.15), Vector3(0, ceil_y * 0.5, 0.2), Mats.color(lc.lerp(Color.WHITE, 0.2), 0.6))
-	Mats.label(n, "나가는곳  Exit ↑", Vector3(0, 2.2, 0.28), 56, 0.0035, Color.WHITE)
+	# 계단 끝: 유리 난간과 위에서 내려오는 천장 판 + 출구 안내판
+	Mats.box(n, Vector3(2.6, 1.1, 0.04), Vector3(0, 0.55, 0.2), glass)
+	Mats.box(n, Vector3(2.7, 0.08, 0.1), Vector3(0, 1.12, 0.2), Mats.color(Color(0.75, 0.76, 0.78), 0.3, 0.6))
+	Mats.box(n, Vector3(2.8, ceil_y - 2.6, 0.2), Vector3(0, (ceil_y + 2.6) * 0.5, 0.2), _tmat("enamel_panel.png", 2.4))
+	Mats.box(n, Vector3(1.9, 0.38, 0.06), Vector3(0, 2.95, 0.33), Mats.unshaded(Color(0.08, 0.14, 0.30)))
+	Mats.box(n, Vector3(0.3, 0.26, 0.004), Vector3(-0.72, 2.95, 0.362), Mats.unshaded(Color(1.0, 0.78, 0.0)))
+	Mats.text(n, "↑", Vector3(-0.72, 2.95, 0.366), 40, 0.004, Color(0.05, 0.05, 0.05))
+	Mats.text(n, "나가는곳  Exit", Vector3(0.15, 2.95, 0.364), 40, 0.0036, Color(1.0, 0.8, 0.05))
 	# 천장 개구부 주변 (위층 바닥 두께 표현)
 	Mats.box(n, Vector3(2.8, 0.4, 0.3), Vector3(0, ceil_y + 0.2, -length - 0.8), Mats.color(Color(0.6, 0.6, 0.6)))
 
@@ -447,19 +511,27 @@ static func _build_open(ctx: Dictionary) -> void:
 	var island: bool = p > 0
 	var W := 9.0 if island else 4.8
 	ctx["W"] = W
-	var plat_mat := Mats.textured("op_floor", Mats.tile_texture(Color(0.6, 0.58, 0.55), Color(0.45, 0.44, 0.42), 2), Vector3(0.5, 0.5, 0.5))
+	var plat_mat := _tmat("granite_floor.png", 2.4, Color(1.05, 1.03, 1.0), 0.6)
+	var base_mat := _tmat("concrete.png", 3.0, Color.WHITE, 0.95)
 	var x_opp: float = p * (EDGE * 2 + W) if island else -p * 3.9
 	_track(root, 0.0, -HALF - 15, HALF + 15, true)
 	_track(root, x_opp, -HALF - 15, HALF + 15, true)
 	var plats: Array = []   # [x0(선로쪽 끝), inward]
 	var depth := 1.4
-	Mats.box(root, Vector3(W, depth, PL), Vector3(p * (EDGE + W * 0.5), -depth * 0.5, 0), plat_mat)
+	Mats.box(root, Vector3(W, 0.2, PL), Vector3(p * (EDGE + W * 0.5), -0.1, 0), plat_mat)
+	Mats.box(root, Vector3(W, depth - 0.2, PL), Vector3(p * (EDGE + W * 0.5), -depth * 0.5 - 0.1, 0), base_mat)
 	plats.append([p * EDGE, p])
 	if island:
 		plats.append([x_opp - p * EDGE, -p])
 	else:
-		Mats.box(root, Vector3(W, depth, PL), Vector3(x_opp - p * (EDGE + W * 0.5), -depth * 0.5, 0), plat_mat)
+		Mats.box(root, Vector3(W, 0.2, PL), Vector3(x_opp - p * (EDGE + W * 0.5), -0.1, 0), plat_mat)
+		Mats.box(root, Vector3(W, depth - 0.2, PL), Vector3(x_opp - p * (EDGE + W * 0.5), -depth * 0.5 - 0.1, 0), base_mat)
 		plats.append([x_opp - p * EDGE, -p])
+	# 지상역: 승강장과 선로 밑을 지면까지 채운다 (성토)
+	if not elevated:
+		var gx0 := minf(minf(-2.5, x_opp - 2.5), minf(p * (EDGE + W), x_opp - p * (EDGE + W)))
+		var gx1 := maxf(maxf(2.5, x_opp + 2.5), maxf(p * (EDGE + W), x_opp - p * (EDGE + W)))
+		Mats.box(root, Vector3(gx1 - gx0, 1.9, PL + 30), Vector3((gx0 + gx1) * 0.5, -2.35, 0), base_mat)
 	# 승강장 옆면 (선로쪽 콘크리트)
 	for pl in plats:
 		var x0: float = pl[0]
@@ -531,7 +603,7 @@ static func _build_open(ctx: Dictionary) -> void:
 	Mats.box(bld, Vector3(bxb - bxa + 0.1, 0.25, 16.1), Vector3((bxa + bxb) * 0.5, 6.1, 0), Mats.color(lc, 0.5))
 	for cx in [bxa + 0.5, bxb - 0.5]:
 		Mats.box(bld, Vector3(0.8, 7.0 + depth, 0.8), Vector3(cx, (6.0 - depth) * 0.5, 0), Mats.color(Color(0.7, 0.7, 0.7), 0.8))
-	Mats.label(bld, ctx["st"]["ko"] + "역", Vector3((bxa + bxb) * 0.5, 9.3, -8.06), 128, 0.008, Color(0.1, 0.12, 0.2), true, PI)
+	Mats.text(bld, ctx["st"]["ko"] + "역", Vector3((bxa + bxb) * 0.5, 9.3, -8.06), 128, 0.008, Color(0.1, 0.12, 0.2), true, PI)
 
 	# 고가역 하부 구조
 	if elevated:

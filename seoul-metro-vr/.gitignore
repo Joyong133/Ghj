@@ -1,3 +1,7 @@
 .godot/
 build/
 *.idsig
+__pycache__/
+# Godot 가 glb 를 가져올 때 자동으로 풀어내는 텍스처
+assets/models/*.png
+assets/models/*.png.import

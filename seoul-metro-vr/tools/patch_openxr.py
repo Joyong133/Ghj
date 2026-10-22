@@ -52,8 +52,8 @@ mf.write_text(xml, encoding="utf-8")
 yml = dec / "apktool.yml"
 y = yml.read_text(encoding="utf-8")
 y = re.sub(r"minSdkVersion: '?\d+'?", "minSdkVersion: 29", y)
-if "doNotCompress:" in y and "- so" not in y:
-    y = y.replace("doNotCompress:\n", "doNotCompress:\n- so\n", 1)
+# 네이티브 라이브러리는 압축해서 넣는다 (extractNativeLibs=true 이므로 설치 시 풀림)
+y = y.replace("\n- so\n", "\n")
 yml.write_text(y, encoding="utf-8")
 
 # ---------------------------------------------------------------- assets/_cl_ (실행 인자)

@@ -207,9 +207,32 @@ static func label(parent: Node3D, text: String, pos: Vector3, size_px := 64, px 
 	l.rotation.y = rot_y
 	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	# 멀리 있는 글자는 그리지 않는다 (Quest 드로우콜 절약)
-	l.visibility_range_end = clampf(size_px * px * 220.0, 25.0, 140.0)
+	l.visibility_range_end = clampf(size_px * px * 150.0, 18.0, 90.0)
 	parent.add_child(l)
 	return l
+
+
+## 고정된 글자를 메시(TextMesh)로 만든다. merge_static 으로 다른 정적 메시와 합칠 수 있어
+## Label3D 와 달리 글자마다 드로우콜이 늘지 않는다. (바뀌는 글자는 label 사용)
+static func text(parent: Node3D, txt: String, pos: Vector3, size_px := 64, px := 0.004,
+		col := Color.BLACK, bold := true, rot_y := 0.0, align := HORIZONTAL_ALIGNMENT_CENTER) -> MeshInstance3D:
+	fonts()
+	var tm := TextMesh.new()
+	tm.text = txt
+	tm.font = font_bold if bold else font_regular
+	tm.font_size = size_px
+	tm.pixel_size = px
+	tm.depth = 0.0
+	tm.curve_step = 1.5
+	tm.horizontal_alignment = align
+	tm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var mi := MeshInstance3D.new()
+	mi.mesh = tm
+	mi.material_override = unshaded(col)
+	mi.position = pos
+	mi.rotation.y = rot_y
+	parent.add_child(mi)
+	return mi
 
 
 ## 노선 표시 원 (색 원 + 노선 번호)
@@ -233,7 +256,7 @@ static func line_badge(parent: Node3D, line_key: String, pos: Vector3, radius: f
 	if not line_key.is_valid_int():
 		txt = line_key.substr(0, 2)
 	var fs := 64 if line_key.is_valid_int() else 40
-	label(n, txt, Vector3(0, 0, 0.008), fs, radius * 1.1 / 64.0 * (1.0 if txt.length() == 1 else 0.8), Color.WHITE)
+	text(n, txt, Vector3(0, 0, 0.008), fs, radius * 1.1 / 64.0 * (1.0 if txt.length() == 1 else 0.8), Color.WHITE)
 	return n
 
 

@@ -5,6 +5,7 @@ class_name Train
 ## 열차는 원점에 고정되어 있고, 세계(역/터널)가 +Z 방향으로 움직인다.
 
 const CAR_SCENE := preload("res://assets/models/train_car.glb")
+const CAR_LOD_SCENE := preload("res://assets/models/train_car_lod.glb")
 const CAB_SCENE := preload("res://assets/models/train_cab.glb")
 
 var line_color := Color("00A84D")
@@ -30,13 +31,24 @@ func setup(line: int) -> void:
 	route_maps.clear()
 	cars.clear()
 	line_color = MetroConst.LINE_COLORS[line]
+	var strip_mat := StandardMaterial3D.new()
+	strip_mat.albedo_texture = load("res://assets/textures/train/route_strip_%d.png" % line)
+	strip_mat.roughness = 0.35
+	# 팬터그래프가 있는 객차 (전동차 M차)
+	var panto: Array = [1, 4] if MetroConst.num_cars == 6 else [1, 3, 6, 8]
 	for i in range(MetroConst.num_cars):
-		var car := CAR_SCENE.instantiate() as Node3D
+		var near := absi(i - MetroConst.player_car) <= 0
+		var car := (CAR_SCENE if near else CAR_LOD_SCENE).instantiate() as Node3D
 		car.name = "Car%d" % i
 		car.position.z = MetroConst.car_center_z(i)
 		add_child(car)
 		cars.append(car)
 		StationBuilder.apply_line_color(car, line_color)
+		_override_material(car, "RouteStrip", strip_mat)
+		var pg := car.find_child("Pantograph", true, false)
+		if pg != null and not (i in panto):
+			pg.get_parent().remove_child(pg)
+			pg.free()
 		if i == MetroConst.player_car:
 			_build_interior_displays(car)
 			_add_interior_lights(car)
@@ -50,7 +62,7 @@ func setup(line: int) -> void:
 	add_child(rear)
 	for cab in [front, rear]:
 		StationBuilder.apply_line_color(cab, line_color)
-		var l := Mats.label(cab, "", Vector3(0, 2.085, 0.70), 56, 0.0028, Color(1.0, 0.6, 0.1), true)
+		var l := Mats.label(cab, "", Vector3(0, 1.86, 0.577), 56, 0.0026, Color(1.0, 0.62, 0.12), true)
 		dest_labels.append(l)
 	# 모든 객차의 문짝을 (좌/우, 열리는 방향) 4묶음으로 합쳐서 한 번에 움직인다
 	var groups := {}
@@ -87,12 +99,25 @@ func _collect_leaves(car: Node3D) -> Array:
 	return out
 
 
+func _override_material(root: Node, mat_name: String, mat: Material) -> void:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null:
+			continue
+		for i in range(m.mesh.get_surface_count()):
+			var sm := m.mesh.surface_get_material(i)
+			if sm != null and sm.resource_name == mat_name:
+				m.set_surface_override_material(i, mat)
+
+
+## 실내 LED 조명: 천장 조명 띠를 따라 점광원 3개 (밝고 고르게)
 func _add_interior_lights(car: Node3D) -> void:
-	for z in [-5.0, 5.0]:
+	for z in [-6.5, 0.0, 6.5]:
 		var o := OmniLight3D.new()
-		o.position = Vector3(0, 2.0, z)
-		o.omni_range = 7.0
-		o.light_energy = 0.35
+		o.position = Vector3(0, 2.1, z)
+		o.omni_range = 6.5
+		o.omni_attenuation = 0.6
+		o.light_energy = 0.75
 		o.light_color = Color(1.0, 0.98, 0.94)
 		o.shadow_enabled = false
 		car.add_child(o)

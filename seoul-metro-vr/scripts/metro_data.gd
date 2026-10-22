@@ -407,8 +407,30 @@ static func dwell_time(line: int, st: Dictionary) -> float:
 	return d
 
 
+## "서울역" 처럼 이미 '역'으로 끝나는 이름에는 '역'을 붙이지 않는다
+static func with_yeok(name: String) -> String:
+	return name if name.ends_with("역") else name + "역"
+
+
+## 받침에 따라 '으로' / '로' (ㄹ 받침은 '로')
+static func josa_euro(word: String) -> String:
+	var c := word.unicode_at(word.length() - 1) - 0xAC00
+	if c < 0 or c > 11171:
+		return word + "로"
+	var jong := c % 28
+	return word + ("으로" if jong != 0 and jong != 8 else "로")
+
+
+const TRANSFER_NAMES := {
+	"경의중앙": "경의중앙선", "수인분당": "수인분당선", "신분당": "신분당선", "공항": "공항철도",
+	"우이신설": "우이신설선", "신림": "신림선", "의정부": "의정부경전철", "인천1": "인천1호선",
+	"인천2": "인천2호선", "서해": "서해선", "경춘": "경춘선", "경강": "경강선", "용인": "용인경전철",
+}
+
+
 static func transfer_text(tr: Array) -> String:
 	var parts: Array = []
 	for t in tr:
-		parts.append(t + "호선" if t.is_valid_int() else t)
+		var k := str(t)
+		parts.append(k + "호선" if k.is_valid_int() else TRANSFER_NAMES.get(k, k))
 	return ", ".join(parts)

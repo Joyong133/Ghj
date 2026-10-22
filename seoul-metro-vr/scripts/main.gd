@@ -87,14 +87,14 @@ func _build_overlays() -> void:
 	subtitle = Label3D.new()
 	Mats.fonts()
 	subtitle.font = Mats.font_bold
-	subtitle.font_size = 40
+	subtitle.font_size = 30
 	subtitle.pixel_size = 0.0011
 	subtitle.outline_size = 10
 	subtitle.outline_modulate = Color(0, 0, 0, 0.9)
 	subtitle.no_depth_test = true
 	subtitle.render_priority = 10
-	subtitle.position = Vector3(0, -0.33, -1.3)
-	subtitle.width = 900
+	subtitle.position = Vector3(0, -0.46, -1.3)
+	subtitle.width = 1100
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	player.camera.add_child(subtitle)
 	fade = MeshInstance3D.new()
@@ -260,7 +260,7 @@ func start_route(r: int, d: int, st: int) -> void:
 	menu.set_sit_text(false)
 	player.place(Vector3(-0.5 * station_a.get_meta("side"), 0.0, 0.8), 0.0)
 	train.set_destination(_dest_text())
-	say("%s %s — %s역에서 탑승했습니다." % [_line_name(), _dest_text(), _st(idx)["ko"]])
+	say("%s %s — %s에서 탑승했습니다." % [_line_name(), _dest_text(), MetroData.with_yeok(_st(idx)["ko"])])
 	_update_displays()
 
 
@@ -461,6 +461,7 @@ func _process(delta: float) -> void:
 	# 플레이어가 있는 객차 부근의 환경
 	var t_here := _env_raw(0.0)
 	world_env.set_underground(t_here == "U")
+	scenery.set_daylight(world_env.day)
 	scenery.update_world(odo, t_here != "U")
 	audio.update_motion(v, a_now, outdoor)
 	if _line == 1 and outdoor and v > 2.0 and odo - _last_joint > 25.0:
@@ -524,14 +525,24 @@ func _start_closing() -> void:
 func _depart() -> void:
 	state = S.RUN
 	seg_start_clock = sim_clock
-	audio.play_depart()
 	var st := _st(nxt)
 	var side_txt := _door_side_text(nxt)
-	var msg := "이번 역은 %s, %s역입니다. 내리실 문은 %s입니다." % [st["ko"], st["ko"], side_txt]
-	if st["tr"].size() > 0:
-		msg += "\n%s으로 갈아타실 수 있습니다." % MetroData.transfer_text(st["tr"])
+	var nm: String = st["ko"]
+	var msg := "이번 역은 %s, %s입니다. 내리실 문은 %s입니다." % [nm, MetroData.with_yeok(nm), side_txt]
+	var tr := _other_transfers(st)
+	if tr.size() > 0:
+		msg += "\n%s 갈아타실 고객께서는 이번 역에서 내리시기 바랍니다." % MetroData.josa_euro(MetroData.transfer_text(tr))
 	say(msg + "\nThis stop is %s." % st["en"])
 	announcer.next_stop(_line, st, _st(nxt)["kind"] == "I", not route["loop"] and not _has_seg(nxt, dir))
+
+
+## 이 노선 자신을 뺀 환승 노선
+func _other_transfers(st: Dictionary) -> Array:
+	var out: Array = []
+	for t in st["tr"]:
+		if str(t) != str(_line):
+			out.append(t)
+	return out
 
 
 func _door_side_text(i: int) -> String:
@@ -563,14 +574,13 @@ func _run(dt: float) -> void:
 	odo += ds
 	if not announced_near and remaining < 380.0:
 		announced_near = true
-		audio.play_arrive()
 		var st := _st(nxt)
 		var terminal: bool = not route["loop"] and not _has_seg(nxt, dir)
 		announcer.arriving(_line, st, st["kind"] == "I", terminal)
 		if terminal:
-			say("이 열차의 종착역인 %s역입니다. 잊으신 물건 없이 안녕히 가십시오.\nThis is the last stop, %s." % [st["ko"], st["en"]])
+			say("이 열차의 종착역인 %s입니다. 잊으신 물건 없이 안녕히 가십시오.\nThis is the last stop, %s." % [MetroData.with_yeok(st["ko"]), st["en"]])
 		else:
-			say("곧 %s역에 도착합니다. 내리실 문은 %s입니다.\nWe are arriving at %s." % [st["ko"], _door_side_text(nxt), st["en"]])
+			say("잠시 후 %s에 도착합니다. 내리실 문은 %s입니다.\nWe are arriving at %s." % [MetroData.with_yeok(st["ko"]), _door_side_text(nxt), st["en"]])
 
 
 func _arrive() -> void:
@@ -674,8 +684,8 @@ func _update_displays() -> void:
 			0: main_text = ("곧 도착  " if near else "이번역  ") + target["ko"]
 			1: main_text = ("Arriving  " if near else "Next  ") + target["en"]
 			2:
-				if target["tr"].size() > 0:
-					main_text = "환승  " + MetroData.transfer_text(target["tr"])
+				if _other_transfers(target).size() > 0:
+					main_text = "환승  " + MetroData.transfer_text(_other_transfers(target))
 				else:
 					main_text = "내리실 문  " + _door_side_text(nxt)
 	else:

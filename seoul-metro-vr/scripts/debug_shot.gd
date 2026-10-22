@@ -56,6 +56,17 @@ func _process(delta: float) -> void:
 	if stage == 2 and t > float(args.get("wait", "1.5")):
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(args["shot"])
+		var cnt := {}
+		for n in main.find_children("*", "VisualInstance3D", true, false):
+			if not (n as Node3D).is_visible_in_tree():
+				continue
+			var key := n.get_class()
+			var par: Node = n.get_parent()
+			while par != null and par != main and not (par.name as String).begins_with("Station_") and par.name != "Train" and not (par is Scenery):
+				par = par.get_parent()
+			key += "@" + (str(par.name) if par != null else "?")
+			cnt[key] = cnt.get(key, 0) + 1
+		print("COUNT ", cnt)
 		print("STATE idx=%d (%s) dir=%d state=%d odo=%.1fkm sim=%.0fs" % [main.idx, main._st(main.idx)["ko"], main.dir, main.state, main.odo / 1000.0, main.sim_clock])
 		print("PERF draw_calls=%d objects=%d prims=%d fps=%d" % [
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
