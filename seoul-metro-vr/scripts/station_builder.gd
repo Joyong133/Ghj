@@ -4,8 +4,9 @@ class_name StationBuilder
 ## 로컬 좌표: 우리 열차의 선로 중심 x=0, 승강장 중앙 z=0, 승강장 윗면 y=0.
 ## 열차 진행 방향은 -Z. p = +1 이면 승강장이 오른쪽(+X), -1 이면 왼쪽.
 
-const PL := MetroConst.PLATFORM_LEN
-const HALF := PL * 0.5
+## 승강장 길이는 노선 편성에 따라 다르다 (build 에서 MetroConst 값으로 설정)
+static var PL := 210.0
+static var HALF := 105.0
 const EDGE := MetroConst.PLATFORM_EDGE_X
 
 static var _props: Node3D
@@ -52,6 +53,8 @@ static func build(route: Dictionary, idx: int, dir: int) -> Node3D:
 	var prev_name: String = route["stations"][prev_i]["ko"] if prev_i >= 0 and prev_i < n else ""
 	var next_name: String = route["stations"][next_i]["ko"] if next_i >= 0 and next_i < n else ""
 
+	PL = MetroConst.platform_len
+	HALF = PL * 0.5
 	var root := Node3D.new()
 	root.name = "Station_" + st["ko"]
 	var p := 1 if st["kind"] == "I" else -1
@@ -215,8 +218,8 @@ static func _psd_row(ctx: Dictionary, x: float, face: int, ours: bool) -> void:
 	var root: Node3D = ctx["root"]
 	var lc: Color = ctx["lc"]
 	var st: Dictionary = ctx["st"]
-	for i in range(MetroConst.NUM_CARS):
-		var zc := MetroConst.car_center_z(i) - MetroConst.TRAIN_CENTER_Z
+	for i in range(MetroConst.num_cars):
+		var zc := MetroConst.car_center_z(i) - MetroConst.train_center_z
 		var fr := _prop("PSDFrame")
 		fr.position = Vector3(x, 0, zc)
 		apply_line_color(fr, lc)
@@ -323,7 +326,7 @@ static func _build_underground(ctx: Dictionary) -> void:
 	var ci := 0
 	while col_z < HALF - 4.0:
 		ci += 1
-		if not island or absf(absf(col_z) - 45.0) > 7.0:
+		if not island or absf(absf(col_z) - 45.0 * HALF / 105.0) > 7.0:
 			var cy := (ceil_y + (0.0 if island else floor_y)) * 0.5
 			var ch := ceil_y - (0.0 if island else floor_y)
 			Mats.box(root, Vector3(0.7, ch, 0.7), Vector3(col_x, cy, col_z), col_mat)
@@ -368,17 +371,19 @@ static func _build_underground(ctx: Dictionary) -> void:
 
 	# 매달린 안내판, 전광판
 	var sign_x: float = p * (EDGE + W * 0.5)
+	var zk := HALF / 105.0
 	for z in [-60.0, -20.0, 20.0, 60.0]:
-		_hanging_sign(ctx, root, Vector3(sign_x, 3.3, z))
+		_hanging_sign(ctx, root, Vector3(sign_x, 3.3, z * zk))
 	_info_board(ctx, root, Vector3(p * (EDGE + 0.9) if not island else p * (EDGE + 1.2), 2.9, 5.0), -p)
-	_info_board(ctx, root, Vector3(p * (EDGE + 0.9) if not island else p * (EDGE + 1.2), 2.9, -35.0), -p)
+	_info_board(ctx, root, Vector3(p * (EDGE + 0.9) if not island else p * (EDGE + 1.2), 2.9, -35.0 * zk), -p)
 
 	# 계단 (위층 대합실로)
 	var stair_x: float = p * (EDGE + W * 0.5) if island else p * (EDGE + W - 1.4)
 	for sz in [-45.0, 45.0]:
-		_stair_up(root, Vector3(stair_x, 0, sz), ceil_y, lc)
+		_stair_up(root, Vector3(stair_x, 0, sz * zk), ceil_y, lc)
 	# 벤치
-	for bz in [-75.0, -30.0, 10.0, 30.0, 75.0]:
+	for bz0 in [-75.0, -30.0, 10.0, 30.0, 75.0]:
+		var bz: float = bz0 * zk
 		var bench := _prop("Bench")
 		if island:
 			bench.position = Vector3(p * (EDGE + W * 0.5) + p * 1.2, 0, bz)
@@ -388,7 +393,8 @@ static func _build_underground(ctx: Dictionary) -> void:
 			bench.rotation.y = 0.0 if p > 0 else PI
 		root.add_child(bench)
 	# 소화기함/비상전화 같은 디테일
-	for z in [-90.0, 0.0, 90.0]:
+	for z0 in [-90.0, 0.0, 90.0]:
+		var z: float = z0 * zk
 		var wx2: float = p * (EDGE + W) - p * 0.1 if not island else p * (EDGE + W * 0.5) + 0.36
 		Mats.box(root, Vector3(0.15, 0.6, 0.4), Vector3(wx2, 0.6, z + 3.0), Mats.color(Color(0.8, 0.1, 0.1), 0.5))
 
@@ -498,26 +504,27 @@ static func _build_open(ctx: Dictionary) -> void:
 			_name_board(ctx, root, Vector3(x_opp - p * (EDGE + W - 0.4), 2.3, bz), p, 2.6, 0.75)
 		bz += 35.0
 	_info_board(ctx, root, Vector3(p * (EDGE + 1.0) if not island else p * (EDGE + 1.4), 2.9, 5.0), -p)
+	var zk := HALF / 105.0
 	for z in [-50.0, 50.0]:
-		_hanging_sign(ctx, root, Vector3(p * (EDGE + W * 0.5), 3.1, z))
+		_hanging_sign(ctx, root, Vector3(p * (EDGE + W * 0.5), 3.1, z * zk))
 
 	# 벤치
 	for bzz in [-60.0, -20.0, 20.0, 60.0]:
 		var bench := _prop("Bench")
-		bench.position = Vector3(p * (EDGE + W * 0.5) + (p * 1.0 if island else p * 1.3), 0, bzz)
+		bench.position = Vector3(p * (EDGE + W * 0.5) + (p * 1.0 if island else p * 1.3), 0, bzz * zk)
 		bench.rotation.y = PI if p > 0 else 0.0
 		root.add_child(bench)
 	# 계단 (지하도/선상역사로)
 	for sz in [-40.0, 40.0]:
 		var stair := _prop("Stair")
-		stair.position = Vector3(p * (EDGE + W * 0.5) + (0.0 if island else p * 0.6), 0, sz)
+		stair.position = Vector3(p * (EDGE + W * 0.5) + (0.0 if island else p * 0.6), 0, sz * zk)
 		root.add_child(stair)
 
 	# 선상역사 (선로 위를 가로지르는 역 건물)
 	var bxa := minf(minf(-3.0, x_opp - 3.0), p * (EDGE + W + 2))
 	var bxb := maxf(maxf(3.0, x_opp + 3.0), p * (EDGE + W + 2))
 	var bld := Node3D.new()
-	bld.position = Vector3(0, 0, 70.0)
+	bld.position = Vector3(0, 0, 70.0 * zk)
 	root.add_child(bld)
 	Mats.box(bld, Vector3(bxb - bxa, 4.0, 16.0), Vector3((bxa + bxb) * 0.5, 8.0, 0), Mats.color(Color(0.82, 0.83, 0.84), 0.5))
 	Mats.box(bld, Vector3(bxb - bxa + 0.05, 1.6, 16.05), Vector3((bxa + bxb) * 0.5, 8.3, 0), Mats.glass(Color(0.35, 0.5, 0.6, 0.85)))

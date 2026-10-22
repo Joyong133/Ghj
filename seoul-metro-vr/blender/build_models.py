@@ -6,7 +6,7 @@
 # 생성물:
 #   train_car.glb  : 객차 1량 (외판/실내/좌석/손잡이/출입문 16짝/대차)
 #   train_cab.glb  : 선두부 (운전실 앞면, 전조등, 행선표시기)
-#   station_props.glb : 스크린도어 1량분 프레임/문짝, 벤치, 승강장 지붕, 계단
+#   (역 소품은 blender/build_station_props.py)
 #
 # 좌표계: Blender X=폭, Y=길이, Z=높이. glTF로 내보내면 Godot에서는
 #   X=폭, Y=높이, Z=-길이 가 된다. 객차 바닥 윗면 = 승강장 높이 = 0.
@@ -396,84 +396,6 @@ def build_cab(out_dir):
     export(os.path.join(out_dir, "train_cab.glb"), [root])
 
 
-# ---------------------------------------------------------------- 역 소품
-def build_props(out_dir):
-    clear_scene()
-    mats = materials()
-    objs = []
-
-    # 스크린도어 고정부 (객차 1량 = 20m). x=0 이 승강장 끝선, -X 쪽이 선로.
-    psd = MB(mats)
-    H = 2.15
-    openings = [(dy - 1.05, dy + 1.05) for dy in DOOR_Y]
-    edges = [-10.0]
-    for a, b in openings:
-        edges += [a, b]
-    edges.append(10.0)
-    for i in range(0, len(edges), 2):
-        y0, y1 = edges[i], edges[i + 1]
-        if y1 - y0 < 0.05:
-            continue
-        psd.box(-0.04, 0.04, y0, y0 + 0.08, 0.0, H, "Steel")
-        psd.box(-0.04, 0.04, y1 - 0.08, y1, 0.0, H, "Steel")
-        psd.box(-0.006, 0.006, y0 + 0.08, y1 - 0.08, 0.12, H - 0.05, "Glass")
-        psd.box(-0.05, 0.05, y0, y1, 0.0, 0.12, "Steel")
-    for a, b in openings:
-        psd.box(-0.07, 0.07, a - 0.12, a, 0.0, H, "Steel")       # 문 기둥 (전동기 케이스)
-        psd.box(-0.07, 0.07, b, b + 0.12, 0.0, H, "Steel")
-        psd.box(-0.03, 0.03, a, b, -0.004, 0.004, "Yellow")      # 문턱
-    psd.box(-0.14, 0.14, -10.0, 10.0, H, H + 0.42, "Steel")      # 상부 하우징
-    psd.box(0.14, 0.145, -10.0, 10.0, H + 0.03, H + 0.09, "LineColor")
-    psd.box(-0.145, -0.14, -10.0, 10.0, H + 0.03, H + 0.09, "LineColor")
-    objs.append(psd.build("PSDFrame"))
-
-    leaf = MB(mats)
-    lw = 1.05
-    leaf.box(-0.025, 0.025, -lw / 2, lw / 2, -H / 2 + 0.0, -H / 2 + 0.10, "Steel")
-    leaf.box(-0.025, 0.025, -lw / 2, lw / 2, H / 2 - 0.08, H / 2, "Steel")
-    leaf.box(-0.025, 0.025, -lw / 2, -lw / 2 + 0.06, -H / 2, H / 2, "Steel")
-    leaf.box(-0.025, 0.025, lw / 2 - 0.06, lw / 2, -H / 2, H / 2, "Steel")
-    leaf.box(-0.005, 0.005, -lw / 2 + 0.06, lw / 2 - 0.06, -H / 2 + 0.10, H / 2 - 0.08, "Glass")
-    leaf.box(0.026, 0.03, -lw / 2 + 0.1, lw / 2 - 0.1, 0.05, 0.25, "Yellow")       # 경고 스티커
-    o = leaf.build("PSDLeaf", location=(0, 0, H / 2))
-    objs.append(o)
-
-    # 벤치
-    bench = MB(mats)
-    for k in range(4):
-        y = -0.72 + k * 0.48
-        bench.box(-0.22, 0.22, y - 0.21, y + 0.21, 0.42, 0.46, "Steel")
-        bench.box(0.16, 0.22, y - 0.21, y + 0.21, 0.46, 0.85, "Steel")
-    for y in (-0.8, 0.8):
-        bench.box(-0.2, 0.2, y - 0.03, y + 0.03, 0.0, 0.42, "Dark")
-    objs.append(bench.build("Bench"))
-
-    # 지상역 지붕 한 칸 (10m)
-    can = MB(mats)
-    can.cyl(0.0, 0.0, 1.8, 0.12, 3.6, "z", "Steel", 10)
-    can.box(-0.15, 0.15, -0.15, 0.15, 3.6, 3.8, "Steel")
-    can.box(-4.2, 4.2, -5.0, 5.0, 3.8, 3.95, "Roof")
-    can.box(-4.25, 4.25, -5.0, 5.0, 3.95, 4.05, "Roof")
-    for s in (-1, 1):
-        can.box(s * 1.2, s * 1.4, -4.8, 4.8, 3.76, 3.8, "LightStrip")
-    objs.append(can.build("Canopy"))
-
-    # 계단 (아래로 내려가는 출입구, 길이 6m)
-    st = MB(mats)
-    n = 18
-    for k in range(n):
-        z = -k * 0.17
-        st.box(-1.2, 1.2, k * 0.30, (k + 1) * 0.30 + 0.2, z - 0.17, z, "Concrete")
-        st.box(-1.2, 1.2, k * 0.30, k * 0.30 + 0.04, z - 0.005, z, "Yellow")
-    for s in (-1, 1):
-        st.box(s * 1.2, s * 1.35, 0.0, n * 0.30, -n * 0.17, 1.0, "Tile")
-        st.cyl(s * 1.1, n * 0.15, 0.9 - n * 0.085, 0.025, n * 0.30, "y", "Pole", 8)
-    st.box(-1.35, 1.35, -0.05, 0.0, 0.0, 1.0, "Glass")
-    objs.append(st.build("Stair"))
-
-    export(os.path.join(out_dir, "station_props.glb"), objs)
-
-
 def main():
     argv = sys.argv
     out_dir = argv[argv.index("--") + 1] if "--" in argv else "assets/models"
@@ -481,7 +403,6 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     build_car(None, out_dir)
     build_cab(out_dir)
-    build_props(out_dir)
 
 
 main()

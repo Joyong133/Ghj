@@ -30,14 +30,14 @@ func setup(line: int) -> void:
 	route_maps.clear()
 	cars.clear()
 	line_color = MetroConst.LINE_COLORS[line]
-	for i in range(MetroConst.NUM_CARS):
+	for i in range(MetroConst.num_cars):
 		var car := CAR_SCENE.instantiate() as Node3D
 		car.name = "Car%d" % i
 		car.position.z = MetroConst.car_center_z(i)
 		add_child(car)
 		cars.append(car)
 		StationBuilder.apply_line_color(car, line_color)
-		if i == MetroConst.PLAYER_CAR:
+		if i == MetroConst.player_car:
 			_build_interior_displays(car)
 			_add_interior_lights(car)
 	# 선두/후미 운전실
@@ -46,7 +46,7 @@ func setup(line: int) -> void:
 	front.rotation.y = PI
 	add_child(front)
 	var rear := CAB_SCENE.instantiate() as Node3D
-	rear.position.z = MetroConst.car_center_z(MetroConst.NUM_CARS - 1) + MetroConst.CAR_HALF_LEN
+	rear.position.z = MetroConst.car_center_z(MetroConst.num_cars - 1) + MetroConst.CAR_HALF_LEN
 	add_child(rear)
 	for cab in [front, rear]:
 		StationBuilder.apply_line_color(cab, line_color)

@@ -338,7 +338,7 @@ static func _hash(i: int, salt: int) -> float:
 ## 매 프레임: odo = 누적 주행거리(m)
 func update_world(odo: float, outdoor_here: bool) -> void:
 	var shift := fposmod(odo, CL)
-	var base := MetroConst.TRAIN_CENTER_Z
+	var base := MetroConst.train_center_z
 	for c in chunks:
 		var z: float = base + c["j"] * CL + shift
 		var node: Node3D = c["node"]
@@ -387,7 +387,7 @@ func update_world(odo: float, outdoor_here: bool) -> void:
 
 
 func _update_buildings(odo: float) -> void:
-	var base := MetroConst.TRAIN_CENTER_Z
+	var base := MetroConst.train_center_z
 	var counts: Array = []
 	for b in bld_mm:
 		counts.append(0)

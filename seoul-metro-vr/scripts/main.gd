@@ -6,8 +6,8 @@ extends Node3D
 
 enum S { DWELL, CLOSING, RUN, LAYOVER, HOLD, TURN }
 
-const TC := MetroConst.TRAIN_CENTER_Z
-const ZONE := MetroConst.PLATFORM_LEN * 0.5 + 12.0
+var TC := MetroConst.train_center_z
+var ZONE := MetroConst.platform_len * 0.5 + 12.0
 
 var routes: Array = []
 var route: Dictionary
@@ -39,8 +39,8 @@ var train: Train
 var scenery: Scenery
 var player: Player
 var audio: AudioSynth
-var env: WorldEnvironment
-var sun: DirectionalLight3D
+var announcer: Announcer
+var world_env: WorldEnv
 var menu: MenuUI
 var panel: Panel3D
 var menu_open := true
@@ -51,13 +51,13 @@ var fade_alpha := 0.0
 var sitting := false
 var _last_joint := 0.0
 var _info_tick := 0.0
-var _underground := false
 var _line := 0
 
 
 func _ready() -> void:
 	routes = MetroData.routes()
-	_build_env()
+	world_env = WorldEnv.new()
+	add_child(world_env)
 	scenery = Scenery.new()
 	add_child(scenery)
 	scenery.env_fn = _env_chunk
@@ -68,6 +68,8 @@ func _ready() -> void:
 	add_child(train)
 	audio = AudioSynth.new()
 	add_child(audio)
+	announcer = Announcer.new()
+	add_child(announcer)
 	player = Player.new()
 	add_child(player)
 	player.walk_check = _walk_check
@@ -79,61 +81,6 @@ func _ready() -> void:
 	var dbg := preload("res://scripts/debug_shot.gd").new()
 	dbg.main = self
 	add_child(dbg)
-
-
-# ------------------------------------------------------------------ 환경
-func _build_env() -> void:
-	env = WorldEnvironment.new()
-	var e := Environment.new()
-	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sky.sky_material = sm
-	e.sky = sky
-	e.background_mode = Environment.BG_SKY
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.8, 0.8, 0.82)
-	e.ambient_light_energy = 0.5
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.fog_enabled = false
-	env.environment = e
-	add_child(env)
-	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, -30, 0)
-	sun.shadow_enabled = false
-	add_child(sun)
-	_apply_daylight()
-
-
-func _apply_daylight() -> void:
-	var t := Time.get_datetime_dict_from_system()
-	var h: float = t["hour"] + t["minute"] / 60.0
-	var day := clampf(sin((h - 6.0) / 12.0 * PI), 0.0, 1.0)
-	var sm := env.environment.sky.sky_material as ProceduralSkyMaterial
-	sm.sky_top_color = Color(0.03, 0.04, 0.10).lerp(Color(0.30, 0.52, 0.85), day)
-	sm.sky_horizon_color = Color(0.10, 0.10, 0.16).lerp(Color(0.72, 0.80, 0.90), day)
-	sm.ground_horizon_color = sm.sky_horizon_color
-	sm.ground_bottom_color = Color(0.1, 0.1, 0.1)
-	sun.light_energy = 0.15 + day * 1.0
-	sun.rotation_degrees = Vector3(-10.0 - day * 55.0, -30, 0)
-
-
-func _set_underground(u: bool) -> void:
-	if u == _underground:
-		return
-	_underground = u
-	var e := env.environment
-	if u:
-		e.background_mode = Environment.BG_COLOR
-		e.background_color = Color(0.01, 0.01, 0.01)
-		e.ambient_light_color = Color(0.85, 0.85, 0.86)
-		e.ambient_light_energy = 0.5
-		sun.visible = false
-	else:
-		e.background_mode = Environment.BG_SKY
-		e.ambient_light_color = Color(0.75, 0.78, 0.85)
-		e.ambient_light_energy = 0.45
-		sun.visible = true
-		_apply_daylight()
 
 
 func _build_overlays() -> void:
@@ -185,7 +132,9 @@ func _build_menu() -> void:
 	menu.skip_to_arrival.connect(_skip_to_arrival)
 	menu.toggle_sit.connect(_toggle_sit)
 	menu.seated_mode.connect(func(on): player.set_seated_mode(on))
-	menu.sound.connect(func(on): audio.enabled = on)
+	menu.sound.connect(func(on):
+		audio.enabled = on
+		announcer.enabled = on)
 	menu.close_menu.connect(func(): _open_menu(false))
 
 
@@ -274,6 +223,8 @@ func _dest_text() -> String:
 
 
 func start_route(r: int, d: int, st: int) -> void:
+	if announcer:
+		announcer.stop()
 	route_idx = r
 	route = routes[r]
 	dir = d
@@ -285,7 +236,11 @@ func start_route(r: int, d: int, st: int) -> void:
 			dir = 1
 	if route["line"] != _line:
 		_line = route["line"]
+		MetroConst.set_line(_line)
+		TC = MetroConst.train_center_z
+		ZONE = MetroConst.platform_len * 0.5 + 12.0
 		train.setup(_line)
+		announcer.setup(_line)
 	var p: Dictionary = MetroData.LINE_PARAMS[_line]
 	acc = p["acc"]
 	dec = p["dec"]
@@ -310,7 +265,7 @@ func start_route(r: int, d: int, st: int) -> void:
 
 
 func _line_name() -> String:
-	return "%d호선" % _line
+	return MetroConst.line_name(_line)
 
 
 ## 현재 역(idx)에서 다음 역으로의 구간을 준비하고 다음 역을 짓는다
@@ -451,7 +406,7 @@ func _platform_ok(p: Vector3) -> bool:
 	var w: float = station_a.get_meta("W")
 	var lx := p.x * side
 	var lz := p.z - station_a.position.z
-	return lx >= 1.72 and lx <= MetroConst.PLATFORM_EDGE_X + w - 0.35 and absf(lz) < MetroConst.PLATFORM_LEN * 0.5 - 1.0
+	return lx >= 1.72 and lx <= MetroConst.PLATFORM_EDGE_X + w - 0.35 and absf(lz) < MetroConst.platform_len * 0.5 - 1.0
 
 
 func _door_gap_ok(p: Vector3) -> bool:
@@ -504,8 +459,8 @@ func _process(delta: float) -> void:
 	_psd_anim(delta)
 	var outdoor := _env_raw(TC - 0.0) != "U"
 	# 플레이어가 있는 객차 부근의 환경
-	var t_here := _env_raw(MetroConst.car_center_z(MetroConst.PLAYER_CAR))
-	_set_underground(t_here == "U")
+	var t_here := _env_raw(0.0)
+	world_env.set_underground(t_here == "U")
 	scenery.update_world(odo, t_here != "U")
 	audio.update_motion(v, a_now, outdoor)
 	if _line == 1 and outdoor and v > 2.0 and odo - _last_joint > 25.0:
@@ -562,6 +517,7 @@ func _start_closing() -> void:
 	timer = 3.2
 	train.close_doors()
 	audio.play_door_close()
+	announcer.doors_closing()
 	say("출입문 닫습니다. (The doors are closing.)", 3.0)
 
 
@@ -575,6 +531,7 @@ func _depart() -> void:
 	if st["tr"].size() > 0:
 		msg += "\n%s으로 갈아타실 수 있습니다." % MetroData.transfer_text(st["tr"])
 	say(msg + "\nThis stop is %s." % st["en"])
+	announcer.next_stop(_line, st, _st(nxt)["kind"] == "I", not route["loop"] and not _has_seg(nxt, dir))
 
 
 func _door_side_text(i: int) -> String:
@@ -609,6 +566,7 @@ func _run(dt: float) -> void:
 		audio.play_arrive()
 		var st := _st(nxt)
 		var terminal: bool = not route["loop"] and not _has_seg(nxt, dir)
+		announcer.arriving(_line, st, st["kind"] == "I", terminal)
 		if terminal:
 			say("이 열차의 종착역인 %s역입니다. 잊으신 물건 없이 안녕히 가십시오.\nThis is the last stop, %s." % [st["ko"], st["en"]])
 		else:
@@ -636,6 +594,7 @@ func _arrive() -> void:
 	# 다음 구간 준비 (정차 중에 다음 역을 짓는다)
 	_begin_segment()
 	if seg_d <= 0.0:
+		announcer.terminal_arrived(_line, _st(idx))
 		say("%s, 종착역입니다. 열차는 잠시 후 회차합니다.\n(The train will turn around shortly.)" % _st(idx)["ko"])
 
 
@@ -653,6 +612,7 @@ func _reverse() -> void:
 		timer = MetroData.dwell_time(_line, _st(idx))
 		train.set_doors_instant(1.0, station_a.get_meta("side"))
 		player.place(Vector3(-0.5 * station_a.get_meta("side"), 0.0, keep_pos.z), player.rotation.y)
+		announcer.turnaround(_line, _dest_text())
 		say("이 열차는 %s 열차입니다." % _dest_text()))
 
 
