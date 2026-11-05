@@ -45,6 +45,13 @@
         </activity>
 
         <activity
+            android:name=".BlockListActivity"
+            android:exported="false"
+            android:label="차단 목록"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".BlockedActivity"
             android:excludeFromRecents="true"
             android:exported="false"

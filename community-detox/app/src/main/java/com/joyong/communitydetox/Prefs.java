@@ -154,9 +154,34 @@ final class Prefs {
         sp(c).edit().putBoolean(K_INAPP_ALL, on).apply();
     }
 
+    /** Built-in communities that existed before the list was expanded (version 1.1.12). */
+    private static final String[] FIRST_PRESETS = {
+            "dcinside", "fmkorea", "theqoo", "ruliweb", "clien", "ppomppu", "instiz", "natepann", "bobae", "mlbpark",
+            "todayhumor", "82cook", "humoruniv", "inven", "arca", "dogdrip", "ilbe", "slrclub", "etoland", "ygosu",
+            "damoang", "quasarzone", "everytime", "blind", "reddit", "x", "instagram", "facebook", "threads", "tiktok",
+            "4chan", "9gag", "navercafe", "daumcafe", "discord", "youtube"};
+    private static final String K_KNOWN_PRESETS = "known_presets";
+
     static Set<String> enabledPresets(Context c) {
-        Set<String> stored = sp(c).getStringSet(K_PRESETS, null);
-        if (stored != null) return new HashSet<>(stored);
+        SharedPreferences p = sp(c);
+        Set<String> stored = p.getStringSet(K_PRESETS, null);
+        if (stored != null) {
+            // Communities added to the built-in list later are switched on for existing users too
+            // (if they are on by default); ones the user already knew about keep the user's choice.
+            Set<String> known = p.getStringSet(K_KNOWN_PRESETS, null);
+            if (known == null) known = new HashSet<>(java.util.Arrays.asList(FIRST_PRESETS));
+            Set<String> result = new HashSet<>(stored);
+            Set<String> allIds = new HashSet<>();
+            boolean changed = false;
+            for (Catalog.Entry e : Catalog.ALL) {
+                allIds.add(e.id);
+                if (!known.contains(e.id) && e.defaultOn && result.add(e.id)) changed = true;
+            }
+            if (changed || !known.containsAll(allIds)) {
+                p.edit().putStringSet(K_PRESETS, new HashSet<>(result)).putStringSet(K_KNOWN_PRESETS, allIds).apply();
+            }
+            return result;
+        }
         Set<String> defaults = new HashSet<>();
         for (Catalog.Entry e : Catalog.ALL) {
             if (e.defaultOn) defaults.add(e.id);
@@ -168,7 +193,9 @@ final class Prefs {
         Set<String> s = enabledPresets(c);
         if (on) s.addAll(ids);
         else s.removeAll(ids);
-        sp(c).edit().putStringSet(K_PRESETS, s).apply();
+        Set<String> allIds = new HashSet<>();
+        for (Catalog.Entry e : Catalog.ALL) allIds.add(e.id);
+        sp(c).edit().putStringSet(K_PRESETS, s).putStringSet(K_KNOWN_PRESETS, allIds).apply();
     }
 
     static Set<String> customDomains(Context c) {

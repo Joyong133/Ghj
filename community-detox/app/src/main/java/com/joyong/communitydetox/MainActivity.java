@@ -114,12 +114,10 @@ public class MainActivity extends Activity {
             vpnCard();      // phones: optional extra
         }
         controlCard();
+        blockListCard();
         focusCard();
         protectCard();
         inAppCard();
-        for (String category : Catalog.CATEGORIES) presetCard(category);
-        appsCard();
-        sitesCard();
         footer();
 
         scroll.post(() -> scroll.scrollTo(0, y));
@@ -668,196 +666,22 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    private void presetCard(String category) {
-        boolean locked = Prefs.isLocked(this);
+    // ------------------------------------------------------------------ block list (summary; the list has its own screen)
+
+    private void blockListCard() {
         Set<String> on = Prefs.enabledPresets(this);
-        List<Catalog.Entry> entries = Catalog.inCategory(category);
-        Set<String> ids = new HashSet<>();
-        for (Catalog.Entry e : entries) ids.add(e.id);
-
+        int presets = 0;
+        for (Catalog.Entry e : Catalog.ALL) if (on.contains(e.id)) presets++;
+        int sites = Prefs.customDomains(this).size();
+        int apps = Prefs.customPackages(this).size();
         LinearLayout c = ui.card();
-        LinearLayout head = ui.row();
-        head.addView(ui.text(category, 17, ui.text, true), Ui.weight(0));
-        Button all = ui.button("전체 켜기", false, v -> {
-            Prefs.setPresetsEnabled(this, ids, true);
-            render();
-        });
-        head.addView(all);
-        if (!locked) {
-            Button none = ui.button("전체 끄기", false, v -> {
-                Prefs.setPresetsEnabled(this, ids, false);
-                render();
-            });
-            LinearLayout.LayoutParams lp = Ui.wrap(0);
-            lp.leftMargin = ui.dp(6);
-            head.addView(none, lp);
-        }
-        c.addView(head);
-
-        for (Catalog.Entry e : entries) {
-            CheckBox cb = checkRow(e.name, e.domainSummary());
-            cb.setChecked(on.contains(e.id));
-            cb.setOnCheckedChangeListener((b, checked) -> {
-                if (!checked && Prefs.isLocked(this)) {
-                    b.setChecked(true);
-                    lockedToast();
-                    return;
-                }
-                Prefs.setPresetsEnabled(this, Collections.singleton(e.id), checked);
-            });
-            c.addView(cb, Ui.fill(ui.dp(4)));
-        }
+        c.addView(ui.title("📋 차단 목록"));
+        c.addView(ui.text("커뮤니티 " + (presets + sites) + "곳 · 앱 " + apps + "개 차단 중", 20, ui.accent, true));
+        c.addView(ui.body("기본 목록 " + Catalog.ALL.size() + "곳 중 " + presets + "곳 켜짐 · 직접 추가한 사이트 " + sites
+                + "곳 · 직접 차단한 앱 " + apps + "개"), Ui.wrap(ui.dp(4)));
+        c.addView(ui.button("차단 목록 보기 · 편집", true,
+                v -> startActivity(new Intent(this, BlockListActivity.class))), Ui.fill(ui.dp(12)));
         content.addView(c);
-    }
-
-    private CheckBox checkRow(String name, String detail) {
-        CheckBox cb = new CheckBox(this);
-        cb.setTextColor(ui.text);
-        cb.setTextSize(15);
-        cb.setPadding(ui.dp(8), ui.dp(6), 0, ui.dp(6));
-        android.text.SpannableString s = new android.text.SpannableString(name + "\n" + detail);
-        s.setSpan(new android.text.style.ForegroundColorSpan(ui.sub), name.length() + 1, s.length(), 0);
-        s.setSpan(new android.text.style.RelativeSizeSpan(0.82f), name.length() + 1, s.length(), 0);
-        cb.setText(s);
-        return cb;
-    }
-
-    // ------------------------------------------------------------------ installed apps
-
-    private void appsCard() {
-        boolean locked = Prefs.isLocked(this);
-        LinearLayout c = ui.card();
-        c.addView(ui.title("📱 설치된 앱 직접 차단"));
-        c.addView(ui.body("목록에 없는 커뮤니티 앱도 골라서 막을 수 있어요."));
-        PackageManager pm = getPackageManager();
-        List<String> pkgs = new ArrayList<>(Prefs.customPackages(this));
-        Collections.sort(pkgs);
-        for (String p : pkgs) {
-            c.addView(removableRow(appLabel(pm, p), p, locked, () -> {
-                Set<String> s = Prefs.customPackages(this);
-                s.remove(p);
-                Prefs.setCustomPackages(this, s);
-                render();
-            }), Ui.fill(ui.dp(6)));
-        }
-        c.addView(ui.button("앱 고르기", true, v -> pickApps()), Ui.fill(ui.dp(12)));
-        content.addView(c);
-    }
-
-    private void pickApps() {
-        PackageManager pm = getPackageManager();
-        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> infos = new ArrayList<>(pm.queryIntentActivities(launcher, 0));
-        // VR games / apps on Meta Quest are listed under their own launcher category.
-        infos.addAll(pm.queryIntentActivities(
-                new Intent(Intent.ACTION_MAIN).addCategory("com.oculus.intent.category.VR"), 0));
-        TreeSet<String> seen = new TreeSet<>();
-        List<String[]> apps = new ArrayList<>(); // {label, package}
-        for (ResolveInfo ri : infos) {
-            String p = ri.activityInfo.packageName;
-            if (p.equals(getPackageName()) || !seen.add(p)) continue;
-            apps.add(new String[]{ri.loadLabel(pm).toString(), p});
-        }
-        Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
-
-        Set<String> current = Prefs.customPackages(this);
-        String[] labels = new String[apps.size()];
-        boolean[] checked = new boolean[apps.size()];
-        for (int i = 0; i < apps.size(); i++) {
-            labels[i] = apps.get(i)[0];
-            checked[i] = current.contains(apps.get(i)[1]);
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("차단할 앱 고르기")
-                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> checked[which] = isChecked)
-                .setPositiveButton("저장", (d, w) -> {
-                    Set<String> next = new HashSet<>();
-                    for (int i = 0; i < apps.size(); i++) if (checked[i]) next.add(apps.get(i)[1]);
-                    if (Prefs.isLocked(this) && !next.containsAll(current)) {
-                        next.addAll(current);
-                        lockedToast();
-                    }
-                    Prefs.setCustomPackages(this, next);
-                    render();
-                })
-                .setNegativeButton("취소", null)
-                .show();
-    }
-
-    private static String appLabel(PackageManager pm, String pkg) {
-        try {
-            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
-        } catch (PackageManager.NameNotFoundException e) {
-            return pkg;
-        }
-    }
-
-    // ------------------------------------------------------------------ custom sites
-
-    private void sitesCard() {
-        boolean locked = Prefs.isLocked(this);
-        LinearLayout c = ui.card();
-        c.addView(ui.title("🌐 사이트 직접 추가"));
-        c.addView(ui.body("주소를 넣으면 하위 주소까지 함께 막아요. 예: example.com → m.example.com도 차단"));
-
-        LinearLayout r = ui.row();
-        EditText input = new EditText(this);
-        input.setHint("예: example.com");
-        input.setSingleLine(true);
-        input.setTextColor(ui.text);
-        input.setHintTextColor(ui.sub);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        r.addView(input, Ui.weight(0));
-        Runnable add = () -> {
-            String host = Prefs.hostOf(input.getText().toString());
-            if (host == null) {
-                Toast.makeText(this, "올바른 주소를 입력해 주세요 (예: example.com)", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            Prefs.addCustomDomain(this, host);
-            Toast.makeText(this, host + " 차단 목록에 추가했어요", Toast.LENGTH_SHORT).show();
-            render();
-        };
-        input.setOnEditorActionListener((v, id, ev) -> {
-            add.run();
-            return true;
-        });
-        LinearLayout.LayoutParams lp = Ui.wrap(0);
-        lp.leftMargin = ui.dp(8);
-        r.addView(ui.button("추가", true, v -> add.run()), lp);
-        c.addView(r, Ui.fill(ui.dp(8)));
-
-        List<String> domains = new ArrayList<>(Prefs.customDomains(this));
-        Collections.sort(domains);
-        for (String d : domains) {
-            c.addView(removableRow(d, null, locked, () -> {
-                Prefs.removeCustomDomain(this, d);
-                render();
-            }), Ui.fill(ui.dp(6)));
-        }
-        content.addView(c);
-    }
-
-    private LinearLayout removableRow(String name, String detail, boolean locked, Runnable onRemove) {
-        LinearLayout r = ui.row();
-        r.setBackground(ui.rounded(ui.accentSoft, 12));
-        r.setPadding(ui.dp(12), ui.dp(6), ui.dp(6), ui.dp(6));
-        LinearLayout texts = ui.column();
-        texts.addView(ui.text(name, 15, ui.text, true));
-        if (detail != null) texts.addView(ui.text(detail, 12, ui.sub, false));
-        r.addView(texts, Ui.weight(0));
-        Button x = ui.button("✕", false, v -> {
-            if (Prefs.isLocked(this)) {
-                lockedToast();
-                return;
-            }
-            onRemove.run();
-        });
-        x.setBackground(null);
-        x.setAlpha(locked ? 0.35f : 1f);
-        r.addView(x);
-        return r;
     }
 
     private void footer() {
