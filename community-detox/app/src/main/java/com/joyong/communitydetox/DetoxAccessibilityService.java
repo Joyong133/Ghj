@@ -297,11 +297,62 @@ public class DetoxAccessibilityService extends AccessibilityService {
     }
 
     private static final String[] UNINSTALL_WORDS = {"삭제", "제거", "uninstall", "Uninstall", "UNINSTALL"};
+    /** The force-stop button only appears on an app-info page (every app-info page has it). */
+    private static final String[] APP_INFO_WORDS = {"강제 중지", "강제 종료", "강제종료", "Force stop", "FORCE STOP"};
+    /** Words next to our service name on its own on/off switch or "stop service?" dialog. */
+    private static final String[] TOGGLE_WORDS = {"사용", "중지", "끄", "Use ", "Stop", "Turn off"};
 
     /**
-     * If a settings / installer screen shows this app (app info, accessibility toggle, device admin,
-     * uninstall dialog), leave it. Install / update dialogs are allowed so the app can still be updated.
+     * Decides whether a settings / installer screen is one that could switch this app off or remove it.
+     * Only these are blocked during a focus lock:
+     *  - this app's uninstall dialog,
+     *  - this app's app-info page (force stop / uninstall / clear data),
+     *  - this app's accessibility page or "stop service?" dialog,
+     *  - the page that turns off this app's uninstall protection (device admin).
+     * Lists that merely show this app among others (e.g. the accessibility list with other apps'
+     * services) stay usable.
      */
+    static boolean shouldGuard(List<String> texts, boolean installer, String appLabel, String serviceLabel,
+                               String serviceDesc, String adminDesc) {
+        boolean mentionsUs = false;
+        for (String t : texts) {
+            if (t.contains(appLabel)) {
+                mentionsUs = true;
+                break;
+            }
+        }
+        if (!mentionsUs) return false;
+
+        if (installer) {
+            // Uninstall dialog (install / update dialogs are allowed so the app can be updated).
+            return anyOtherTextContains(texts, appLabel, UNINSTALL_WORDS);
+        }
+        for (String t : texts) {
+            // Our accessibility detail page / device-admin page show our own description.
+            if (!serviceDesc.isEmpty() && t.contains(serviceDesc)) return true;
+            if (!adminDesc.isEmpty() && t.contains(adminDesc)) return true;
+            // "커뮤니티 디톡스 차단 사용" switch, "커뮤니티 디톡스 차단을(를) 중지할까요?" dialog.
+            if (t.contains(serviceLabel) && !t.trim().equals(serviceLabel)) {
+                for (String w : TOGGLE_WORDS) {
+                    if (t.contains(w)) return true;
+                }
+            }
+        }
+        // App-info page of this app.
+        return anyOtherTextContains(texts, appLabel, APP_INFO_WORDS);
+    }
+
+    /** True if a text that is not our own name contains one of the words. */
+    private static boolean anyOtherTextContains(List<String> texts, String appLabel, String[] words) {
+        for (String t : texts) {
+            if (t.contains(appLabel)) continue;
+            for (String w : words) {
+                if (t.contains(w)) return true;
+            }
+        }
+        return false;
+    }
+
     private boolean guardSelf(AccessibilityEvent event, String pkg) {
         long now = SystemClock.uptimeMillis();
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -322,7 +373,10 @@ public class DetoxAccessibilityService extends AccessibilityService {
         if (Prefs.adminSetupAllowed(this) && !isAdminActive() && containsAny(root, ADMIN_WORDS)) return false;
 
         boolean installer = pkg.contains("packageinstaller");
-        if (installer && !containsAny(root, UNINSTALL_WORDS)) return false; // install / update: allow
+        if (!shouldGuard(collectTexts(root), installer, myLabel(), stringRes("service_label"),
+                snippet(stringRes("accessibility_desc")), snippet(stringRes("admin_desc")))) {
+            return false;
+        }
 
         long guardNow = SystemClock.uptimeMillis();
         if ("guard".equals(lastBlockedKey) && guardNow - lastBlockedAt < 800) return true;
@@ -340,6 +394,36 @@ public class DetoxAccessibilityService extends AccessibilityService {
             }
         }, 250);
         return true;
+    }
+
+    private static List<String> collectTexts(AccessibilityNodeInfo root) {
+        List<String> out = new java.util.ArrayList<>();
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 800) {
+            AccessibilityNodeInfo n = queue.poll();
+            visited++;
+            if (n.getText() != null && n.getText().length() > 0) out.add(n.getText().toString());
+            if (n.getContentDescription() != null && n.getContentDescription().length() > 0) {
+                out.add(n.getContentDescription().toString());
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) queue.add(child);
+            }
+        }
+        return out;
+    }
+
+    private String stringRes(String name) {
+        int id = getResources().getIdentifier(name, "string", getPackageName());
+        return id == 0 ? "" : getString(id);
+    }
+
+    /** The first words of a long description: enough to recognise it even if Settings shortens it. */
+    private static String snippet(String s) {
+        return s.length() > 18 ? s.substring(0, 18) : s;
     }
 
     private static boolean containsAny(AccessibilityNodeInfo root, String[] words) {

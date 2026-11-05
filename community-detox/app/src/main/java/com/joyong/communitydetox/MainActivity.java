@@ -305,8 +305,8 @@ public class MainActivity extends Activity {
         boolean admin = isAdminActive();
         LinearLayout c = ui.card();
         c.addView(ui.title("🛡️ 삭제 방지"));
-        c.addView(ui.body("켜 두면 이 앱을 바로 지울 수 없어요. 집중 디톡스 중에는 앱 삭제, 강제 중지, "
-                + "접근성 끄기, 삭제 방지 끄기 화면이 열리면 바로 닫아요."));
+        c.addView(ui.body("켜 두면 이 앱을 바로 지울 수 없어요. 집중 디톡스 중에는 이 앱의 삭제 확인창, 앱 정보(강제 중지), "
+                + "접근성 끄기, 삭제 방지 끄기 화면만 닫아요. 다른 앱의 접근성 설정은 그대로 쓸 수 있어요."));
         if (!admin) {
             c.addView(ui.button("삭제 방지 켜기", true, v -> {
                 Prefs.allowAdminSetup(this);
