@@ -25,6 +25,7 @@ final class Prefs {
     private static final String K_DAY = "day";
     private static final String K_DAY_COUNT = "day_count";
     private static final String K_STARTED = "started_at";
+    private static final String K_ADMIN_SETUP = "admin_setup_until";
 
     static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
@@ -52,6 +53,15 @@ final class Prefs {
     static void lockUntilAtLeast(Context c, long untilMs) {
         long until = Math.max(lockUntil(c), untilMs);
         sp(c).edit().putLong(K_LOCK_UNTIL, until).putBoolean(K_MASTER, true).commit();
+    }
+
+    /** Opens a 2-minute window in which the device-admin activation screen isn't closed by the guard. */
+    static void allowAdminSetup(Context c) {
+        sp(c).edit().putLong(K_ADMIN_SETUP, System.currentTimeMillis() + 2 * 60 * 1000).apply();
+    }
+
+    static boolean adminSetupAllowed(Context c) {
+        return System.currentTimeMillis() < sp(c).getLong(K_ADMIN_SETUP, 0);
     }
 
     static boolean isBlockingActive(Context c) {

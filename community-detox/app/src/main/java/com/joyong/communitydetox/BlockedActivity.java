@@ -16,6 +16,8 @@ import java.util.Random;
 public class BlockedActivity extends Activity {
 
     static final String EXTRA_LABEL = "label";
+    static final String EXTRA_REASON = "reason";
+    static final String REASON_PROTECT = "protect";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView stats;
@@ -66,11 +68,16 @@ public class BlockedActivity extends Activity {
         leaf.setGravity(Gravity.CENTER);
         col.addView(leaf, Ui.wrap(ui.dp(24)));
 
-        TextView title = ui.text("잠깐, 디톡스 중이에요", 24, ui.text, true);
+        boolean protect = REASON_PROTECT.equals(intent.getStringExtra(EXTRA_REASON));
+        if (protect) leaf.setText("🛡️");
+
+        TextView title = ui.text(protect ? "지금은 지우거나 끌 수 없어요" : "잠깐, 디톡스 중이에요", 24, ui.text, true);
         title.setGravity(Gravity.CENTER);
         col.addView(title, Ui.wrap(ui.dp(12)));
 
-        TextView msg = ui.text(Ui.topic(label) + " 지금 차단되어 있어요.\n습관처럼 열었다면, 잘 알아챘어요.", 16, ui.sub, false);
+        TextView msg = ui.text(protect
+                ? "집중 디톡스가 끝날 때까지 커뮤니티 디톡스를\n삭제·강제 중지하거나 접근성·삭제 방지를 끌 수 없어요.\n조금만 더 힘내요!"
+                : Ui.topic(label) + " 지금 차단되어 있어요.\n습관처럼 열었다면, 잘 알아챘어요.", 16, ui.sub, false);
         msg.setGravity(Gravity.CENTER);
         col.addView(msg, Ui.wrap(ui.dp(10)));
 

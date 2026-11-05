@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
+import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -95,6 +96,7 @@ public class MainActivity extends Activity {
         permissionCard();
         controlCard();
         focusCard();
+        protectCard();
         for (String category : Catalog.CATEGORIES) presetCard(category);
         appsCard();
         sitesCard();
@@ -200,6 +202,61 @@ public class MainActivity extends Activity {
                 new long[]{30 * MINUTE, HOUR, 3 * HOUR, 6 * HOUR, DAY, 7 * DAY}, false);
         c.addView(ui.button("⏱ 시간 직접 정하기", true, v -> showCustomLockDialog(false)), Ui.fill(ui.dp(8)));
         content.addView(c);
+    }
+
+    private void protectCard() {
+        boolean locked = Prefs.isLocked(this);
+        boolean admin = isAdminActive();
+        LinearLayout c = ui.card();
+        c.addView(ui.title("🛡️ 삭제 방지"));
+        c.addView(ui.body("켜 두면 이 앱을 바로 지울 수 없어요. 집중 디톡스 중에는 앱 삭제, 강제 중지, "
+                + "접근성 끄기, 삭제 방지 끄기 화면이 열리면 바로 닫아요."));
+        if (!admin) {
+            c.addView(ui.button("삭제 방지 켜기", true, v -> {
+                Prefs.allowAdminSetup(this);
+                Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent())
+                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "켜 두면 커뮤니티 디톡스를 바로 지울 수 없어요. 기기를 잠그거나 지우는 등 다른 권한은 쓰지 않아요.");
+                try {
+                    startActivity(i);
+                } catch (RuntimeException e) {
+                    Toast.makeText(this, "이 기기에서는 삭제 방지를 켤 수 없어요", Toast.LENGTH_SHORT).show();
+                }
+            }), Ui.fill(ui.dp(12)));
+            if (locked) {
+                c.addView(ui.body("집중 디톡스 중에도 접근성 감시가 이 앱의 삭제 화면을 막고 있어요."), Ui.wrap(ui.dp(8)));
+            }
+        } else {
+            TextView on = ui.text("✅ 삭제 방지가 켜져 있어요", 15, ui.accent, true);
+            c.addView(on, Ui.wrap(ui.dp(10)));
+            if (locked) {
+                c.addView(ui.body("집중 디톡스가 끝나면 끌 수 있어요."), Ui.wrap(ui.dp(4)));
+            } else {
+                c.addView(ui.body("앱을 지우려면 먼저 아래 버튼으로 삭제 방지를 끄세요."), Ui.wrap(ui.dp(4)));
+                c.addView(ui.button("삭제 방지 끄기", false, v -> new AlertDialog.Builder(this)
+                        .setTitle("삭제 방지를 끌까요?")
+                        .setMessage("끄면 이 앱을 바로 지울 수 있게 돼요.")
+                        .setPositiveButton("끄기", (d, w) -> {
+                            DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                            dpm.removeActiveAdmin(adminComponent());
+                            Toast.makeText(this, "삭제 방지를 껐어요", Toast.LENGTH_SHORT).show();
+                            handler.postDelayed(this::render, 500);
+                        })
+                        .setNegativeButton("취소", null)
+                        .show()), Ui.fill(ui.dp(10)));
+            }
+        }
+        content.addView(c);
+    }
+
+    private ComponentName adminComponent() {
+        return new ComponentName(this, DetoxAdminReceiver.class);
+    }
+
+    private boolean isAdminActive() {
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        return dpm != null && dpm.isAdminActive(adminComponent());
     }
 
     /** Rows of 3 quick buttons. Each starts (or extends) the lock by its duration. */

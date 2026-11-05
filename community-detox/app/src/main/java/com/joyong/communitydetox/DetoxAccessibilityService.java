@@ -53,6 +53,8 @@ public class DetoxAccessibilityService extends AccessibilityService {
     private volatile Prefs.Rules rules = new Prefs.Rules();
     private long browsersLoadedAt;
     private long lastBrowserCheck;
+    private long lastGuardCheck;
+    private String myLabel;
     private String lastBlockedKey;
     private long lastBlockedAt;
 
@@ -83,6 +85,10 @@ public class DetoxAccessibilityService extends AccessibilityService {
         if (event == null || event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
         if (pkg.equals(getPackageName()) || pkg.equals("com.android.systemui")) return;
+
+        // 0) During a focus lock, don't let the app be uninstalled, force-stopped or switched off.
+        if (Prefs.isLocked(this) && isSystemGuardPackage(pkg) && guardSelf(event, pkg)) return;
+
         if (!Prefs.isBlockingActive(this)) return;
 
         Prefs.Rules r = rules;
@@ -164,6 +170,83 @@ public class DetoxAccessibilityService extends AccessibilityService {
         if (id == null) return false;
         id = id.toLowerCase(Locale.ROOT);
         return id.contains("url") || id.contains("address") || id.contains("omnibar") || id.contains("location_bar");
+    }
+
+    /** Settings screens and the package installer, where the app could be removed or turned off. */
+    private static boolean isSystemGuardPackage(String pkg) {
+        return pkg.equals("com.android.settings")
+                || pkg.contains("settings")             // e.g. com.samsung.android.settings, settings search
+                || pkg.contains("packageinstaller")     // uninstall confirmation dialogs
+                || pkg.equals("com.samsung.accessibility")
+                || pkg.contains("securitycenter")       // Xiaomi app management
+                || pkg.contains("safecenter");          // OPPO / OnePlus app management
+    }
+
+    private static final String[] UNINSTALL_WORDS = {"삭제", "제거", "uninstall", "Uninstall", "UNINSTALL"};
+
+    /**
+     * If a settings / installer screen shows this app (app info, accessibility toggle, device admin,
+     * uninstall dialog), leave it. Install / update dialogs are allowed so the app can still be updated.
+     */
+    private boolean guardSelf(AccessibilityEvent event, String pkg) {
+        long now = SystemClock.uptimeMillis();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && now - lastGuardCheck < CHECK_INTERVAL_MS) {
+            return false;
+        }
+        lastGuardCheck = now;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !pkg.equals(root.getPackageName().toString())) {
+            return false;
+        }
+        List<AccessibilityNodeInfo> mine = root.findAccessibilityNodeInfosByText(myLabel());
+        if (mine == null || mine.isEmpty()) return false;
+
+        // The "activate device admin" screen opened from our own app is allowed for a short while,
+        // so protection can be turned on during a lock (only while it's not active yet).
+        if (Prefs.adminSetupAllowed(this) && !isAdminActive() && containsAny(root, ADMIN_WORDS)) return false;
+
+        boolean installer = pkg.contains("packageinstaller");
+        if (installer && !containsAny(root, UNINSTALL_WORDS)) return false; // install / update: allow
+
+        long guardNow = SystemClock.uptimeMillis();
+        if ("guard".equals(lastBlockedKey) && guardNow - lastBlockedAt < 800) return true;
+        lastBlockedKey = "guard";
+        lastBlockedAt = guardNow;
+
+        // Uninstall dialog: BACK cancels it. Settings page: go home (BACK may land on another page about us).
+        performGlobalAction(installer ? GLOBAL_ACTION_BACK : GLOBAL_ACTION_HOME);
+        handler.postDelayed(() -> {
+            try {
+                startActivity(new Intent(this, BlockedActivity.class)
+                        .putExtra(BlockedActivity.EXTRA_REASON, BlockedActivity.REASON_PROTECT)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+            } catch (RuntimeException ignored) {
+            }
+        }, 250);
+        return true;
+    }
+
+    private static boolean containsAny(AccessibilityNodeInfo root, String[] words) {
+        for (String w : words) {
+            List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(w);
+            if (found != null && !found.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    private static final String[] ADMIN_WORDS = {"관리자", "admin", "Admin"};
+
+    private boolean isAdminActive() {
+        android.app.admin.DevicePolicyManager dpm =
+                (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        return dpm != null && dpm.isAdminActive(new android.content.ComponentName(this, DetoxAdminReceiver.class));
+    }
+
+    private String myLabel() {
+        if (myLabel == null) myLabel = getApplicationInfo().loadLabel(getPackageManager()).toString();
+        return myLabel;
     }
 
     private void block(String key, String label, boolean browser) {
