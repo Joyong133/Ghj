@@ -1,0 +1,49 @@
+name: Build BGM 차단 타이머 APK
+
+on:
+  push:
+    paths:
+      - 'mute-timer/**'
+      - '.github/workflows/mute-timer-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mute-timer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk BGM-Mute-Timer.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BGM-Mute-Timer-apk
+          path: mute-timer/BGM-Mute-Timer.apk
+
+      - name: Publish download link (GitHub Release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete mute-timer-latest --yes --cleanup-tag || true
+          gh release create mute-timer-latest BGM-Mute-Timer.apk \
+            --target "${{ github.sha }}" \
+            --title "BGM 차단 타이머 (최신 빌드)" \
+            --notes "휴대폰에서 BGM-Mute-Timer.apk 를 눌러 다운로드 후 설치하세요. 빌드 커밋: ${{ github.sha }}"

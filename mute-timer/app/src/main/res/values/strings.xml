@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BGM 차단 타이머</string>
+    <string name="title">소리 잠깐 막기</string>
+    <string name="subtitle">설정한 시간 동안 음악·BGM·영상 소리를 모두 막아요.\n전화벨, 알람, 알림 소리는 그대로 울려요.</string>
+    <string name="hours">시간</string>
+    <string name="minutes">분</string>
+    <string name="preset10">10분</string>
+    <string name="preset30">30분</string>
+    <string name="preset60">1시간</string>
+    <string name="preset120">2시간</string>
+    <string name="pause_apps">재생 중인 앱도 일시정지 (유튜브, 음악앱, 동영상 플레이어 등)</string>
+    <string name="start">차단 시작</string>
+    <string name="stop_now">지금 해제</string>
+    <string name="status_off">지금은 꺼져 있어요</string>
+    <string name="status_on_fmt">🔇 차단 중 · 남은 시간 %1$s</string>
+    <string name="need_time">시간을 1분 이상으로 설정해 주세요</string>
+    <string name="started_fmt">%1$d분 동안 소리를 막을게요</string>
+    <string name="hint">차단 중에는 볼륨을 올려도 바로 다시 음소거돼요. 끝나면 원래 볼륨으로 돌아와요.</string>
+    <string name="noti_running">미디어 소리 차단 중</string>
+    <string name="remaining_fmt">남은 시간 %1$s</string>
+    <string name="noti_done">차단 시간이 끝났어요</string>
+    <string name="noti_stopped">차단을 해제했어요</string>
+    <string name="noti_restored">미디어 볼륨을 원래대로 되돌렸어요</string>
+    <string name="channel_running">소리 차단 진행 중</string>
+    <string name="channel_done">소리 차단 종료</string>
+</resources>
