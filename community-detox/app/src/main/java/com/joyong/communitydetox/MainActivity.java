@@ -2,6 +2,8 @@ package com.joyong.communitydetox;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
+import android.app.TimePickerDialog;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -18,15 +20,20 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.NumberPicker;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -163,46 +170,178 @@ public class MainActivity extends Activity {
         return s;
     }
 
+    private static final long MINUTE = 60L * 1000;
+    private static final long HOUR = 60 * MINUTE;
+    private static final long DAY = 24 * HOUR;
+    private static final int MAX_DAYS = 99;
+
     private void focusCard() {
         LinearLayout c = ui.card();
         if (Prefs.isLocked(this)) {
+            long until = Prefs.lockUntil(this);
             c.setBackground(ui.rounded(ui.accentSoft, 20));
             c.addView(ui.title("🔒 집중 디톡스 진행 중"));
-            lockCountdown = ui.text("남은 시간  " + Ui.remaining(Prefs.lockUntil(this) - System.currentTimeMillis()),
+            lockCountdown = ui.text("남은 시간  " + Ui.remaining(until - System.currentTimeMillis()),
                     20, ui.accent, true);
             c.addView(lockCountdown);
+            c.addView(ui.body("끝나는 시각: " + formatTime(until)), Ui.wrap(ui.dp(4)));
             c.addView(ui.body("끝날 때까지 차단을 끄거나 목록에서 뺄 수 없어요. 새로 추가하는 건 언제든 가능해요."),
                     Ui.wrap(ui.dp(6)));
-            c.addView(ui.button("1시간 더 연장", false, v -> confirmLock("1시간", 60L * 60 * 1000)), Ui.fill(ui.dp(12)));
+            c.addView(ui.text("연장하기", 14, ui.text, true), Ui.wrap(ui.dp(14)));
+            buttonGrid(c, new String[]{"+10분", "+30분", "+1시간", "+3시간", "+1일", "+3일"},
+                    new long[]{10 * MINUTE, 30 * MINUTE, HOUR, 3 * HOUR, DAY, 3 * DAY}, true);
+            c.addView(ui.button("⏱ 연장 시간 직접 정하기", true, v -> showCustomLockDialog(true)), Ui.fill(ui.dp(8)));
             content.addView(c);
             return;
         }
         c.addView(ui.title("🔒 집중 디톡스"));
         c.addView(ui.body("정한 시간 동안은 차단을 끄거나 목록에서 뺄 수 없게 잠가요. 의지가 약해지는 순간을 막아 줘요."));
-        String[] labels = {"1시간", "3시간", "6시간", "하루", "3일", "7일"};
-        long hour = 60L * 60 * 1000;
-        long[] durations = {hour, 3 * hour, 6 * hour, 24 * hour, 72 * hour, 168 * hour};
+        buttonGrid(c, new String[]{"30분", "1시간", "3시간", "6시간", "하루", "7일"},
+                new long[]{30 * MINUTE, HOUR, 3 * HOUR, 6 * HOUR, DAY, 7 * DAY}, false);
+        c.addView(ui.button("⏱ 시간 직접 정하기", true, v -> showCustomLockDialog(false)), Ui.fill(ui.dp(8)));
+        content.addView(c);
+    }
+
+    /** Rows of 3 quick buttons. Each starts (or extends) the lock by its duration. */
+    private void buttonGrid(LinearLayout parent, String[] labels, long[] durations, boolean extending) {
         LinearLayout r = null;
         for (int i = 0; i < labels.length; i++) {
             if (i % 3 == 0) {
                 r = ui.row();
-                c.addView(r, Ui.fill(ui.dp(i == 0 ? 12 : 8)));
+                parent.addView(r, Ui.fill(ui.dp(i == 0 ? 10 : 8)));
             }
-            final String l = labels[i];
             final long d = durations[i];
-            Button b = ui.button(l, i == 0, v -> confirmLock(l, d));
+            Button b = ui.button(labels[i], false, v -> confirmLock(baseTime(extending) + d, extending));
             r.addView(b, Ui.weight(i % 3 == 0 ? 0 : ui.dp(8)));
         }
-        content.addView(c);
     }
 
-    private void confirmLock(String label, long durationMs) {
+    /** Extensions add on top of the current end time; new locks start now. */
+    private long baseTime(boolean extending) {
+        long now = System.currentTimeMillis();
+        return extending ? Math.max(now, Prefs.lockUntil(this)) : now;
+    }
+
+    /** Pick days / hours / minutes, or an exact end date and time. */
+    private void showCustomLockDialog(boolean extending) {
+        LinearLayout box = ui.column();
+        box.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0);
+
+        LinearLayout pickers = ui.row();
+        pickers.setGravity(Gravity.CENTER);
+        NumberPicker days = numberPicker(0, MAX_DAYS, 0);
+        NumberPicker hours = numberPicker(0, 23, extending ? 1 : 2);
+        NumberPicker minutes = numberPicker(0, 59, 0);
+        pickers.addView(pickerColumn(days, "일"));
+        pickers.addView(pickerColumn(hours, "시간"));
+        pickers.addView(pickerColumn(minutes, "분"));
+        box.addView(pickers);
+
+        TextView preview = ui.text("", 15, ui.accent, true);
+        preview.setGravity(Gravity.CENTER);
+        box.addView(preview, Ui.fill(ui.dp(8)));
+
+        final long[] exactUntil = {0}; // set when an exact date/time is chosen
+        Runnable update = () -> {
+            long until = exactUntil[0] > 0 ? exactUntil[0] : baseTime(extending)
+                    + days.getValue() * DAY + hours.getValue() * HOUR + minutes.getValue() * MINUTE;
+            long added = until - baseTime(extending);
+            preview.setText(added <= 0 ? "시간을 정해 주세요"
+                    : (extending ? "+" + Ui.duration(added) + " 연장" : Ui.duration(added) + " 동안")
+                    + "\n끝나는 시각: " + formatTime(until));
+        };
+        NumberPicker.OnValueChangeListener onChange = (p, o, n) -> {
+            exactUntil[0] = 0;
+            update.run();
+        };
+        days.setOnValueChangedListener(onChange);
+        hours.setOnValueChangedListener(onChange);
+        minutes.setOnValueChangedListener(onChange);
+        update.run();
+
+        box.addView(ui.button("📅 끝나는 날짜·시각으로 정하기", false, v -> pickExactTime(extending, until -> {
+            exactUntil[0] = until;
+            update.run();
+        })), Ui.fill(ui.dp(12)));
+
         new AlertDialog.Builder(this)
-                .setTitle(label + " 집중 디톡스")
-                .setMessage("시작하면 " + label + " 동안 차단을 끄거나 목록에서 뺄 수 없어요.\n정말 시작할까요?")
-                .setPositiveButton("시작", (d, w) -> {
-                    Prefs.startLock(this, durationMs);
-                    Toast.makeText(this, "집중 디톡스를 시작했어요 🌿", Toast.LENGTH_SHORT).show();
+                .setTitle(extending ? "연장 시간 정하기" : "집중 디톡스 시간 정하기")
+                .setView(box)
+                .setPositiveButton("다음", (d, w) -> {
+                    long until = exactUntil[0] > 0 ? exactUntil[0] : baseTime(extending)
+                            + days.getValue() * DAY + hours.getValue() * HOUR + minutes.getValue() * MINUTE;
+                    if (until - baseTime(extending) < MINUTE) {
+                        Toast.makeText(this, extending ? "지금 끝나는 시각보다 뒤로 정해 주세요" : "1분 이상으로 정해 주세요",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    confirmLock(until, extending);
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private interface TimeChosen {
+        void onChosen(long untilMs);
+    }
+
+    private void pickExactTime(boolean extending, TimeChosen done) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(baseTime(extending) + HOUR);
+        DatePickerDialog dp = new DatePickerDialog(this, (view, y, m, d) -> {
+            cal.set(y, m, d);
+            new TimePickerDialog(this, (tv, h, min) -> {
+                cal.set(Calendar.HOUR_OF_DAY, h);
+                cal.set(Calendar.MINUTE, min);
+                cal.set(Calendar.SECOND, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                if (cal.getTimeInMillis() - baseTime(extending) < MINUTE) {
+                    Toast.makeText(this, extending ? "지금 끝나는 시각보다 뒤로 정해 주세요" : "지금보다 뒤의 시각을 골라 주세요",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                done.onChosen(cal.getTimeInMillis());
+            }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), false).show();
+        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH));
+        dp.getDatePicker().setMinDate(System.currentTimeMillis() - 1000);
+        dp.getDatePicker().setMaxDate(System.currentTimeMillis() + MAX_DAYS * DAY);
+        dp.show();
+    }
+
+    private NumberPicker numberPicker(int min, int max, int value) {
+        NumberPicker p = new NumberPicker(this);
+        p.setMinValue(min);
+        p.setMaxValue(max);
+        p.setValue(value);
+        p.setWrapSelectorWheel(false);
+        p.setDescendantFocusability(NumberPicker.FOCUS_BLOCK_DESCENDANTS);
+        return p;
+    }
+
+    private LinearLayout pickerColumn(NumberPicker p, String unit) {
+        LinearLayout col = ui.column();
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setPadding(ui.dp(10), 0, ui.dp(10), 0);
+        col.addView(p);
+        col.addView(ui.text(unit, 14, ui.sub, true));
+        return col;
+    }
+
+    private static String formatTime(long ms) {
+        return new SimpleDateFormat("M월 d일 (E) a h:mm", Locale.KOREAN).format(new Date(ms));
+    }
+
+    private void confirmLock(long untilMs, boolean extending) {
+        long added = untilMs - baseTime(extending);
+        String what = extending ? Ui.duration(added) + " 연장" : Ui.duration(added) + " 집중 디톡스";
+        new AlertDialog.Builder(this)
+                .setTitle(what)
+                .setMessage("끝나는 시각: " + formatTime(untilMs) + "\n\n그때까지 차단을 끄거나 목록에서 뺄 수 없어요.\n"
+                        + (extending ? "연장할까요?" : "정말 시작할까요?"))
+                .setPositiveButton(extending ? "연장" : "시작", (d, w) -> {
+                    Prefs.lockUntilAtLeast(this, untilMs);
+                    Toast.makeText(this, extending ? "연장했어요 · " + formatTime(untilMs) + "까지"
+                            : "집중 디톡스를 시작했어요 🌿", Toast.LENGTH_SHORT).show();
                     render();
                 })
                 .setNegativeButton("취소", null)
@@ -403,8 +542,34 @@ public class MainActivity extends Activity {
                 + "다른 앱 속에 열리는 내장 브라우저는 막히지 않을 수 있어요.\n\n"
                 + "스스로를 돕는 도구예요. 휴대폰 설정에서 접근성 권한을 끄면 차단도 멈춰요.");
         t.setTextSize(12);
-        t.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(24));
+        t.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(16));
         content.addView(t);
+
+        LinearLayout c = ui.card();
+        c.addView(ui.title("⬇️ 앱 업데이트"));
+        c.addView(ui.body("지금 버전: " + versionName() + "\n"
+                + "버튼을 누르면 최신 APK를 받아요. 받은 파일을 열어 설치하면 설정과 기록을 그대로 둔 채 업데이트돼요."));
+        c.addView(ui.button("최신 버전 받기", false, v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(UPDATE_URL)));
+            } catch (RuntimeException e) {
+                Toast.makeText(this, "브라우저를 열 수 없어요", Toast.LENGTH_SHORT).show();
+            }
+        }), Ui.fill(ui.dp(12)));
+        LinearLayout.LayoutParams lp = Ui.fill(0);
+        lp.bottomMargin = ui.dp(24);
+        content.addView(c, lp);
+    }
+
+    private static final String UPDATE_URL =
+            "https://github.com/Joyong133/Ghj/releases/download/community-detox-latest/CommunityDetox.apk";
+
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "?";
+        }
     }
 
     // ------------------------------------------------------------------ helpers

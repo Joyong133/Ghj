@@ -3,6 +3,8 @@ package com.joyong.communitydetox;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -14,6 +16,16 @@ import java.util.Random;
 public class BlockedActivity extends Activity {
 
     static final String EXTRA_LABEL = "label";
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private TextView stats;
+    private final Runnable ticker = new Runnable() {
+        @Override
+        public void run() {
+            updateStats();
+            handler.postDelayed(this, 1000);
+        }
+    };
 
     private static final String[] IDEAS = {
             "물 한 잔 마시기 💧",
@@ -70,14 +82,10 @@ public class BlockedActivity extends Activity {
         idea.setOnClickListener(v -> ideaText.setText(IDEAS[new Random().nextInt(IDEAS.length)]));
         col.addView(idea, Ui.fill(ui.dp(28)));
 
-        int today = Prefs.todayBlocks(this);
-        String stats = "오늘 " + today + "번 참았어요 💪 · 디톡스 " + Prefs.detoxDay(this) + "일째";
-        if (Prefs.isLocked(this)) {
-            stats += "\n🔒 집중 디톡스 남은 시간: " + Ui.remaining(Prefs.lockUntil(this) - System.currentTimeMillis());
-        }
-        TextView st = ui.text(stats, 14, ui.sub, false);
-        st.setGravity(Gravity.CENTER);
-        col.addView(st, Ui.wrap(ui.dp(4)));
+        stats = ui.text("", 14, ui.sub, false);
+        stats.setGravity(Gravity.CENTER);
+        col.addView(stats, Ui.wrap(ui.dp(4)));
+        updateStats();
 
         col.addView(ui.button("홈 화면으로", true, v -> goHome()), Ui.fill(ui.dp(28)));
         col.addView(ui.button("디톡스 설정 열기", false, v -> {
@@ -90,6 +98,27 @@ public class BlockedActivity extends Activity {
         scroll.addView(col);
         ui.applySystemBarPadding(this, scroll, ui.dp(24));
         setContentView(scroll);
+    }
+
+    private void updateStats() {
+        if (stats == null) return;
+        String text = "오늘 " + Prefs.todayBlocks(this) + "번 참았어요 💪 · 디톡스 " + Prefs.detoxDay(this) + "일째";
+        if (Prefs.isLocked(this)) {
+            text += "\n🔒 집중 디톡스 남은 시간: " + Ui.remaining(Prefs.lockUntil(this) - System.currentTimeMillis());
+        }
+        stats.setText(text);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        handler.post(ticker);
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(ticker);
+        super.onPause();
     }
 
     private void goHome() {

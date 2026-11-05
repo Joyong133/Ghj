@@ -48,9 +48,10 @@ final class Prefs {
         return System.currentTimeMillis() < lockUntil(c);
     }
 
-    static void startLock(Context c, long durationMs) {
-        long until = Math.max(lockUntil(c), System.currentTimeMillis()) + durationMs;
-        sp(c).edit().putLong(K_LOCK_UNTIL, until).putBoolean(K_MASTER, true).apply();
+    /** Locks until {@code untilMs}. A running lock can only be extended, never shortened. */
+    static void lockUntilAtLeast(Context c, long untilMs) {
+        long until = Math.max(lockUntil(c), untilMs);
+        sp(c).edit().putLong(K_LOCK_UNTIL, until).putBoolean(K_MASTER, true).commit();
     }
 
     static boolean isBlockingActive(Context c) {

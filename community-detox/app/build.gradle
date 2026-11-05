@@ -6,6 +6,9 @@ plugins {
 // Without it the APK is signed with a debug key, which is fine for sideloading.
 def keystorePath = System.getenv("DETOX_KEYSTORE_PATH")
 
+// Each CI build gets a higher version so a newly downloaded APK installs as an update.
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
 android {
     namespace 'com.joyong.communitydetox'
     compileSdk 35
@@ -14,8 +17,8 @@ android {
         applicationId 'com.joyong.communitydetox'
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '1.0.0'
+        versionCode buildNumber
+        versionName "1.1.${buildNumber}"
     }
 
     signingConfigs {

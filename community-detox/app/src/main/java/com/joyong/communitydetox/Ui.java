@@ -172,6 +172,17 @@ final class Ui {
         return sb.toString();
     }
 
+    /** "2일 3시간 30분" style length (rounded to the minute). */
+    static String duration(long ms) {
+        long totalMin = Math.max(0, (ms + 30_000) / 60_000);
+        long d = totalMin / 1440, h = (totalMin % 1440) / 60, m = totalMin % 60;
+        StringBuilder sb = new StringBuilder();
+        if (d > 0) sb.append(d).append("일 ");
+        if (h > 0) sb.append(h).append("시간 ");
+        if (m > 0 || sb.length() == 0) sb.append(m).append("분 ");
+        return sb.toString().trim();
+    }
+
     /** Korean topic particle: 디시인사이드는 / 블라인드는 / 에브리타임은. */
     static String topic(String word) {
         if (word == null || word.isEmpty()) return "";
