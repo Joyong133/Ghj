@@ -17,7 +17,9 @@ namespace CommunityDetox
                 return;
             }
 
-            bool startHidden = args.Length > 0 && args[0] == "--tray";
+            // --autostart: started at Windows sign-in. --tray: brought back by the guard. Both start in the tray.
+            bool autoStart = args.Length > 0 && args[0] == "--autostart";
+            bool startHidden = autoStart || (args.Length > 0 && args[0] == "--tray");
             using (var mutex = new Mutex(true, @"Global\CommunityDetoxMain", out bool first))
             {
                 var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Global\CommunityDetoxShow");
@@ -34,7 +36,7 @@ namespace CommunityDetox
                 Application.SetCompatibleTextRenderingDefault(false);
 
                 Guard.EnsureAutoStart();
-                var form = new MainForm(startHidden);
+                var form = new MainForm(startHidden, autoStart);
                 var waiter = new Thread(() =>
                 {
                     while (true)

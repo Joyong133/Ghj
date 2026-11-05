@@ -25,7 +25,9 @@ namespace CommunityDetox
         private bool trayHintShown;
         private int guardTicks;
 
-        public MainForm(bool startHidden)
+        private bool? autoStartOk;
+
+        public MainForm(bool startHidden, bool autoStart)
         {
             kit = new Kit(this);
             allowVisible = !startHidden;
@@ -76,6 +78,19 @@ namespace CommunityDetox
             timer.Start();
             Resize += (s, e) => { if (WindowState != FormWindowState.Minimized) dirty = true; };
             Render();
+
+            if (autoStart)
+            {
+                tray.ShowBalloonTip(4000, "🌿 커뮤니티 디톡스가 켜졌어요",
+                    Store.IsLocked ? "집중 디톡스 이어서 진행 중 · 남은 시간 " + Theme.Remaining(Store.LockRemaining)
+                                   : Store.IsBlockingActive ? "커뮤니티 차단을 시작했어요." : "차단은 꺼져 있어요. 트레이 아이콘을 눌러 켜세요.",
+                    ToolTipIcon.Info);
+            }
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                autoStartOk = Guard.IsAutoStartRegistered();
+                dirty = true;
+            });
         }
 
         private FlowLayoutPanel Page(string name)
@@ -449,8 +464,21 @@ namespace CommunityDetox
 
             var guard = Card(p);
             Title(guard, p, "🛡️ 꺼지지 않게 보호");
+            kit.Text(guard, autoStartOk == null ? "자동 시작 확인 중…"
+                    : autoStartOk == true ? "✅ 컴퓨터를 켜고 로그인하면 바로 시작돼요"
+                    : "⚠️ 자동 시작이 등록되지 않았어요", 11, autoStartOk == false ? Theme.Danger : Theme.Accent, true, Inner(p));
+            if (autoStartOk == false)
+            {
+                kit.Button(kit.Row(guard, Inner(p)), "자동 시작 다시 등록", true, () =>
+                {
+                    Guard.EnsureAutoStart();
+                    autoStartOk = Guard.IsAutoStartRegistered();
+                    Render();
+                });
+            }
             Body(guard, p,
-                "• 컴퓨터를 켜면 자동으로 시작돼요 (작업 스케줄러).\n" +
+                "• 컴퓨터를 켜고 로그인하면 바로 시작돼요 (노트북 배터리 상태에서도, 며칠을 켜 둬도 계속 동작).\n" +
+                "• 컴퓨터를 꺼도 사이트 차단(hosts)은 그대로 남아 있어서, 켜자마자 막혀 있어요.\n" +
                 "• 창을 닫아도 작업 표시줄 오른쪽 아래(트레이)에서 계속 차단해요.\n" +
                 "• 집중 디톡스 중에는:\n" +
                 "    - 종료와 프로그램 제거가 막혀요.\n" +

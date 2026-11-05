@@ -20,9 +20,45 @@ namespace CommunityDetox
 
         private static string Exe => Application.ExecutablePath;
 
+        /// <summary>
+        /// Starts the app right after Windows sign-in, elevated, without a UAC prompt.
+        /// Registered from an XML definition because the schtasks defaults would otherwise
+        /// skip it on battery power and stop it after 3 days.
+        /// </summary>
         public static void EnsureAutoStart()
         {
-            Schtasks($"/create /tn \"{LogonTask}\" /sc onlogon /rl highest /f /tr \"\\\"{Exe}\\\" --tray\"");
+            CreateTask(LogonTask, "커뮤니티 디톡스: 로그인하면 바로 시작", "--autostart",
+                "<LogonTrigger><Enabled>true</Enabled><UserId>" + Esc(UserId) + "</UserId></LogonTrigger>");
+        }
+
+        public static bool IsAutoStartRegistered()
+        {
+            string output = Native.RunHidden("schtasks", $"/query /tn \"{LogonTask}\"");
+            return output.IndexOf(LogonTask, StringComparison.OrdinalIgnoreCase) >= 0
+                   && output.IndexOf("ERROR", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static string UserId => System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+
+        private static string Esc(string s) => TaskXml.Esc(s);
+
+        private static void CreateTask(string name, string description, string arguments, string triggers)
+        {
+            string xml = TaskXml.Build(UserId, Exe, description, arguments, triggers);
+            string file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CommunityDetox-" + name + ".xml");
+            try
+            {
+                System.IO.File.WriteAllText(file, xml, System.Text.Encoding.Unicode);
+                Schtasks($"/create /tn \"{name}\" /xml \"{file}\" /f");
+            }
+            catch (Exception e)
+            {
+                Log.Write("task " + name + ": " + e.Message);
+            }
+            finally
+            {
+                try { System.IO.File.Delete(file); } catch { }
+            }
         }
 
         /// <summary>Called every few seconds by the main window.</summary>
@@ -33,7 +69,12 @@ namespace CommunityDetox
             {
                 if (!minuteTaskOn)
                 {
-                    Schtasks($"/create /tn \"{MinuteTask}\" /sc minute /mo 1 /rl highest /f /tr \"\\\"{Exe}\\\" --tray\"");
+                    // Every minute (and at sign-in) during the lock: brings the app back if it was killed.
+                    string start = DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd'T'HH:mm:ss");
+                    CreateTask(MinuteTask, "커뮤니티 디톡스: 집중 디톡스 중 꺼지면 다시 시작", "--tray",
+                        "<TimeTrigger><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>" +
+                        "<StartBoundary>" + start + "</StartBoundary><Enabled>true</Enabled></TimeTrigger>" +
+                        "<LogonTrigger><Enabled>true</Enabled><UserId>" + Esc(UserId) + "</UserId></LogonTrigger>");
                     minuteTaskOn = true;
                 }
                 if (watchdog == null || watchdog.HasExited)
