@@ -1,0 +1,51 @@
+name: AI 규제 레이더 APK 빌드
+
+on:
+  push:
+    paths:
+      - "ai-reg-radar/**"
+      - ".github/workflows/ai-reg-radar-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-reg-radar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK 빌드
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ../AI-Regulation-Radar.apk
+
+      - name: 빌드 결과 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Regulation-Radar
+          path: AI-Regulation-Radar.apk
+
+      - name: 릴리스에 APK 올리기 (휴대폰에서 바로 다운로드)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ai-reg-radar-v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: AI 규제 레이더 v1.0.${{ github.run_number }}
+          make_latest: true
+          files: AI-Regulation-Radar.apk
+          body: |
+            휴대폰에서 아래 **AI-Regulation-Radar.apk** 를 눌러 받은 뒤 설치하세요.
+            (처음 설치할 때 "출처를 알 수 없는 앱 설치"를 허용해야 해요.)

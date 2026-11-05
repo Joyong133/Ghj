@@ -1,0 +1,8 @@
+<resources>
+    <color name="level_danger">#E53935</color>
+    <color name="level_warning">#FB8C00</color>
+    <color name="level_watch">#F9A825</color>
+    <color name="level_calm">#43A047</color>
+    <color name="brand">#1E2A44</color>
+    <color name="brand_accent">#4F7DF3</color>
+</resources>
