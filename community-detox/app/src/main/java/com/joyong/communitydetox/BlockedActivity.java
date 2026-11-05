@@ -111,7 +111,7 @@ public class BlockedActivity extends Activity {
         if (stats == null) return;
         String text = "오늘 " + Prefs.todayBlocks(this) + "번 참았어요 💪 · 디톡스 " + Prefs.detoxDay(this) + "일째";
         if (Prefs.isLocked(this)) {
-            text += "\n🔒 집중 디톡스 남은 시간: " + Ui.remaining(Prefs.lockUntil(this) - System.currentTimeMillis());
+            text += "\n🔒 집중 디톡스 남은 시간: " + Ui.remaining(Prefs.lockRemaining(this));
         }
         stats.setText(text);
     }

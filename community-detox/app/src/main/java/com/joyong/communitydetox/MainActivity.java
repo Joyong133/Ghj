@@ -45,16 +45,22 @@ public class MainActivity extends Activity {
     private ScrollView scroll;
     private LinearLayout content;
     private TextView lockCountdown;
-    private boolean wasLocked;
+    private TextView pauseCountdown;
+    private String lastState;
 
     private final Runnable ticker = new Runnable() {
         @Override
         public void run() {
-            boolean locked = Prefs.isLocked(MainActivity.this);
-            if (locked != wasLocked) {
+            if (!lockState().equals(lastState)) {
                 render();
-            } else if (locked && lockCountdown != null) {
-                lockCountdown.setText("남은 시간  " + Ui.remaining(Prefs.lockUntil(MainActivity.this) - System.currentTimeMillis()));
+            } else {
+                if (lockCountdown != null) {
+                    lockCountdown.setText("남은 시간  " + Ui.remaining(Prefs.lockRemaining(MainActivity.this)));
+                }
+                if (pauseCountdown != null) {
+                    pauseCountdown.setText("⏸ 일시정지 남은 시간  "
+                            + Ui.remaining(Prefs.pauseUntil(MainActivity.this) - System.currentTimeMillis()));
+                }
             }
             handler.postDelayed(this, 1000);
         }
@@ -86,11 +92,17 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ rendering
 
+    /** Changes when the lock starts/ends or a pause starts/ends, so the screen is rebuilt. */
+    private String lockState() {
+        return Prefs.isLocked(this) + "/" + Prefs.isPaused(this);
+    }
+
     private void render() {
         final int y = scroll.getScrollY();
         content.removeAllViews();
         lockCountdown = null;
-        wasLocked = Prefs.isLocked(this);
+        pauseCountdown = null;
+        lastState = lockState();
 
         header();
         permissionCard();
@@ -182,13 +194,15 @@ public class MainActivity extends Activity {
         if (Prefs.isLocked(this)) {
             long until = Prefs.lockUntil(this);
             c.setBackground(ui.rounded(ui.accentSoft, 20));
-            c.addView(ui.title("🔒 집중 디톡스 진행 중"));
-            lockCountdown = ui.text("남은 시간  " + Ui.remaining(until - System.currentTimeMillis()),
+            boolean paused = Prefs.isPaused(this);
+            c.addView(ui.title(paused ? "⏸ 집중 디톡스 일시정지 중" : "🔒 집중 디톡스 진행 중"));
+            lockCountdown = ui.text("남은 시간  " + Ui.remaining(Prefs.lockRemaining(this)),
                     20, ui.accent, true);
             c.addView(lockCountdown);
             c.addView(ui.body("끝나는 시각: " + formatTime(until)), Ui.wrap(ui.dp(4)));
             c.addView(ui.body("끝날 때까지 차단을 끄거나 목록에서 뺄 수 없어요. 새로 추가하는 건 언제든 가능해요."),
                     Ui.wrap(ui.dp(6)));
+            pauseSection(c);
             c.addView(ui.text("연장하기", 14, ui.text, true), Ui.wrap(ui.dp(14)));
             buttonGrid(c, new String[]{"+10분", "+30분", "+1시간", "+3시간", "+1일", "+3일"},
                     new long[]{10 * MINUTE, 30 * MINUTE, HOUR, 3 * HOUR, DAY, 3 * DAY}, true);
@@ -202,6 +216,56 @@ public class MainActivity extends Activity {
                 new long[]{30 * MINUTE, HOUR, 3 * HOUR, 6 * HOUR, DAY, 7 * DAY}, false);
         c.addView(ui.button("⏱ 시간 직접 정하기", true, v -> showCustomLockDialog(false)), Ui.fill(ui.dp(8)));
         content.addView(c);
+    }
+
+    /** One-time pause per focus detox: blocking off for a while, focus timer stopped meanwhile. */
+    private void pauseSection(LinearLayout c) {
+        c.addView(ui.divider(), Ui.fill(ui.dp(10)));
+        if (Prefs.isPaused(this)) {
+            pauseCountdown = ui.text("⏸ 일시정지 남은 시간  "
+                    + Ui.remaining(Prefs.pauseUntil(this) - System.currentTimeMillis()), 16, ui.text, true);
+            c.addView(pauseCountdown);
+            c.addView(ui.body("지금은 커뮤니티가 차단되지 않아요. 일시정지 동안 디톡스 시간은 멈춰 있어요."),
+                    Ui.wrap(ui.dp(4)));
+            c.addView(ui.button("▶ 지금 바로 다시 시작", true, v -> {
+                Prefs.endPauseNow(this);
+                Toast.makeText(this, "다시 시작했어요 🌿", Toast.LENGTH_SHORT).show();
+                render();
+            }), Ui.fill(ui.dp(10)));
+            return;
+        }
+        if (Prefs.pauseUsed(this)) {
+            c.addView(ui.body("⏸ 일시정지는 이번 집중 디톡스에서 이미 사용했어요."));
+            return;
+        }
+        c.addView(ui.text("⏸ 일시정지 (1회)", 14, ui.text, true));
+        c.addView(ui.body("이번 집중 디톡스에서 딱 한 번, 잠깐 차단을 풀 수 있어요. 그동안 디톡스 시간은 멈춰요."),
+                Ui.wrap(ui.dp(4)));
+        String[] labels = {"5분", "10분", "15분", "30분"};
+        long[] durations = {5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE};
+        LinearLayout r = ui.row();
+        for (int i = 0; i < labels.length; i++) {
+            final String l = labels[i];
+            final long d = durations[i];
+            r.addView(ui.button(l, false, v -> confirmPause(l, d)), Ui.weight(i == 0 ? 0 : ui.dp(6)));
+        }
+        c.addView(r, Ui.fill(ui.dp(10)));
+    }
+
+    private void confirmPause(String label, long durationMs) {
+        new AlertDialog.Builder(this)
+                .setTitle(label + " 일시정지")
+                .setMessage("일시정지는 이번 집중 디톡스에서 1번만 쓸 수 있어요.\n"
+                        + label + " 동안 차단이 풀리고, 디톡스 끝나는 시각도 " + label + " 늦춰져요.\n"
+                        + "(삭제 방지는 계속 켜져 있어요)\n\n정말 쉬어 갈까요?")
+                .setPositiveButton("일시정지", (d, w) -> {
+                    if (Prefs.startPause(this, durationMs)) {
+                        Toast.makeText(this, label + " 동안 쉬어 가요 ⏸", Toast.LENGTH_SHORT).show();
+                    }
+                    render();
+                })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     private void protectCard() {

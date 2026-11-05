@@ -26,6 +26,8 @@ final class Prefs {
     private static final String K_DAY_COUNT = "day_count";
     private static final String K_STARTED = "started_at";
     private static final String K_ADMIN_SETUP = "admin_setup_until";
+    private static final String K_PAUSE_UNTIL = "pause_until";
+    private static final String K_PAUSE_USED = "pause_used";
 
     static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
@@ -52,7 +54,58 @@ final class Prefs {
     /** Locks until {@code untilMs}. A running lock can only be extended, never shortened. */
     static void lockUntilAtLeast(Context c, long untilMs) {
         long until = Math.max(lockUntil(c), untilMs);
-        sp(c).edit().putLong(K_LOCK_UNTIL, until).putBoolean(K_MASTER, true).commit();
+        SharedPreferences.Editor e = sp(c).edit().putLong(K_LOCK_UNTIL, until).putBoolean(K_MASTER, true);
+        if (!isLocked(c)) {
+            // A brand-new focus detox gets a fresh one-time pause.
+            e.putBoolean(K_PAUSE_USED, false).putLong(K_PAUSE_UNTIL, 0);
+        }
+        e.commit();
+    }
+
+    // ---- one-time pause during a focus lock ----
+
+    static long pauseUntil(Context c) {
+        return sp(c).getLong(K_PAUSE_UNTIL, 0);
+    }
+
+    static boolean isPaused(Context c) {
+        return isLocked(c) && System.currentTimeMillis() < pauseUntil(c);
+    }
+
+    static boolean pauseUsed(Context c) {
+        return sp(c).getBoolean(K_PAUSE_USED, false);
+    }
+
+    /**
+     * Turns blocking off for {@code durationMs}. The focus timer stops meanwhile, so the end time
+     * moves back by the same amount. Allowed once per focus detox.
+     */
+    static boolean startPause(Context c, long durationMs) {
+        if (!isLocked(c) || pauseUsed(c) || isPaused(c)) return false;
+        long now = System.currentTimeMillis();
+        sp(c).edit()
+                .putLong(K_PAUSE_UNTIL, now + durationMs)
+                .putLong(K_LOCK_UNTIL, lockUntil(c) + durationMs)
+                .putBoolean(K_PAUSE_USED, true)
+                .commit();
+        return true;
+    }
+
+    /** Ends the pause early; the unused pause time is taken back off the end time. */
+    static void endPauseNow(Context c) {
+        if (!isPaused(c)) return;
+        long now = System.currentTimeMillis();
+        long unused = pauseUntil(c) - now;
+        sp(c).edit()
+                .putLong(K_PAUSE_UNTIL, now)
+                .putLong(K_LOCK_UNTIL, lockUntil(c) - unused)
+                .commit();
+    }
+
+    /** Focus time left; frozen while paused. */
+    static long lockRemaining(Context c) {
+        long now = System.currentTimeMillis();
+        return Math.max(0, lockUntil(c) - Math.max(now, isPaused(c) ? pauseUntil(c) : now));
     }
 
     /** Opens a 2-minute window in which the device-admin activation screen isn't closed by the guard. */
@@ -65,7 +118,7 @@ final class Prefs {
     }
 
     static boolean isBlockingActive(Context c) {
-        return isMasterOn(c) || isLocked(c);
+        return (isMasterOn(c) || isLocked(c)) && !isPaused(c);
     }
 
     // ---- what is blocked ----
