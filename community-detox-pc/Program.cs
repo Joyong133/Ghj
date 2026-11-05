@@ -17,9 +17,21 @@ namespace CommunityDetox
                 return;
             }
 
+            // --after-update <pid>: started by the old version after an in-app update; wait until it has exited.
+            bool updated = false;
+            if (args.Length == 2 && args[0] == "--after-update" && int.TryParse(args[1], out int oldPid))
+            {
+                updated = true;
+                try
+                {
+                    using (var old = System.Diagnostics.Process.GetProcessById(oldPid)) old.WaitForExit(20000);
+                }
+                catch { }
+            }
+
             // --autostart: started at Windows sign-in. --tray: brought back by the guard. Both start in the tray.
             bool autoStart = args.Length > 0 && args[0] == "--autostart";
-            bool startHidden = autoStart || (args.Length > 0 && args[0] == "--tray");
+            bool startHidden = autoStart || updated || (args.Length > 0 && args[0] == "--tray");
             using (var mutex = new Mutex(true, @"Global\CommunityDetoxMain", out bool first))
             {
                 var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Global\CommunityDetoxShow");
@@ -36,7 +48,8 @@ namespace CommunityDetox
                 Application.SetCompatibleTextRenderingDefault(false);
 
                 Guard.EnsureAutoStart();
-                var form = new MainForm(startHidden, autoStart);
+                Updater.Cleanup();
+                var form = new MainForm(startHidden, autoStart, updated);
                 var waiter = new Thread(() =>
                 {
                     while (true)

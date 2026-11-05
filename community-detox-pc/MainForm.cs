@@ -26,8 +26,11 @@ namespace CommunityDetox
         private int guardTicks;
 
         private bool? autoStartOk;
+        private Version newVersion;       // a newer build found by the update check
+        private bool updating;
+        private long lastUpdateCheck;
 
-        public MainForm(bool startHidden, bool autoStart)
+        public MainForm(bool startHidden, bool autoStart, bool updated)
         {
             kit = new Kit(this);
             allowVisible = !startHidden;
@@ -79,7 +82,13 @@ namespace CommunityDetox
             Resize += (s, e) => { if (WindowState != FormWindowState.Minimized) dirty = true; };
             Render();
 
-            if (autoStart)
+            if (updated)
+            {
+                tray.ShowBalloonTip(4000, "🌿 업데이트했어요",
+                    "커뮤니티 디톡스 " + Updater.Current.ToString(3) + " 버전으로 다시 켜졌어요."
+                    + (Store.IsLocked ? " 집중 디톡스는 그대로 이어져요." : ""), ToolTipIcon.Info);
+            }
+            else if (autoStart)
             {
                 tray.ShowBalloonTip(4000, "🌿 커뮤니티 디톡스가 켜졌어요",
                     Store.IsLocked ? "집중 디톡스 이어서 진행 중 · 남은 시간 " + Theme.Remaining(Store.LockRemaining)
@@ -175,6 +184,7 @@ namespace CommunityDetox
             if (statusLabel != null && blocker.HostsStatus.Length > 0) statusLabel.Text = blocker.HostsStatus;
             tray.Text = Store.IsPaused ? "커뮤니티 디톡스 (일시정지)" : Store.IsBlockingActive ? "커뮤니티 디톡스 (차단 중)" : "커뮤니티 디톡스 (꺼짐)";
             if (++guardTicks % 5 == 1) Guard.Tick();
+            if (guardTicks == 60 || Store.Now - lastUpdateCheck > 12 * Hour && lastUpdateCheck != 0) CheckForUpdate(false);
         }
 
         // ------------------------------------------------------------------ rendering
@@ -485,14 +495,24 @@ namespace CommunityDetox
                 "    - 작업 관리자로 강제 종료해도 바로(늦어도 1분 안에) 다시 켜져요.\n" +
                 "    - hosts 파일을 직접 고쳐도 몇 초 안에 원래대로 돌아가요.");
 
-            var ver = Card(p);
+            var ver = Card(p, newVersion != null ? Theme.AccentSoft : (Color?)null);
             Title(ver, p, "⬇️ 업데이트");
-            Body(ver, p, "지금 버전: " + Application.ProductVersion);
-            kit.Button(kit.Row(ver, Inner(p)), "최신 버전 받기", false, () =>
+            Body(ver, p, "지금 버전: " + Updater.Current.ToString(3));
+            if (newVersion != null)
+            {
+                kit.Text(ver, "✨ 새 버전 " + newVersion.ToString(3) + "이 나왔어요", 11, Theme.Accent, true, Inner(p));
+                kit.Button(kit.Row(ver, Inner(p)), updating ? "설치하는 중…" : "지금 업데이트", true, () => InstallUpdate(newVersion));
+            }
+            else
+            {
+                kit.Button(kit.Row(ver, Inner(p)), updating ? "확인하는 중…" : "업데이트 확인", false, () => CheckForUpdate(true));
+            }
+            Body(ver, p, "버튼 하나로 새 버전을 받아 바로 바꿔 끼우고 다시 켜져요. 집중 디톡스 중에도 업데이트할 수 있고, "
+                         + "남은 시간·설정·기록은 그대로 이어져요. (새 버전은 12시간마다 자동으로 확인해요)");
+            kit.Button(kit.Row(ver, Inner(p)), "다운로드 페이지 열기", false, () =>
             {
                 try { Process.Start(new ProcessStartInfo(Program.UpdateUrl) { UseShellExecute = true }); } catch { }
             });
-            Body(ver, p, "새 버전을 받으면 트레이에서 종료한 뒤 exe 파일을 바꿔 실행하세요. 설정과 기록은 그대로 남아요.");
 
             var remove = Card(p);
             Title(remove, p, "🗑️ 프로그램 제거");
@@ -510,6 +530,75 @@ namespace CommunityDetox
             var privacy = Card(p);
             Title(privacy, p, "🔒 개인정보");
             Body(privacy, p, "앞에 열린 브라우저의 제목과 주소창 글자, 실행 중인 프로그램 이름만 이 컴퓨터 안에서 확인해요. 아무것도 외부로 보내지 않아요.");
+        }
+
+        /// <summary>Downloads the latest build in the background and compares versions.</summary>
+        private void CheckForUpdate(bool userAsked)
+        {
+            if (updating) return;
+            updating = true;
+            lastUpdateCheck = Store.Now;
+            dirty = true;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                Version latest = null;
+                string error = null;
+                try { latest = Updater.DownloadLatest(); }
+                catch (Exception e) { error = e.Message; Log.Write("update check: " + e.Message); }
+                BeginInvoke(new Action(() =>
+                {
+                    updating = false;
+                    if (latest != null && latest > Updater.Current)
+                    {
+                        newVersion = latest;
+                        if (userAsked) InstallUpdate(latest);
+                        else tray.ShowBalloonTip(5000, "✨ 커뮤니티 디톡스 새 버전 " + latest.ToString(3),
+                            "트레이 아이콘을 열고 '보호 · 정보' 탭에서 '지금 업데이트'를 누르세요.", ToolTipIcon.Info);
+                    }
+                    else if (userAsked)
+                    {
+                        MessageBox.Show(this, error != null ? "업데이트를 확인하지 못했어요.\n인터넷 연결을 확인해 주세요.\n(" + error + ")"
+                                                            : "이미 최신 버전이에요 (" + Updater.Current.ToString(3) + ") 🌿", Text);
+                    }
+                    dirty = true;
+                }));
+            });
+        }
+
+        private void InstallUpdate(Version version)
+        {
+            if (updating) return;
+            if (MessageBox.Show(this, "새 버전 " + version.ToString(3) + "으로 업데이트할까요?\n잠깐 꺼졌다가 바로 다시 켜져요."
+                                      + (Store.IsLocked ? "\n집중 디톡스는 그대로 이어져요." : ""), Text, MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+            updating = true;
+            Render();
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                string error = null;
+                try
+                {
+                    // Re-download right before installing so the newest file is used.
+                    Updater.DownloadLatest();
+                    Updater.Install();
+                }
+                catch (Exception e) { error = e.Message; Log.Write("update install: " + e); }
+                BeginInvoke(new Action(() =>
+                {
+                    if (error != null)
+                    {
+                        updating = false;
+                        MessageBox.Show(this, "업데이트하지 못했어요.\n(" + error + ")", Text);
+                        Render();
+                        return;
+                    }
+                    // The new version is starting; hand over without removing any blocking.
+                    exiting = true;
+                    blocker.Stop();
+                    Guard.StopWatchdog();
+                    tray.Visible = false;
+                    Application.Exit();
+                }));
+            });
         }
 
         private void Uninstall()
