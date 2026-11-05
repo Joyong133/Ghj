@@ -29,6 +29,7 @@ final class Prefs {
     private static final String K_PAUSE_UNTIL = "pause_until";
     private static final String K_PAUSE_USED = "pause_used";
     private static final String K_INAPP_ALL = "inapp_block_all";
+    private static final String K_VPN = "vpn_on";
 
     static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
@@ -123,6 +124,15 @@ final class Prefs {
     }
 
     // ---- what is blocked ----
+
+    /** Network-level (DNS / VPN) blocking. On by default on VR headsets, where it is the main way to block. */
+    static boolean isVpnOn(Context c) {
+        return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
+    }
+
+    static void setVpnOn(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_VPN, on).apply();
+    }
 
     /** Close every page KakaoTalk opens in its in-app browser (not only blocked communities). */
     static boolean isInAppBlockAll(Context c) {

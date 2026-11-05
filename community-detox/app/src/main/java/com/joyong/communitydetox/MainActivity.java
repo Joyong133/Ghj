@@ -106,6 +106,8 @@ public class MainActivity extends Activity {
 
         header();
         permissionCard();
+        if (BuildConfig.IS_VR) vrSetupCard();
+        vpnCard();
         controlCard();
         focusCard();
         protectCard();
@@ -267,6 +269,99 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton("취소", null)
                 .show();
+    }
+
+    // ------------------------------------------------------------------ network (VPN / DNS) blocking
+
+    private static final int REQ_VPN = 41;
+
+    private void vpnCard() {
+        boolean locked = Prefs.isLocked(this);
+        boolean on = Prefs.isVpnOn(this);
+        LinearLayout c = ui.card();
+        c.addView(ui.title("🌐 네트워크 차단 (VPN 방식)" + (BuildConfig.IS_VR ? " · 추천" : "")));
+        c.addView(ui.body("기기 전체에서 커뮤니티 주소를 찾지 못하게 막아요. 모든 브라우저"
+                + (BuildConfig.IS_VR ? "(퀘스트 브라우저 포함)" : "") + ", 카카오톡 인앱 브라우저, 다른 앱 속 링크까지 적용돼요.\n"
+                + "주소 확인(DNS)만 이 기능을 거치고 다른 인터넷 통신은 그대로예요. 기록하거나 외부로 보내지 않아요."));
+
+        LinearLayout r = ui.row();
+        LinearLayout texts = ui.column();
+        texts.addView(ui.text("네트워크 차단 켜기", 15, ui.text, true));
+        String state = !on ? "꺼져 있어요" : DetoxVpnService.running ? "✅ 작동 중 (상단에 열쇠 아이콘이 보여요)" : "켜는 중…";
+        texts.addView(ui.text(state, 12, ui.sub, false));
+        r.addView(texts, Ui.weight(0));
+        Switch sw = new Switch(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on));
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            if (checked) {
+                Intent consent = android.net.VpnService.prepare(this);
+                if (consent != null) {
+                    startActivityForResult(consent, REQ_VPN); // Android asks once: "allow this VPN?"
+                    return;
+                }
+                Prefs.setVpnOn(this, true);
+                DetoxVpnService.start(this);
+            } else {
+                Prefs.setVpnOn(this, false);
+                DetoxVpnService.stop(this);
+            }
+            handler.postDelayed(this::render, 800);
+        });
+        r.addView(sw);
+        c.addView(r, Ui.fill(ui.dp(12)));
+        c.addView(ui.body("다른 VPN 앱과는 함께 쓸 수 없어요. 휴대폰 설정의 '비공개 DNS'가 특정 주소로 지정돼 있으면 꺼 주세요."),
+                Ui.wrap(ui.dp(8)));
+        content.addView(c);
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_VPN) return;
+        if (resultCode == RESULT_OK) {
+            Prefs.setVpnOn(this, true);
+            DetoxVpnService.start(this);
+            Toast.makeText(this, "네트워크 차단을 켰어요 🌐", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "VPN 연결을 허용해야 켤 수 있어요", Toast.LENGTH_SHORT).show();
+        }
+        handler.postDelayed(this::render, 800);
+    }
+
+    // ------------------------------------------------------------------ VR headset setup
+
+    private void vrSetupCard() {
+        LinearLayout c = ui.card();
+        c.addView(ui.title("🥽 VR 기기에서 설정하기"));
+        c.addView(ui.body("1) 위의 '네트워크 차단'을 켜세요. VR에서는 이것만으로 퀘스트 브라우저와 앱 속 링크의 커뮤니티가 막혀요.\n\n"
+                + "2) (선택) 앱 차단·삭제 방지까지 쓰려면 접근성 권한이 필요해요. 헤드셋 설정에 이 앱이 안 보이면 "
+                + "PC에 헤드셋을 연결하고 아래 명령을 한 번 실행하세요 (SideQuest의 ADB 명령 실행이나 명령 프롬프트):"));
+        String pkg = getPackageName();
+        String cmd = "adb shell settings put secure enabled_accessibility_services "
+                + pkg + "/com.joyong.communitydetox.DetoxAccessibilityService\n"
+                + "adb shell settings put secure accessibility_enabled 1\n"
+                + "adb shell dpm set-active-admin " + pkg + "/com.joyong.communitydetox.DetoxAdminReceiver";
+        TextView code = ui.text(cmd, 11, ui.text, false);
+        code.setTypeface(android.graphics.Typeface.MONOSPACE);
+        code.setTextIsSelectable(true);
+        code.setBackground(ui.rounded(ui.accentSoft, 10));
+        code.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
+        c.addView(code, Ui.fill(ui.dp(8)));
+        c.addView(ui.button("명령 복사", false, v -> {
+            android.content.ClipboardManager cb = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cb.setPrimaryClip(android.content.ClipData.newPlainText("adb", cmd));
+            Toast.makeText(this, "복사했어요", Toast.LENGTH_SHORT).show();
+        }), Ui.fill(ui.dp(8)));
+        c.addView(ui.body("3) VR 게임·소셜 앱(예: VRChat, Rec Room)도 '설치된 앱 직접 차단 → 앱 고르기'에서 고를 수 있어요."),
+                Ui.wrap(ui.dp(8)));
+        content.addView(c);
     }
 
     private void inAppCard() {
@@ -580,7 +675,10 @@ public class MainActivity extends Activity {
     private void pickApps() {
         PackageManager pm = getPackageManager();
         Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> infos = pm.queryIntentActivities(launcher, 0);
+        List<ResolveInfo> infos = new ArrayList<>(pm.queryIntentActivities(launcher, 0));
+        // VR games / apps on Meta Quest are listed under their own launcher category.
+        infos.addAll(pm.queryIntentActivities(
+                new Intent(Intent.ACTION_MAIN).addCategory("com.oculus.intent.category.VR"), 0));
         TreeSet<String> seen = new TreeSet<>();
         List<String[]> apps = new ArrayList<>(); // {label, package}
         for (ResolveInfo ri : infos) {
@@ -715,8 +813,7 @@ public class MainActivity extends Activity {
         content.addView(c, lp);
     }
 
-    private static final String UPDATE_URL =
-            "https://github.com/Joyong133/Ghj/releases/download/community-detox-latest/CommunityDetox.apk";
+    private static final String UPDATE_URL = BuildConfig.UPDATE_URL;
 
     private String versionName() {
         try {

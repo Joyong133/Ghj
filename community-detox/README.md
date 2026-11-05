@@ -19,6 +19,8 @@
 
 - **앱 차단**: 차단한 앱이 열리면 홈 화면으로 보내고 안내 화면을 띄웁니다.
 - **사이트 차단**: 크롬, 삼성 인터넷, 웨일, 엣지, 파이어폭스, 오페라, 브레이브, 덕덕고 등 브라우저의 주소창을 확인해 차단한 사이트면 뒤로 돌아갑니다.
+- **네트워크 차단 (VPN 방식)**: 기기 전체에서 커뮤니티 주소를 찾지 못하게(DNS) 막습니다. 모든 브라우저, 카카오톡 인앱 브라우저, 다른 앱 속 링크까지 적용됩니다.
+  주소 확인(DNS)만 이 기능을 거치고 다른 통신은 그대로이며, 아무것도 기록하지 않습니다. 다른 VPN 앱과 함께 쓸 수 없습니다. 집중 디톡스 중에는 끌 수 없습니다.
 - **카카오톡 인앱 브라우저 차단**: 카카오톡(라인, 텔레그램, 밴드 등 포함)에서 링크를 눌러 앱 안에서 열린 페이지도
   화면 위쪽의 주소·제목을 보고 차단 목록의 커뮤니티면 닫고 대화방으로 돌아갑니다.
   **"카카오톡 인앱 브라우저 아예 막기"** 를 켜면 카톡 안에서 열리는 링크를 모두 닫습니다. (집중 디톡스 중에는 끌 수 없음)
@@ -35,6 +37,23 @@
 - **기록**: 오늘 참은 횟수, 누적 횟수, 디톡스 며칠째인지 보여 줍니다.
 - 다크 모드 지원, 광고·추적·인터넷 권한 없음.
 
+## 🥽 VR 버전 (메타 퀘스트 · 피코)
+
+단독형 VR 헤드셋(안드로이드 기반)용 `CommunityDetox-VR.apk` 를 같이 빌드합니다. 앱 이름은 **커뮤니티 디톡스 VR** 이고, 헤드셋 안에서 2D 창으로 열립니다.
+(PC VR — Steam VR, Quest Link/에어링크 — 은 [Windows 버전](../community-detox-pc/)이 PC에서 그대로 막아 줍니다.)
+
+1. 헤드셋의 **개발자 모드**를 켜고(휴대폰의 Meta Horizon 앱 → 기기 → 개발자 모드), PC에 연결해 **SideQuest** 나 `adb install CommunityDetox-VR.apk` 로 설치합니다.
+2. 헤드셋의 앱 목록 → **출처를 알 수 없음** 에서 앱을 열고 **네트워크 차단** 을 켭니다. (VR에서는 기본으로 켜지고, 이것만으로 퀘스트 브라우저와 앱 속 링크의 커뮤니티가 막힙니다.)
+3. (선택) 앱 차단·삭제 방지까지 쓰려면 접근성 권한이 필요합니다. 헤드셋 설정에서 켤 수 없으면 PC에서 한 번 실행하세요:
+   ```
+   adb shell settings put secure enabled_accessibility_services com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAccessibilityService
+   adb shell settings put secure accessibility_enabled 1
+   adb shell dpm set-active-admin com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAdminReceiver
+   ```
+4. VRChat, Rec Room 같은 VR 소셜 앱도 **설치된 앱 직접 차단 → 앱 고르기** 에서 고를 수 있습니다 (VR 앱 목록 포함).
+
+집중 디톡스, 일시정지, 직접 추가, 기록 등 나머지 기능은 휴대폰 버전과 같습니다.
+
 ## 설치하기
 
 1. 이 저장소의 **Releases** 에서 `커뮤니티 디톡스 APK (최신 빌드)`의 `CommunityDetox.apk` 를 휴대폰으로 내려받습니다.
@@ -47,7 +66,8 @@
 ## 개인정보
 
 접근성 권한으로 확인하는 것은 **지금 앞에 열린 앱의 이름**과 **브라우저 주소창의 글자**뿐입니다.
-이 정보는 차단 여부를 판단하는 데만 쓰이고, 저장하거나 외부로 보내지 않습니다. 앱에는 인터넷 권한 자체가 없습니다.
+이 정보는 차단 여부를 판단하는 데만 쓰이고, 저장하거나 외부로 보내지 않습니다.
+인터넷 권한은 **네트워크 차단(VPN 방식)** 에서 차단하지 않는 주소의 DNS 조회를 원래 DNS 서버로 넘겨주는 데만 씁니다.
 
 ## 한계
 
@@ -76,6 +96,8 @@ app/src/main/java/com/joyong/communitydetox/
 ├── Catalog.java                    # 기본 차단 목록 (커뮤니티 이름, 도메인, 앱 패키지)
 ├── Prefs.java                      # 설정·기록 저장, 주소 → 도메인 판별
 ├── DetoxAccessibilityService.java  # 앞에 열린 앱/브라우저 주소를 보고 차단
+├── DetoxVpnService.java            # 네트워크(DNS) 차단 — 모든 앱, VR 브라우저
+├── DnsPacket.java                  # DNS 패킷 읽기/답 만들기
 ├── MainActivity.java               # 설정 화면
 ├── BlockedActivity.java            # "디톡스 중이에요" 안내 화면
 └── Ui.java                         # 코드로 만든 작은 UI 도구 (라이트/다크)

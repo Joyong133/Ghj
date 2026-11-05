@@ -32,6 +32,28 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig true
+    }
+
+    // phone: regular Android phones / tablets. vr: standalone headsets (Meta Quest, Pico) — sideloaded.
+    flavorDimensions = ['device']
+    productFlavors {
+        phone {
+            dimension 'device'
+            buildConfigField 'boolean', 'IS_VR', 'false'
+            buildConfigField 'String', 'UPDATE_URL',
+                    '"https://github.com/Joyong133/Ghj/releases/download/community-detox-latest/CommunityDetox.apk"'
+        }
+        vr {
+            dimension 'device'
+            applicationIdSuffix '.vr'
+            buildConfigField 'boolean', 'IS_VR', 'true'
+            buildConfigField 'String', 'UPDATE_URL',
+                    '"https://github.com/Joyong133/Ghj/releases/download/community-detox-latest/CommunityDetox-VR.apk"'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

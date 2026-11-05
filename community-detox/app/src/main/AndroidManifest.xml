@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Only used by the optional network blocking to pass non-blocked DNS lookups on to the real DNS server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Lets the app list installed apps (for the app picker) and find installed browsers. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- VR apps on Meta Quest use their own launcher category. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="com.oculus.intent.category.VR" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -52,6 +60,16 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <!-- Network-level blocking (DNS only), works in every app including VR browsers. -->
+        <service
+            android:name=".DetoxVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".DetoxAccessibilityService"

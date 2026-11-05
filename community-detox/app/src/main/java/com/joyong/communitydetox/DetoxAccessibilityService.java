@@ -36,7 +36,8 @@ public class DetoxAccessibilityService extends AccessibilityService {
             "com.opera.browser", "com.opera.mini.native", "com.opera.gx",
             "com.brave.browser", "com.duckduckgo.mobile.android", "com.vivaldi.browser",
             "com.kiwibrowser.browser", "com.UCMobile.intl", "com.mi.globalbrowser",
-            "com.android.browser", "org.chromium.chrome", "com.google.android.googlequicksearchbox"));
+            "com.android.browser", "org.chromium.chrome", "com.google.android.googlequicksearchbox",
+            "com.oculus.browser"));
 
     /** Address-bar view ids used by popular browsers (without the "package:id/" prefix). */
     private static final String[] URL_BAR_IDS = {
@@ -67,6 +68,17 @@ public class DetoxAccessibilityService extends AccessibilityService {
         rules = Prefs.rules(this);
         Prefs.sp(this).registerOnSharedPreferenceChangeListener(prefsListener);
         loadBrowsers();
+        keepVpnAlive();
+    }
+
+    private long lastVpnCheck;
+
+    /** Restarts network blocking if it should be on but isn't (e.g. switched off during a focus lock). */
+    private void keepVpnAlive() {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastVpnCheck < 15_000) return;
+        lastVpnCheck = now;
+        if (Prefs.isVpnOn(this) && !DetoxVpnService.running) DetoxVpnService.start(this);
     }
 
     @Override
@@ -85,6 +97,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
         if (event == null || event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
         if (pkg.equals(getPackageName()) || pkg.equals("com.android.systemui")) return;
+        keepVpnAlive();
 
         // 0) During a focus lock, don't let the app be uninstalled, force-stopped or switched off.
         if (Prefs.isLocked(this) && isSystemGuardPackage(pkg) && guardSelf(event, pkg)) return;
@@ -299,6 +312,8 @@ public class DetoxAccessibilityService extends AccessibilityService {
     private static final String[] UNINSTALL_WORDS = {"삭제", "제거", "uninstall", "Uninstall", "UNINSTALL"};
     /** The force-stop button only appears on an app-info page (every app-info page has it). */
     private static final String[] APP_INFO_WORDS = {"강제 중지", "강제 종료", "강제종료", "Force stop", "FORCE STOP"};
+    /** Buttons on our VPN's page in Settings (network blocking). */
+    private static final String[] VPN_WORDS = {"연결 해제", "연결 끊기", "VPN 삭제", "VPN 해제", "Disconnect", "Forget VPN", "DISCONNECT"};
     /** Words next to our service name on its own on/off switch or "stop service?" dialog. */
     private static final String[] TOGGLE_WORDS = {"사용", "중지", "끄", "Use ", "Stop", "Turn off"};
 
@@ -338,8 +353,8 @@ public class DetoxAccessibilityService extends AccessibilityService {
                 }
             }
         }
-        // App-info page of this app.
-        return anyOtherTextContains(texts, appLabel, APP_INFO_WORDS);
+        // App-info page of this app, or this app's VPN page (disconnect / forget).
+        return anyOtherTextContains(texts, appLabel, APP_INFO_WORDS) || anyOtherTextContains(texts, appLabel, VPN_WORDS);
     }
 
     /** True if a text that is not our own name contains one of the words. */
@@ -443,6 +458,8 @@ public class DetoxAccessibilityService extends AccessibilityService {
     }
 
     private String myLabel() {
+        String brand = stringRes("brand");
+        if (!brand.isEmpty()) return brand;
         if (myLabel == null) myLabel = getApplicationInfo().loadLabel(getPackageManager()).toString();
         return myLabel;
     }

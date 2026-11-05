@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Extra manifest entries for standalone VR headsets (merged into the main manifest). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Meta Quest: runs as a 2D panel app on these headsets. -->
+        <meta-data
+            android:name="com.oculus.supportedDevices"
+            android:value="quest|quest2|questpro|quest3|quest3s" />
+    </application>
+</manifest>

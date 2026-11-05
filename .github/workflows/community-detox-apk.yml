@@ -91,13 +91,16 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk CommunityDetox.apk
-          ls -la CommunityDetox.apk
+          cp app/build/outputs/apk/phone/release/app-phone-release.apk CommunityDetox.apk
+          cp app/build/outputs/apk/vr/release/app-vr-release.apk CommunityDetox-VR.apk
+          ls -la CommunityDetox.apk CommunityDetox-VR.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: CommunityDetox-apk
-          path: community-detox/CommunityDetox.apk
+          path: |
+            community-detox/CommunityDetox.apk
+            community-detox/CommunityDetox-VR.apk
 
       - name: Publish download link (GitHub Release)
         env:
@@ -105,7 +108,7 @@ jobs:
         run: |
           TAG=community-detox-latest
           gh release delete "$TAG" --yes --cleanup-tag || true
-          gh release create "$TAG" CommunityDetox.apk \
+          gh release create "$TAG" CommunityDetox.apk CommunityDetox-VR.apk \
             --target "$GITHUB_SHA" \
             --title "커뮤니티 디톡스 APK (최신 빌드)" \
             --notes "브랜치 \`${GITHUB_REF_NAME}\` / 커밋 ${GITHUB_SHA::7} 에서 자동으로 빌드한 APK입니다.
@@ -113,4 +116,6 @@ jobs:
           **설치 방법**
           1. 휴대폰에서 아래 \`CommunityDetox.apk\`를 내려받아 엽니다. (출처를 알 수 없는 앱 설치 허용 필요)
           2. 앱을 열고 **접근성 설정 열기** → '커뮤니티 디톡스 차단'을 켭니다.
-          3. '제한된 설정'이라며 켜지지 않으면: 앱 정보 → 오른쪽 위 ⋮ → **제한된 설정 허용** 후 다시 켭니다."
+          3. '제한된 설정'이라며 켜지지 않으면: 앱 정보 → 오른쪽 위 ⋮ → **제한된 설정 허용** 후 다시 켭니다.
+
+          **VR 헤드셋 (메타 퀘스트 · 피코)** 은 \`CommunityDetox-VR.apk\`를 개발자 모드 + SideQuest(또는 adb install)로 설치하고, 앱에서 **네트워크 차단**을 켜세요."
