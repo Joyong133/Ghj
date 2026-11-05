@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A leaf: "detox / take a breather". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,34 C72,34 46,32 38,50 C32,63 38,72 42,74 C46,70 52,60 62,52 C54,61 48,69 44,77 C52,80 64,76 69,63 C74,51 72,34 72,34 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M44,77 L38,84" />
+</vector>

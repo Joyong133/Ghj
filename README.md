@@ -16,3 +16,11 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 영양 수치는 100ml당 근삿값(열량 43kcal, 당류 10.8g, 카페인 9.6mg)으로 계산합니다.
 실제 값은 나라와 제품마다 다릅니다.
+
+---
+
+## 🌿 커뮤니티 디톡스 (Android 앱)
+
+커뮤니티 앱과 사이트(디시인사이드, 에펨코리아, 더쿠, 에브리타임, Reddit, 인스타그램 등)를 막아 주는 안드로이드 앱이
+[`community-detox/`](community-detox/) 폴더에 있습니다. 설치 방법과 기능은 [`community-detox/README.md`](community-detox/README.md)를 보세요.
+APK는 GitHub Actions가 자동으로 빌드해 Releases에 올립니다.

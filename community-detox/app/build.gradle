@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Optional stable signing key (set by CI from repository secrets).
+// Without it the APK is signed with a debug key, which is fine for sideloading.
+def keystorePath = System.getenv("DETOX_KEYSTORE_PATH")
+
+android {
+    namespace 'com.joyong.communitydetox'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.joyong.communitydetox'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        if (keystorePath) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv("DETOX_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("DETOX_KEY_ALIAS")
+                keyPassword System.getenv("DETOX_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
