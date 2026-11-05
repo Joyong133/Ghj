@@ -30,27 +30,64 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # Keep the same debug signing key between builds so new APKs install as updates.
-      - name: Restore signing key cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: community-detox-debug-keystore
-
-      - name: Use release signing key (optional, from repository secrets)
+      # Every build must be signed with the SAME key, or Android refuses to install it as an update.
+      # Preferred: a keystore in the DETOX_KEYSTORE_BASE64 repository secret.
+      # Otherwise: a key generated once and kept in the Actions cache (reused by every build).
+      - name: Use signing key from repository secret
+        id: secret_key
         env:
           KEYSTORE_B64: ${{ secrets.DETOX_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.DETOX_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DETOX_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.DETOX_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/detox.jks"
-            echo "DETOX_KEYSTORE_PATH=$RUNNER_TEMP/detox.jks" >> "$GITHUB_ENV"
+            {
+              echo "DETOX_KEYSTORE_PATH=$RUNNER_TEMP/detox.jks"
+              echo "DETOX_KEYSTORE_PASSWORD=$KS_PASS"
+              echo "DETOX_KEY_ALIAS=$KEY_ALIAS"
+              echo "DETOX_KEY_PASSWORD=$KEY_PASS"
+            } >> "$GITHUB_ENV"
+            echo "found=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Restore cached signing key
+        if: steps.secret_key.outputs.found != 'true'
+        id: cached_key
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/detox-signing/detox.jks
+          key: community-detox-signing-v1
+
+      - name: Create signing key (first build only)
+        if: steps.secret_key.outputs.found != 'true' && steps.cached_key.outputs.cache-hit != 'true'
+        working-directory: .
+        run: |
+          mkdir -p ~/detox-signing
+          keytool -genkeypair -noprompt -keystore ~/detox-signing/detox.jks \
+            -storepass detox-signing -keypass detox-signing -alias detox \
+            -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Community Detox"
+
+      - name: Save signing key
+        if: steps.secret_key.outputs.found != 'true' && steps.cached_key.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/detox-signing/detox.jks
+          key: community-detox-signing-v1
+
+      - name: Use cached signing key
+        if: steps.secret_key.outputs.found != 'true'
+        working-directory: .
+        run: |
+          {
+            echo "DETOX_KEYSTORE_PATH=$HOME/detox-signing/detox.jks"
+            echo "DETOX_KEYSTORE_PASSWORD=detox-signing"
+            echo "DETOX_KEY_ALIAS=detox"
+            echo "DETOX_KEY_PASSWORD=detox-signing"
+          } >> "$GITHUB_ENV"
+
       - name: Build APK
-        env:
-          DETOX_KEYSTORE_PASSWORD: ${{ secrets.DETOX_KEYSTORE_PASSWORD }}
-          DETOX_KEY_ALIAS: ${{ secrets.DETOX_KEY_ALIAS }}
-          DETOX_KEY_PASSWORD: ${{ secrets.DETOX_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
