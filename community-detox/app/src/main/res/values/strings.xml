@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- app_name is per flavor (src/phone, src/vr). "brand" is the shared part used to recognise our own screens. -->
-    <string name="brand">커뮤니티 디톡스</string>
-    <string name="service_label">커뮤니티 디톡스 차단</string>
+    <string name="brand">Digital Detox</string>
+    <string name="service_label">Digital Detox 차단</string>
     <string name="accessibility_desc">차단 목록에 있는 커뮤니티 앱이 열리거나, 브라우저 주소창에 차단한 사이트 주소가 보이면 화면을 닫고 디톡스 안내 화면을 띄웁니다. 확인하는 것은 지금 열린 앱 이름과 브라우저 주소뿐이며, 어떤 정보도 저장하거나 외부로 보내지 않습니다.</string>
     <string name="accessibility_summary">커뮤니티 앱·사이트를 차단해요</string>
-    <string name="admin_label">커뮤니티 디톡스 삭제 방지</string>
-    <string name="admin_desc">켜 두면 커뮤니티 디톡스를 바로 지울 수 없어요. 앱을 지우려면 먼저 앱 안에서 삭제 방지를 끄세요. 이 권한으로 기기를 잠그거나 지우는 등의 다른 일은 하지 않아요.</string>
+    <string name="admin_label">Digital Detox 삭제 방지</string>
+    <string name="admin_desc">켜 두면 Digital Detox를 바로 지울 수 없어요. 앱을 지우려면 먼저 앱 안에서 삭제 방지를 끄세요. 이 권한으로 기기를 잠그거나 지우는 등의 다른 일은 하지 않아요.</string>
 </resources>

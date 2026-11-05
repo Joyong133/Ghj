@@ -14,6 +14,6 @@ public class DetoxAdminReceiver extends DeviceAdminReceiver {
     public CharSequence onDisableRequested(Context context, Intent intent) {
         return Prefs.isLocked(context)
                 ? "집중 디톡스 중이에요. 끝나기 전에는 삭제 방지를 끌 수 없어요."
-                : "삭제 방지를 끄면 커뮤니티 디톡스를 바로 지울 수 있게 돼요.";
+                : "삭제 방지를 끄면 Digital Detox를 바로 지울 수 있게 돼요.";
     }
 }

@@ -82,6 +82,12 @@ public class MainActivity extends Activity {
         super.onResume();
         render();
         ensureVpn();
+        if (installAfterPermission && AppUpdater.canInstall(this)) {
+            installAfterPermission = false;
+            installUpdate();
+        } else if (System.currentTimeMillis() - lastUpdateCheck > 6 * 60 * 60 * 1000L) {
+            checkUpdate(false); // quietly look for a new version a few times a day
+        }
         handler.post(ticker);
     }
 
@@ -106,6 +112,7 @@ public class MainActivity extends Activity {
         lastState = lockState();
 
         header();
+        updateCard(true);
         if (BuildConfig.IS_VR) {
             vpnCard();      // VR: VPN is the way it blocks
             vrSetupCard();
@@ -126,7 +133,7 @@ public class MainActivity extends Activity {
     private void header() {
         LinearLayout h = ui.column();
         h.setPadding(ui.dp(4), ui.dp(8), ui.dp(4), ui.dp(16));
-        h.addView(ui.text("🌿 커뮤니티 디톡스", 26, ui.text, true));
+        h.addView(ui.text("🌿 Digital Detox", 26, ui.text, true));
         h.addView(ui.body("커뮤니티 앱과 사이트를 잠시 멀리하고, 내 시간을 되찾아요."), Ui.wrap(ui.dp(4)));
         content.addView(h);
     }
@@ -140,7 +147,7 @@ public class MainActivity extends Activity {
             return;
         }
         c.addView(ui.title("먼저 접근성 권한을 켜 주세요"));
-        c.addView(ui.body("설정 → 접근성 → 설치된 앱(설치된 서비스) → ‘커뮤니티 디톡스 차단’을 켜면 차단이 시작돼요.\n\n"
+        c.addView(ui.body("설정 → 접근성 → 설치된 앱(설치된 서비스) → ‘Digital Detox 차단’을 켜면 차단이 시작돼요.\n\n"
                 + "지금 열린 앱 이름과 브라우저 주소창만 기기 안에서 확인하며, 아무것도 저장하거나 외부로 보내지 않아요."));
         c.addView(ui.button("접근성 설정 열기", true,
                 v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))), Ui.fill(ui.dp(12)));
@@ -478,7 +485,7 @@ public class MainActivity extends Activity {
                 Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
                         .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent())
                         .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                                "켜 두면 커뮤니티 디톡스를 바로 지울 수 없어요. 기기를 잠그거나 지우는 등 다른 권한은 쓰지 않아요.");
+                                "켜 두면 Digital Detox를 바로 지울 수 없어요. 기기를 잠그거나 지우는 등 다른 권한은 쓰지 않아요.");
                 try {
                     startActivity(i);
                 } catch (RuntimeException e) {
@@ -693,20 +700,107 @@ public class MainActivity extends Activity {
         t.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(16));
         content.addView(t);
 
+        updateCard(false);
+    }
+
+    // ------------------------------------------------------------------ in-app update
+
+    private static long lastUpdateCheck;          // per app run
+    private static AppUpdater.Latest newer;       // a newer version that was found
+    private String updateStatus;                  // "확인하는 중…" etc.
+    private boolean installAfterPermission;
+
+    private void updateCard(boolean banner) {
+        if (banner && newer == null) return;
         LinearLayout c = ui.card();
+        if (newer != null) c.setBackground(ui.rounded(ui.accentSoft, 20));
+        if (banner) {
+            c.addView(ui.text("✨ 새 버전 " + newer.versionName + "이 있어요", 16, ui.accent, true));
+            c.addView(ui.button("지금 업데이트", true, v -> installUpdate()), Ui.fill(ui.dp(10)));
+            content.addView(c);
+            return;
+        }
         c.addView(ui.title("⬇️ 앱 업데이트"));
-        c.addView(ui.body("지금 버전: " + versionName() + "\n"
-                + "버튼을 누르면 최신 APK를 받아요. 받은 파일을 열어 설치하면 설정과 기록을 그대로 둔 채 업데이트돼요."));
-        c.addView(ui.button("최신 버전 받기", false, v -> {
-            try {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(UPDATE_URL)));
-            } catch (RuntimeException e) {
-                Toast.makeText(this, "브라우저를 열 수 없어요", Toast.LENGTH_SHORT).show();
-            }
-        }), Ui.fill(ui.dp(12)));
+        c.addView(ui.body("지금 버전: " + versionName()));
+        if (newer != null) {
+            c.addView(ui.text("✨ 새 버전 " + newer.versionName + "이 있어요", 15, ui.accent, true), Ui.wrap(ui.dp(6)));
+            c.addView(ui.button("지금 업데이트", true, v -> installUpdate()), Ui.fill(ui.dp(10)));
+        } else {
+            c.addView(ui.button("업데이트 확인", false, v -> checkUpdate(true)), Ui.fill(ui.dp(10)));
+        }
+        if (updateStatus != null) c.addView(ui.text(updateStatus, 13, ui.sub, false), Ui.wrap(ui.dp(6)));
+        c.addView(ui.body("버튼을 누르면 앱이 새 버전을 직접 받아서 바로 설치해요. 설정과 기록은 그대로예요. "
+                + "처음 한 번은 Android가 '이 앱에서 설치 허용'과 '업데이트할까요?'를 물어봐요."), Ui.wrap(ui.dp(8)));
         LinearLayout.LayoutParams lp = Ui.fill(0);
         lp.bottomMargin = ui.dp(24);
         content.addView(c, lp);
+    }
+
+    /** Downloads the latest build in the background; if it is newer, offers (or, if asked, starts) the update. */
+    private void checkUpdate(boolean userAsked) {
+        lastUpdateCheck = System.currentTimeMillis();
+        updateStatus = "확인하는 중…";
+        if (userAsked) render();
+        new Thread(() -> {
+            String error = null;
+            AppUpdater.Latest l = null;
+            try {
+                l = AppUpdater.download(this);
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            final AppUpdater.Latest found = l;
+            final String err = error;
+            handler.post(() -> {
+                updateStatus = null;
+                if (found != null && found.versionCode > AppUpdater.currentVersionCode(this)) {
+                    newer = found;
+                    if (userAsked) installUpdate();
+                } else if (userAsked) {
+                    Toast.makeText(this, err != null ? "업데이트를 확인하지 못했어요. 인터넷 연결을 확인해 주세요."
+                            : "이미 최신 버전이에요 🌿", Toast.LENGTH_SHORT).show();
+                }
+                render();
+            });
+        }).start();
+    }
+
+    private void installUpdate() {
+        if (newer == null) return;
+        if (!AppUpdater.canInstall(this)) {
+            // Android asks once per installing app.
+            installAfterPermission = true;
+            Toast.makeText(this, "'이 출처 허용'을 켜고 돌아오면 바로 업데이트해요", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+            } catch (RuntimeException e) {
+                openDownloadPage();
+            }
+            return;
+        }
+        updateStatus = "설치하는 중… 잠깐 기다려 주세요";
+        render();
+        final AppUpdater.Latest l = newer;
+        new Thread(() -> {
+            try {
+                AppUpdater.install(this, l.file);
+            } catch (Exception e) {
+                handler.post(() -> {
+                    updateStatus = null;
+                    Toast.makeText(this, "업데이트하지 못했어요. 다운로드 페이지를 열게요.", Toast.LENGTH_LONG).show();
+                    openDownloadPage();
+                    render();
+                });
+            }
+        }).start();
+    }
+
+    private void openDownloadPage() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(UPDATE_URL)));
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "브라우저를 열 수 없어요", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private static final String UPDATE_URL = BuildConfig.UPDATE_URL;

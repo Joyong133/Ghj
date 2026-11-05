@@ -393,7 +393,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
             // Our accessibility detail page / device-admin page show our own description.
             if (!serviceDesc.isEmpty() && t.contains(serviceDesc)) return true;
             if (!adminDesc.isEmpty() && t.contains(adminDesc)) return true;
-            // "커뮤니티 디톡스 차단 사용" switch, "커뮤니티 디톡스 차단을(를) 중지할까요?" dialog.
+            // "Digital Detox 차단 사용" switch, "Digital Detox 차단을(를) 중지할까요?" dialog.
             if (t.contains(serviceLabel) && !t.trim().equals(serviceLabel)) {
                 for (String w : TOGGLE_WORDS) {
                     if (t.contains(w)) return true;

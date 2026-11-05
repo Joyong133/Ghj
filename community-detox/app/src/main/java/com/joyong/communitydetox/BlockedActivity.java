@@ -76,7 +76,7 @@ public class BlockedActivity extends Activity {
         col.addView(title, Ui.wrap(ui.dp(12)));
 
         TextView msg = ui.text(protect
-                ? "집중 디톡스가 끝날 때까지 커뮤니티 디톡스를\n삭제·강제 중지하거나 접근성·삭제 방지를 끌 수 없어요.\n조금만 더 힘내요!"
+                ? "집중 디톡스가 끝날 때까지 Digital Detox를\n삭제·강제 중지하거나 접근성·삭제 방지를 끌 수 없어요.\n조금만 더 힘내요!"
                 : Ui.topic(label) + " 지금 차단되어 있어요.\n습관처럼 열었다면, 잘 알아챘어요.", 16, ui.sub, false);
         msg.setGravity(Gravity.CENTER);
         col.addView(msg, Ui.wrap(ui.dp(10)));
