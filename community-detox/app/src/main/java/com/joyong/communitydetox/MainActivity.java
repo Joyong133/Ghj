@@ -81,6 +81,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         render();
+        ensureVpn();
         handler.post(ticker);
     }
 
@@ -274,6 +275,30 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ network (VPN / DNS) blocking
 
     private static final int REQ_VPN = 41;
+    private boolean vpnAsked;
+
+    /** If network blocking should be on but isn't running, start it — asking for VPN permission first if needed. */
+    private void ensureVpn() {
+        if (!Prefs.isVpnOn(this) || DetoxVpnService.running) return;
+        Intent consent = android.net.VpnService.prepare(this);
+        if (consent == null) {
+            DetoxVpnService.start(this);
+            handler.postDelayed(this::render, 1200);
+        } else if (!vpnAsked) {
+            vpnAsked = true; // once per visit, so declining doesn't loop
+            requestVpnPermission(consent);
+        }
+    }
+
+    private void requestVpnPermission(Intent consent) {
+        try {
+            startActivityForResult(consent, REQ_VPN); // Android asks once: "allow this VPN connection?"
+        } catch (RuntimeException e) {
+            Prefs.setVpnOn(this, false);
+            Toast.makeText(this, "이 기기에서는 VPN 허용 창을 열 수 없어서 네트워크 차단을 쓸 수 없어요", Toast.LENGTH_LONG).show();
+            render();
+        }
+    }
 
     private void vpnCard() {
         boolean locked = Prefs.isLocked(this);
@@ -287,7 +312,10 @@ public class MainActivity extends Activity {
         LinearLayout r = ui.row();
         LinearLayout texts = ui.column();
         texts.addView(ui.text("네트워크 차단 켜기", 15, ui.text, true));
-        String state = !on ? "꺼져 있어요" : DetoxVpnService.running ? "✅ 작동 중 (상단에 열쇠 아이콘이 보여요)" : "켜는 중…";
+        boolean needsPermission = on && !DetoxVpnService.running && android.net.VpnService.prepare(this) != null;
+        String state = !on ? "꺼져 있어요"
+                : DetoxVpnService.running ? "✅ 작동 중 (상단에 열쇠 아이콘이 보여요)"
+                : needsPermission ? "⚠️ VPN 연결을 허용해야 작동해요" : "켜는 중…";
         texts.addView(ui.text(state, 12, ui.sub, false));
         r.addView(texts, Ui.weight(0));
         Switch sw = new Switch(this);
@@ -302,7 +330,7 @@ public class MainActivity extends Activity {
             if (checked) {
                 Intent consent = android.net.VpnService.prepare(this);
                 if (consent != null) {
-                    startActivityForResult(consent, REQ_VPN); // Android asks once: "allow this VPN?"
+                    requestVpnPermission(consent);
                     return;
                 }
                 Prefs.setVpnOn(this, true);
@@ -315,6 +343,13 @@ public class MainActivity extends Activity {
         });
         r.addView(sw);
         c.addView(r, Ui.fill(ui.dp(12)));
+        if (needsPermission) {
+            c.addView(ui.button("VPN 연결 허용하기", true, v -> {
+                Intent consent = android.net.VpnService.prepare(this);
+                if (consent != null) requestVpnPermission(consent);
+                else ensureVpn();
+            }), Ui.fill(ui.dp(10)));
+        }
         c.addView(ui.body("다른 VPN 앱과는 함께 쓸 수 없어요. 휴대폰 설정의 '비공개 DNS'가 특정 주소로 지정돼 있으면 꺼 주세요."),
                 Ui.wrap(ui.dp(8)));
         content.addView(c);
@@ -329,7 +364,8 @@ public class MainActivity extends Activity {
             Prefs.setVpnOn(this, true);
             DetoxVpnService.start(this);
             Toast.makeText(this, "네트워크 차단을 켰어요 🌐", Toast.LENGTH_SHORT).show();
-        } else {
+        } else if (!Prefs.isLocked(this)) {
+            Prefs.setVpnOn(this, false);
             Toast.makeText(this, "VPN 연결을 허용해야 켤 수 있어요", Toast.LENGTH_SHORT).show();
         }
         handler.postDelayed(this::render, 800);

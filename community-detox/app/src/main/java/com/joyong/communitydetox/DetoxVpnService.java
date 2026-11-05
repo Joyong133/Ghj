@@ -147,7 +147,11 @@ public class DetoxVpnService extends VpnService implements Runnable {
                     countOnce(hit);
                     write(out, DnsPacket.blockedResponse(packet, len));
                 } else {
-                    pool.execute(() -> forward(out, packet));
+                    try {
+                        pool.execute(() -> forward(out, packet));
+                    } catch (RuntimeException ignored) {
+                        // shutting down
+                    }
                 }
             }
         } catch (Exception e) {
