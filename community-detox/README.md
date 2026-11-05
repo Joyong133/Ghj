@@ -43,14 +43,17 @@
 (PC VR — Steam VR, Quest Link/에어링크 — 은 [Windows 버전](../community-detox-pc/)이 PC에서 그대로 막아 줍니다.)
 
 1. 헤드셋의 **개발자 모드**를 켜고(휴대폰의 Meta Horizon 앱 → 기기 → 개발자 모드), PC에 연결해 **SideQuest** 나 `adb install CommunityDetox-VR.apk` 로 설치합니다.
-2. 헤드셋의 앱 목록 → **출처를 알 수 없음** 에서 앱을 열고 **네트워크 차단** 을 켭니다. (VR에서는 기본으로 켜지고, 이것만으로 퀘스트 브라우저와 앱 속 링크의 커뮤니티가 막힙니다.)
-3. (선택) 앱 차단·삭제 방지까지 쓰려면 접근성 권한이 필요합니다. 헤드셋 설정에서 켤 수 없으면 PC에서 한 번 실행하세요:
+2. **접근성 권한**을 켭니다 (VPN 없이 막는 방식). 헤드셋 설정에서 켤 수 없으면 PC에서 한 번 실행하세요 (SideQuest의 ADB 명령 칸 가능):
    ```
    adb shell settings put secure enabled_accessibility_services com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAccessibilityService
    adb shell settings put secure accessibility_enabled 1
-   adb shell dpm set-active-admin com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAdminReceiver
+   adb shell dpm set-active-admin com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAdminReceiver   # 삭제 방지 (선택)
    ```
-4. VRChat, Rec Room 같은 VR 소셜 앱도 **설치된 앱 직접 차단 → 앱 고르기** 에서 고를 수 있습니다 (VR 앱 목록 포함).
+3. 헤드셋의 앱 목록 → **출처를 알 수 없음** 에서 앱을 열어 확인합니다. 퀘스트 브라우저의 주소·탭 제목에 커뮤니티가 보이면 닫습니다.
+4. 그래도 열리는 곳이 있으면 **퀘스트 브라우저 아예 막기** 를 켜세요. 브라우저 자체가 열리지 않습니다 (집중 디톡스 중에는 끌 수 없음).
+5. VRChat, Rec Room 같은 VR 소셜 앱도 **설치된 앱 직접 차단 → 앱 고르기** 에서 고를 수 있습니다 (VR 앱 목록 포함).
+
+**네트워크 차단(VPN 방식)** 은 VR에서도 선택 기능으로 남아 있습니다 (기본 꺼짐).
 
 집중 디톡스, 일시정지, 직접 추가, 기록 등 나머지 기능은 휴대폰 버전과 같습니다.
 

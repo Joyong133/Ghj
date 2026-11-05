@@ -106,8 +106,8 @@ public class MainActivity extends Activity {
         lastState = lockState();
 
         header();
-        permissionCard();
         if (BuildConfig.IS_VR) vrSetupCard();
+        else permissionCard();
         vpnCard();
         controlCard();
         focusCard();
@@ -304,7 +304,7 @@ public class MainActivity extends Activity {
         boolean locked = Prefs.isLocked(this);
         boolean on = Prefs.isVpnOn(this);
         LinearLayout c = ui.card();
-        c.addView(ui.title("🌐 네트워크 차단 (VPN 방식)" + (BuildConfig.IS_VR ? " · 추천" : "")));
+        c.addView(ui.title("🌐 네트워크 차단 (VPN 방식) · 선택"));
         c.addView(ui.body("기기 전체에서 커뮤니티 주소를 찾지 못하게 막아요. 모든 브라우저"
                 + (BuildConfig.IS_VR ? "(퀘스트 브라우저 포함)" : "") + ", 카카오톡 인앱 브라우저, 다른 앱 속 링크까지 적용돼요.\n"
                 + "주소 확인(DNS)만 이 기능을 거치고 다른 인터넷 통신은 그대로예요. 기록하거나 외부로 보내지 않아요."));
@@ -374,11 +374,17 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ VR headset setup
 
     private void vrSetupCard() {
+        boolean enabled = isServiceEnabled();
         LinearLayout c = ui.card();
-        c.addView(ui.title("🥽 VR 기기에서 설정하기"));
-        c.addView(ui.body("1) 위의 '네트워크 차단'을 켜세요. VR에서는 이것만으로 퀘스트 브라우저와 앱 속 링크의 커뮤니티가 막혀요.\n\n"
-                + "2) (선택) 앱 차단·삭제 방지까지 쓰려면 접근성 권한이 필요해요. 헤드셋 설정에 이 앱이 안 보이면 "
-                + "PC에 헤드셋을 연결하고 아래 명령을 한 번 실행하세요 (SideQuest의 ADB 명령 실행이나 명령 프롬프트):"));
+        if (enabled) c.setBackground(ui.rounded(ui.accentSoft, 20));
+        c.addView(ui.title("🥽 퀘스트에서 설정하기 (VPN 없이)"));
+        if (enabled) {
+            c.addView(ui.text("✅ 접근성 권한이 켜져 있어요. 차단이 작동 중이에요.", 14, ui.accent, true));
+        }
+        c.addView(ui.body("VR 버전은 '접근성' 방식으로 막아요. 퀘스트 브라우저의 주소·탭 제목을 보고 커뮤니티면 닫고, 막은 앱은 열리지 않게 해요.\n\n"
+                + "1) 헤드셋 설정 → 접근성(또는 시스템) 에서 '커뮤니티 디톡스 차단'을 켤 수 있으면 켜세요.\n"
+                + "2) 목록에 없으면 헤드셋을 PC에 연결하고 아래 명령을 한 번 실행하세요. "
+                + "(SideQuest 오른쪽 위 '>_' ADB 명령 실행 칸이나 명령 프롬프트. 마지막 줄은 삭제 방지)"));
         String pkg = getPackageName();
         String cmd = "adb shell settings put secure enabled_accessibility_services "
                 + pkg + "/com.joyong.communitydetox.DetoxAccessibilityService\n"
@@ -395,9 +401,33 @@ public class MainActivity extends Activity {
             cb.setPrimaryClip(android.content.ClipData.newPlainText("adb", cmd));
             Toast.makeText(this, "복사했어요", Toast.LENGTH_SHORT).show();
         }), Ui.fill(ui.dp(8)));
-        c.addView(ui.body("3) VR 게임·소셜 앱(예: VRChat, Rec Room)도 '설치된 앱 직접 차단 → 앱 고르기'에서 고를 수 있어요."),
-                Ui.wrap(ui.dp(8)));
+        c.addView(ui.body("3) VRChat, Rec Room 같은 VR 앱도 '설치된 앱 직접 차단 → 앱 고르기'에서 고를 수 있어요.\n"
+                + "4) 퀘스트 브라우저에서 커뮤니티가 그래도 열리면, 아래 '퀘스트 브라우저 아예 막기'를 켜세요."), Ui.wrap(ui.dp(8)));
         content.addView(c);
+
+        // Strongest option without VPN: the browser itself can't be opened.
+        boolean locked = Prefs.isLocked(this);
+        LinearLayout bc = ui.card();
+        bc.addView(ui.title("🚫 퀘스트 브라우저 아예 막기"));
+        bc.addView(ui.body("켜면 브라우저가 열리자마자 닫혀요. 주소를 읽지 못하는 화면이 있어도 확실하게 막을 수 있어요."));
+        LinearLayout r = ui.row();
+        r.addView(ui.text("브라우저 아예 막기", 15, ui.text, true), Ui.weight(0));
+        Switch sw = new Switch(this);
+        boolean on = Prefs.isBrowserBlockAll(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on)); // during a focus lock it can be turned on, not off
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            Prefs.setBrowserBlockAll(this, checked);
+            Toast.makeText(this, checked ? "브라우저를 막아요" : "커뮤니티만 막아요", Toast.LENGTH_SHORT).show();
+        });
+        r.addView(sw);
+        bc.addView(r, Ui.fill(ui.dp(10)));
+        content.addView(bc);
     }
 
     private void inAppCard() {

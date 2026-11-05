@@ -125,6 +125,14 @@ public class DetoxAccessibilityService extends AccessibilityService {
             return;
         }
 
+        // 3a) "Block the browser entirely" (VR): the browser itself can't be opened.
+        if (Prefs.isBrowserBlockAll(this) && isBrowser(pkg)) {
+            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || isFrontApp(pkg)) {
+                block("browser:" + pkg, "브라우저", false);
+            }
+            return;
+        }
+
         // 3) A browser showing a blocked site.
         if (r.domains.isEmpty() || !isBrowser(pkg)) return;
         long now = SystemClock.uptimeMillis();
@@ -142,7 +150,44 @@ public class DetoxAccessibilityService extends AccessibilityService {
         if (hit != null) {
             String name = r.domains.get(hit);
             block("web:" + pkg + ":" + hit, name != null ? name : hit, true);
+            return;
         }
+        if (!lastSawAddress) {
+            // No readable address bar: use the tab titles / page titles the browser shows outside the page.
+            String name = scanBrowserTexts(root, r);
+            if (name != null) block("web:" + pkg + ":" + name, name, true);
+        }
+    }
+
+    /** True if the last check found an address bar or an editable address field. */
+    private boolean lastSawAddress;
+
+    /**
+     * Looks at the browser's own texts (tab titles, title bar), not inside the web page,
+     * for a blocked address or a community's page-title keyword. Returns the community name.
+     */
+    private static String scanBrowserTexts(AccessibilityNodeInfo root, Prefs.Rules r) {
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 600) {
+            AccessibilityNodeInfo n = queue.poll();
+            visited++;
+            CharSequence cls = n.getClassName();
+            if (cls != null && cls.toString().contains("WebView")) continue; // skip the page itself
+            for (CharSequence t : new CharSequence[]{n.getText(), n.getContentDescription()}) {
+                if (t == null || t.length() == 0) continue;
+                String d = r.matchUrlText(t);
+                if (d != null) return r.domains.get(d) != null ? r.domains.get(d) : d;
+                String title = r.matchTitle(t);
+                if (title != null) return title;
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) queue.add(child);
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ in-app browsers
@@ -266,6 +311,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
                 if (hit != null) return hit;
             }
         }
+        lastSawAddress = sawUrlBar;
         if (sawUrlBar) return null;
 
         // Fallback for browsers with unknown ids: look at editable / url-like fields only,
@@ -277,6 +323,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
             AccessibilityNodeInfo n = queue.poll();
             visited++;
             if (looksLikeAddressField(n)) {
+                lastSawAddress = true;
                 String hit = r.matchUrlText(n.getText());
                 if (hit != null) return hit;
             }

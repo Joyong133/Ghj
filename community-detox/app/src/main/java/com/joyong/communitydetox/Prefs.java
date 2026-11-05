@@ -125,9 +125,20 @@ final class Prefs {
 
     // ---- what is blocked ----
 
-    /** Network-level (DNS / VPN) blocking. On by default on VR headsets, where it is the main way to block. */
+    /** Network-level (DNS / VPN) blocking. Optional; off by default. */
     static boolean isVpnOn(Context c) {
-        return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
+        return sp(c).getBoolean(K_VPN, false);
+    }
+
+    private static final String K_BROWSER_ALL = "browser_block_all";
+
+    /** Block browser apps entirely (VR: the Meta Quest Browser can't be opened at all). */
+    static boolean isBrowserBlockAll(Context c) {
+        return sp(c).getBoolean(K_BROWSER_ALL, false);
+    }
+
+    static void setBrowserBlockAll(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_BROWSER_ALL, on).apply();
     }
 
     static void setVpnOn(Context c, boolean on) {
