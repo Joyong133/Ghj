@@ -51,10 +51,41 @@ public class DetoxVpnService extends VpnService implements Runnable {
     static boolean start(Context c) {
         if (VpnService.prepare(c) != null) return false;
         try {
-            c.startService(new Intent(c, DetoxVpnService.class));
+            // Foreground service: keeps blocking on even when the app is closed (and works from boot).
+            c.startForegroundService(new Intent(c, DetoxVpnService.class));
             return true;
         } catch (RuntimeException e) {
-            return false;
+            try {
+                c.startService(new Intent(c, DetoxVpnService.class));
+                return true;
+            } catch (RuntimeException e2) {
+                return false;
+            }
+        }
+    }
+
+    private static final int NOTIFICATION_ID = 7;
+
+    private void goForeground() {
+        android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+        nm.createNotificationChannel(new android.app.NotificationChannel(
+                "detox_vpn", "커뮤니티 차단", android.app.NotificationManager.IMPORTANCE_LOW));
+        android.app.Notification n = new android.app.Notification.Builder(this, "detox_vpn")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText("커뮤니티 사이트를 막고 있어요 🌿")
+                .setOngoing(true)
+                .setContentIntent(android.app.PendingIntent.getActivity(this, 0,
+                        new Intent(this, MainActivity.class), android.app.PendingIntent.FLAG_IMMUTABLE))
+                .build();
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIFICATION_ID, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else {
+                startForeground(NOTIFICATION_ID, n);
+            }
+        } catch (RuntimeException ignored) {
+            // still works as a plain VPN service
         }
     }
 
@@ -69,9 +100,11 @@ public class DetoxVpnService extends VpnService implements Runnable {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             shutdown();
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
         }
+        goForeground();
         if (thread == null || !thread.isAlive()) {
             refresh();
             Prefs.sp(this).registerOnSharedPreferenceChangeListener(prefsListener);

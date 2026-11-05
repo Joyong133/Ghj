@@ -125,9 +125,9 @@ final class Prefs {
 
     // ---- what is blocked ----
 
-    /** Network-level (DNS / VPN) blocking. Optional; off by default. */
+    /** Network-level (DNS / VPN) blocking. The VR app's main method (on by default); optional on phones. */
     static boolean isVpnOn(Context c) {
-        return sp(c).getBoolean(K_VPN, false);
+        return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
     }
 
     private static final String K_BROWSER_ALL = "browser_block_all";
