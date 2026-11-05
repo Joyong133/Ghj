@@ -15,7 +15,6 @@ namespace CommunityDetox
     {
         private const string LogonTask = "CommunityDetox";
         private const string MinuteTask = "CommunityDetoxGuard";
-        private static Process watchdog;
         private static bool minuteTaskOn;
 
         private static string Exe => Application.ExecutablePath;
@@ -61,7 +60,14 @@ namespace CommunityDetox
             }
         }
 
-        /// <summary>Called every few seconds by the main window.</summary>
+        public const string MainMutexName = @"Global\CommunityDetoxMain";
+        private const string WatchdogMutexName = @"Global\CommunityDetoxWatchdog";
+        private const string StopEventName = @"Global\CommunityDetoxWatchdogStop";
+        private const string ReadyEventName = @"Global\CommunityDetoxMainReady";
+        private static bool watchdogWanted;
+        private static long lastSpawn;
+
+        /// <summary>Called every second by the main window.</summary>
         public static void Tick()
         {
             bool locked = Store.IsLocked;
@@ -69,31 +75,28 @@ namespace CommunityDetox
             {
                 if (!minuteTaskOn)
                 {
-                    // Every minute (and at sign-in) during the lock: brings the app back if it was killed.
+                    // Every minute (and at sign-in) during the lock: last resort if both processes were killed at once.
                     string start = DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd'T'HH:mm:ss");
-                    CreateTask(MinuteTask, "커뮤니티 디톡스: 집중 디톡스 중 꺼지면 다시 시작", "--tray",
+                    CreateTask(MinuteTask, "커뮤니티 디톡스: 집중 디톡스 중 꺼지면 다시 시작", "--revived",
                         "<TimeTrigger><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>" +
                         "<StartBoundary>" + start + "</StartBoundary><Enabled>true</Enabled></TimeTrigger>" +
                         "<LogonTrigger><Enabled>true</Enabled><UserId>" + Esc(UserId) + "</UserId></LogonTrigger>");
                     minuteTaskOn = true;
                 }
-                if (watchdog == null || watchdog.HasExited)
+                // The watchdog's partner check: if it was killed, start a new one right away.
+                if (!WatchdogAlive() && Store.Now - lastSpawn > 2000)
                 {
+                    lastSpawn = Store.Now;
+                    watchdogWanted = true;
                     try
                     {
-                        watchdog = Process.Start(new ProcessStartInfo(Exe, "--watchdog " + Process.GetCurrentProcess().Id)
-                        {
-                            UseShellExecute = false,
-                            CreateNoWindow = true,
-                        });
+                        using (var stop = new EventWaitHandle(false, EventResetMode.ManualReset, StopEventName)) stop.Reset();
                     }
-                    catch (Exception e)
-                    {
-                        Log.Write("watchdog start: " + e.Message);
-                    }
+                    catch { }
+                    Launch("--watchdog");
                 }
             }
-            else if (minuteTaskOn || watchdog != null)
+            else if (minuteTaskOn || watchdogWanted)
             {
                 Schtasks($"/delete /tn \"{MinuteTask}\" /f");
                 minuteTaskOn = false;
@@ -101,47 +104,119 @@ namespace CommunityDetox
             }
         }
 
-        public static void StopWatchdog()
+        private static bool WatchdogAlive()
         {
             try
             {
-                if (watchdog != null && !watchdog.HasExited) watchdog.Kill();
+                if (Mutex.TryOpenExisting(WatchdogMutexName, out var m))
+                {
+                    m.Dispose();
+                    return true;
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true; // exists
+            }
+            return false;
+        }
+
+        /// <summary>Tells the watchdog to stop (lock ended, update, exit, uninstall).</summary>
+        public static void StopWatchdog()
+        {
+            watchdogWanted = false;
+            try
+            {
+                using (var stop = new EventWaitHandle(false, EventResetMode.ManualReset, StopEventName)) stop.Set();
             }
             catch { }
-            watchdog = null;
+        }
+
+        /// <summary>Main process: call right after taking the main mutex.</summary>
+        public static void SignalMainReady()
+        {
+            try
+            {
+                using (var ready = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName)) ready.Set();
+            }
+            catch { }
         }
 
         /// <summary>
-        /// Runs in the separate "--watchdog" process: waits for the main process to end and,
-        /// if a focus lock is still running, starts it again.
+        /// Starts this exe with <paramref name="args"/> through a short-lived "--launch" process, so the new
+        /// process is not a child of the caller ("End process tree" in Task Manager can't take both down).
         /// </summary>
-        public static void RunWatchdog(int mainPid)
+        public static void Launch(string args)
         {
             try
             {
-                using (var main = Process.GetProcessById(mainPid))
-                {
-                    main.WaitForExit();
-                }
+                Process.Start(new ProcessStartInfo(Exe, "--launch " + args) { UseShellExecute = false, CreateNoWindow = true });
             }
-            catch
+            catch (Exception e)
             {
-                // already gone
+                Log.Write("launch " + args + ": " + e.Message);
             }
-            Thread.Sleep(500);
-            var d = Store.Load();
-            if (Store.Now < d.LockUntil)
+        }
+
+        /// <summary>
+        /// The separate "--watchdog" process. It waits on the main process's mutex, so it learns the moment
+        /// the main process ends (a killed process abandons its mutex) and, if a focus lock is still running,
+        /// starts it again immediately. Only one watchdog runs at a time.
+        /// </summary>
+        public static void RunWatchdog()
+        {
+            var t = new Thread(WatchdogLoop) { IsBackground = false };
+            t.SetApartmentState(ApartmentState.MTA);
+            t.Start();
+            t.Join();
+        }
+
+        private static void WatchdogLoop()
+        {
+            using (var self = new Mutex(false, WatchdogMutexName))
             {
+                bool mine;
+                try { mine = self.WaitOne(0); }
+                catch (AbandonedMutexException) { mine = true; }
+                if (!mine) return; // another watchdog is already on duty
+
                 try
                 {
-                    Process.Start(new ProcessStartInfo(Exe, "--tray") { UseShellExecute = false });
+                    using (var stop = new EventWaitHandle(false, EventResetMode.ManualReset, StopEventName))
+                    using (var ready = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName))
+                    using (var main = new Mutex(false, MainMutexName))
+                    {
+                        while (Locked())
+                        {
+                            int index;
+                            try { index = WaitHandle.WaitAny(new WaitHandle[] { stop, main }); }
+                            catch (AbandonedMutexException e) { index = e.MutexIndex; } // main was killed
+                            if (index == 0) break;                                      // asked to stop
+
+                            // We hold the main mutex now, so the main process is gone. Let go of it at once.
+                            main.ReleaseMutex();
+                            if (!Locked()) break;
+
+                            ready.Reset();
+                            Launch("--revived");
+                            // Wait until the new main process has taken the mutex before watching again.
+                            WaitHandle.WaitAny(new WaitHandle[] { stop, ready }, 15000);
+                            if (stop.WaitOne(0)) break;
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
-                    Log.Write("watchdog restart: " + e.Message);
+                    Log.Write("watchdog: " + e);
+                }
+                finally
+                {
+                    self.ReleaseMutex();
                 }
             }
         }
+
+        private static bool Locked() => Store.Now < Store.Load().LockUntil;
 
         /// <summary>Removes everything the app set up (only allowed when no focus lock is running).</summary>
         public static void Uninstall()

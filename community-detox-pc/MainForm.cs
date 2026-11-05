@@ -30,7 +30,7 @@ namespace CommunityDetox
         private bool updating;
         private long lastUpdateCheck;
 
-        public MainForm(bool startHidden, bool autoStart, bool updated)
+        public MainForm(bool startHidden, bool autoStart, bool updated, bool revived)
         {
             kit = new Kit(this);
             allowVisible = !startHidden;
@@ -82,7 +82,13 @@ namespace CommunityDetox
             Resize += (s, e) => { if (WindowState != FormWindowState.Minimized) dirty = true; };
             Render();
 
-            if (updated)
+            Guard.Tick(); // start the watchdog right away if a focus lock is running
+            if (revived && Store.IsLocked)
+            {
+                tray.ShowBalloonTip(4000, "🔒 다시 켜졌어요",
+                    "집중 디톡스 중이라 꺼지지 않아요. 남은 시간 " + Theme.Remaining(Store.LockRemaining), ToolTipIcon.Info);
+            }
+            else if (updated)
             {
                 tray.ShowBalloonTip(4000, "🌿 업데이트했어요",
                     "커뮤니티 디톡스 " + Updater.Current.ToString(3) + " 버전으로 다시 켜졌어요."
@@ -183,7 +189,8 @@ namespace CommunityDetox
             if (pauseCountdown != null) pauseCountdown.Text = "⏸ 일시정지 남은 시간  " + Theme.Remaining(Store.PauseUntil - Store.Now);
             if (statusLabel != null && blocker.HostsStatus.Length > 0) statusLabel.Text = blocker.HostsStatus;
             tray.Text = Store.IsPaused ? "커뮤니티 디톡스 (일시정지)" : Store.IsBlockingActive ? "커뮤니티 디톡스 (차단 중)" : "커뮤니티 디톡스 (꺼짐)";
-            if (++guardTicks % 5 == 1) Guard.Tick();
+            ++guardTicks;
+            Guard.Tick();
             if (guardTicks == 60 || Store.Now - lastUpdateCheck > 12 * Hour && lastUpdateCheck != 0) CheckForUpdate(false);
         }
 
@@ -492,7 +499,8 @@ namespace CommunityDetox
                 "• 창을 닫아도 작업 표시줄 오른쪽 아래(트레이)에서 계속 차단해요.\n" +
                 "• 집중 디톡스 중에는:\n" +
                 "    - 종료와 프로그램 제거가 막혀요.\n" +
-                "    - 작업 관리자로 강제 종료해도 바로(늦어도 1분 안에) 다시 켜져요.\n" +
+                "    - 작업 관리자로 끝내도 바로 다시 켜져요. 두 프로세스가 서로를 지켜보고 있어서 하나를 끄면 다른 하나가 즉시 되살려요.\n" +
+                "      (\"프로세스 트리 끝내기\"로도 함께 꺼지지 않아요. 둘을 한꺼번에 끄더라도 1분 안에 다시 켜져요)\n" +
                 "    - hosts 파일을 직접 고쳐도 몇 초 안에 원래대로 돌아가요.");
 
             var ver = Card(p, newVersion != null ? Theme.AccentSoft : (Color?)null);

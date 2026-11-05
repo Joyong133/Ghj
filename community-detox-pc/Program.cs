@@ -11,9 +11,20 @@ namespace CommunityDetox
         [STAThread]
         private static void Main(string[] args)
         {
-            if (args.Length == 2 && args[0] == "--watchdog" && int.TryParse(args[1], out int pid))
+            // --launch <args>: start this exe with <args> and quit at once (detaches the new process).
+            if (args.Length >= 1 && args[0] == "--launch")
             {
-                Guard.RunWatchdog(pid);
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                        Application.ExecutablePath, string.Join(" ", args, 1, args.Length - 1)) { UseShellExecute = false });
+                }
+                catch (Exception e) { Log.Write("launcher: " + e.Message); }
+                return;
+            }
+            if (args.Length >= 1 && args[0] == "--watchdog")
+            {
+                Guard.RunWatchdog();
                 return;
             }
 
@@ -29,11 +40,17 @@ namespace CommunityDetox
                 catch { }
             }
 
-            // --autostart: started at Windows sign-in. --tray: brought back by the guard. Both start in the tray.
+            // --autostart: started at Windows sign-in. --revived: brought back during a focus lock. Both start in the tray.
             bool autoStart = args.Length > 0 && args[0] == "--autostart";
-            bool startHidden = autoStart || updated || (args.Length > 0 && args[0] == "--tray");
-            using (var mutex = new Mutex(true, @"Global\CommunityDetoxMain", out bool first))
+            bool revived = args.Length > 0 && args[0] == "--revived";
+            bool startHidden = autoStart || updated || revived || (args.Length > 0 && args[0] == "--tray");
+            using (var mutex = new Mutex(false, Guard.MainMutexName))
             {
+                // Ownership (not creation) decides who runs: the watchdog briefly holds this mutex when
+                // the previous main process was killed, so wait a moment for it to be released.
+                bool first;
+                try { first = mutex.WaitOne(1500); }
+                catch (AbandonedMutexException) { first = true; }
                 var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Global\CommunityDetoxShow");
                 if (!first)
                 {
@@ -47,9 +64,10 @@ namespace CommunityDetox
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
+                Guard.SignalMainReady();
                 Guard.EnsureAutoStart();
                 Updater.Cleanup();
-                var form = new MainForm(startHidden, autoStart, updated);
+                var form = new MainForm(startHidden, autoStart, updated, revived);
                 var waiter = new Thread(() =>
                 {
                     while (true)
@@ -60,7 +78,7 @@ namespace CommunityDetox
                 }) { IsBackground = true };
                 waiter.Start();
                 Application.Run(form);
-                GC.KeepAlive(mutex);
+                try { mutex.ReleaseMutex(); } catch { }
             }
         }
     }
