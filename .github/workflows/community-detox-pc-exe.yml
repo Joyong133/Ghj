@@ -1,0 +1,58 @@
+name: Community Detox PC EXE
+
+on:
+  push:
+    paths:
+      - 'community-detox-pc/**'
+      - '.github/workflows/community-detox-pc-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: community-detox-pc-exe
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: community-detox-pc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Targets .NET Framework 4.8 (built into Windows 10/11); reference assemblies come from NuGet,
+      # so it builds on Linux too.
+      - name: Build EXE
+        run: |
+          dotnet build -c Release -nologo -p:BuildNumber=${{ github.run_number }}
+          cp bin/Release/CommunityDetox.exe CommunityDetox.exe
+          ls -la CommunityDetox.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CommunityDetox-exe
+          path: community-detox-pc/CommunityDetox.exe
+
+      - name: Publish download link (GitHub Release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=community-detox-pc-latest
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" CommunityDetox.exe \
+            --target "$GITHUB_SHA" \
+            --latest=false \
+            --title "커뮤니티 디톡스 PC (Windows) 최신 빌드" \
+            --notes "브랜치 \`${GITHUB_REF_NAME}\` / 커밋 ${GITHUB_SHA::7} 에서 자동으로 빌드한 Windows 10/11용 exe입니다.
+
+          **실행 방법**
+          1. \`CommunityDetox.exe\`를 내려받아 원하는 폴더(예: 문서)에 두고 실행합니다.
+          2. 'Windows의 PC 보호' 창이 뜨면 **추가 정보 → 실행**을 누릅니다. (서명되지 않은 프로그램이라 뜨는 안내예요)
+          3. 관리자 권한 요청에 **예**를 누릅니다. (hosts 파일로 사이트를 막는 데 필요해요)"

@@ -24,3 +24,8 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 커뮤니티 앱과 사이트(디시인사이드, 에펨코리아, 더쿠, 에브리타임, Reddit, 인스타그램 등)를 막아 주는 안드로이드 앱이
 [`community-detox/`](community-detox/) 폴더에 있습니다. 설치 방법과 기능은 [`community-detox/README.md`](community-detox/README.md)를 보세요.
 APK는 GitHub Actions가 자동으로 빌드해 Releases에 올립니다.
+
+### 💻 Windows 버전
+
+같은 기능을 가진 Windows 10/11용 exe가 [`community-detox-pc/`](community-detox-pc/) 폴더에 있습니다.
+자세한 내용은 [`community-detox-pc/README.md`](community-detox-pc/README.md)를 보세요.
