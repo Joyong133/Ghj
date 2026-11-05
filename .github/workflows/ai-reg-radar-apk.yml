@@ -49,3 +49,15 @@ jobs:
           body: |
             휴대폰에서 아래 **AI-Regulation-Radar.apk** 를 눌러 받은 뒤 설치하세요.
             (처음 설치할 때 "출처를 알 수 없는 앱 설치"를 허용해야 해요.)
+
+      - name: 고정 링크용 릴리스 갱신 (항상 최신 APK)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ai-reg-radar-latest
+          name: AI 규제 레이더 (항상 최신)
+          make_latest: false
+          overwrite_files: true
+          files: AI-Regulation-Radar.apk
+          body: |
+            이 링크는 항상 최신 APK를 받습니다:
+            https://github.com/Joyong133/Ghj/releases/download/ai-reg-radar-latest/AI-Regulation-Radar.apk

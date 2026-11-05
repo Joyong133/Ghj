@@ -5,7 +5,8 @@ AI 규제 관련 뉴스를 한곳에 모아서, **규제가 셀수록 위험도�
 
 ## 설치
 
-1. 이 저장소의 **Releases** 에서 최신 `AI-Regulation-Radar.apk` 를 휴대폰으로 받습니다.
+1. 휴대폰에서 아래 링크를 누르면 최신 APK가 바로 받아집니다.
+   https://github.com/Joyong133/Ghj/releases/download/ai-reg-radar-latest/AI-Regulation-Radar.apk
 2. 파일을 열고, "출처를 알 수 없는 앱 설치"를 허용한 뒤 설치합니다.
 3. 새 버전도 같은 방법으로 받아 설치하면 기존 앱 위에 업데이트됩니다.
 
