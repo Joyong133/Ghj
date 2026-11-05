@@ -28,6 +28,7 @@ final class Prefs {
     private static final String K_ADMIN_SETUP = "admin_setup_until";
     private static final String K_PAUSE_UNTIL = "pause_until";
     private static final String K_PAUSE_USED = "pause_used";
+    private static final String K_INAPP_ALL = "inapp_block_all";
 
     static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
@@ -123,6 +124,15 @@ final class Prefs {
 
     // ---- what is blocked ----
 
+    /** Close every page KakaoTalk opens in its in-app browser (not only blocked communities). */
+    static boolean isInAppBlockAll(Context c) {
+        return sp(c).getBoolean(K_INAPP_ALL, false);
+    }
+
+    static void setInAppBlockAll(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_INAPP_ALL, on).apply();
+    }
+
     static Set<String> enabledPresets(Context c) {
         Set<String> stored = sp(c).getStringSet(K_PRESETS, null);
         if (stored != null) return new HashSet<>(stored);
@@ -208,6 +218,19 @@ final class Prefs {
         final Map<String, String> domains = new HashMap<>();
         /** package -> display name (null = look up the app label) */
         final Map<String, String> packages = new HashMap<>();
+        /** page-title keyword -> display name (checked in in-app browser headers) */
+        final Map<String, String> titleKeywords = new HashMap<>();
+        boolean inAppBlockAll;
+
+        /** Returns the community name if the text contains one of its page-title keywords, or null. */
+        String matchTitle(CharSequence text) {
+            if (text == null || text.length() == 0) return null;
+            String t = text.toString();
+            for (Map.Entry<String, String> e : titleKeywords.entrySet()) {
+                if (t.contains(e.getKey())) return e.getValue();
+            }
+            return null;
+        }
 
         /** Returns the matching blocked domain for the text in an address bar, or null. */
         String matchUrlText(CharSequence text) {
@@ -240,7 +263,9 @@ final class Prefs {
             if (!on.contains(e.id)) continue;
             for (String d : e.domains) r.domains.put(d, e.name);
             for (String p : e.packages) r.packages.put(p, e.name);
+            for (String k : e.titleKeywords()) r.titleKeywords.put(k, e.name);
         }
+        r.inAppBlockAll = isInAppBlockAll(c);
         for (String d : customDomains(c)) r.domains.put(d, d);
         for (String p : customPackages(c)) {
             if (!r.packages.containsKey(p)) r.packages.put(p, null);

@@ -25,6 +25,22 @@ final class Catalog {
             this.packages = packages;
         }
 
+        /** Words that appear in this site's page titles, e.g. "... - 디시인사이드". */
+        String[] titleKeywords() {
+            switch (id) {
+                case "x": return new String[]{"트위터", "Twitter"};
+                case "instagram": return new String[]{"인스타그램", "Instagram"};
+                case "facebook": return new String[]{"페이스북", "Facebook"};
+                case "threads": return new String[]{"Threads"};
+                case "tiktok": return new String[]{"틱톡", "TikTok"};
+                case "youtube": return new String[]{"유튜브", "YouTube"};
+                case "discord": return new String[]{"디스코드", "Discord"};
+                case "ilbe": return new String[]{"일간베스트", "일베저장소"};
+                case "inven": return new String[]{"인벤 |", "| 인벤", "- 인벤"}; // avoid "인벤토리"
+                default: return new String[]{name};
+            }
+        }
+
         String domainSummary() {
             return String.join(", ", domains);
         }

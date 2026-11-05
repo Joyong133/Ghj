@@ -102,7 +102,17 @@ public class DetoxAccessibilityService extends AccessibilityService {
             return;
         }
 
-        // 2) A browser showing a blocked site.
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.getClassName() != null) {
+            lastClassByPkg.put(pkg, event.getClassName().toString());
+        }
+
+        // 2) An in-app browser (KakaoTalk link, etc.) showing a blocked site.
+        if (!isBrowser(pkg) && isInAppBrowserHost(pkg)) {
+            checkInAppBrowser(event, pkg, r);
+            return;
+        }
+
+        // 3) A browser showing a blocked site.
         if (r.domains.isEmpty() || !isBrowser(pkg)) return;
         long now = SystemClock.uptimeMillis();
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -120,6 +130,110 @@ public class DetoxAccessibilityService extends AccessibilityService {
             String name = r.domains.get(hit);
             block("web:" + pkg + ":" + hit, name != null ? name : hit, true);
         }
+    }
+
+    // ------------------------------------------------------------------ in-app browsers
+
+    static final String KAKAOTALK = "com.kakao.talk";
+
+    /** Apps that open links in their own built-in browser. */
+    private static final Set<String> IN_APP_HOSTS = new HashSet<>(Arrays.asList(
+            KAKAOTALK, "com.kakao.story", "jp.naver.line.android", "org.telegram.messenger",
+            "com.facebook.orca", "com.nhn.android.band", "com.nhn.android.navercafe", "net.daum.android.cafe",
+            "com.nhn.android.blog", "com.discord", "com.everytime.v2", "com.teamblind.blind",
+            "com.google.android.gm", "com.samsung.android.messaging", "com.google.android.apps.messaging"));
+
+    private final java.util.Map<String, String> lastClassByPkg = new java.util.HashMap<>();
+    private long lastInAppCheck;
+
+    private boolean isInAppBrowserHost(String pkg) {
+        return IN_APP_HOSTS.contains(pkg) || classLooksLikeBrowser(pkg);
+    }
+
+    private boolean classLooksLikeBrowser(String pkg) {
+        String cls = lastClassByPkg.get(pkg);
+        if (cls == null) return false;
+        cls = cls.toLowerCase(Locale.ROOT);
+        return cls.contains("browser") || cls.contains("webview") || cls.contains("webactivity");
+    }
+
+    private void checkInAppBrowser(AccessibilityEvent event, String pkg, Prefs.Rules r) {
+        boolean blockAllHere = r.inAppBlockAll && KAKAOTALK.equals(pkg);
+        if (r.domains.isEmpty() && r.titleKeywords.isEmpty() && !blockAllHere) return;
+        long now = SystemClock.uptimeMillis();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && now - lastInAppCheck < CHECK_INTERVAL_MS) {
+            return;
+        }
+        lastInAppCheck = now;
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !pkg.equals(root.getPackageName().toString())) {
+            return;
+        }
+
+        // Walk the screen, but not into web page content: only the app's own header
+        // (title / address shown above the page) is checked, so a chat message or page text
+        // that merely mentions a community does not trigger a block.
+        int headerBottom = (int) (getResources().getDisplayMetrics().heightPixels * 0.22f);
+        boolean hasWebView = false;
+        boolean headerHasAddress = false;
+        String hit = null;
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 600) {
+            AccessibilityNodeInfo n = queue.poll();
+            visited++;
+            CharSequence cls = n.getClassName();
+            if (cls != null && cls.toString().contains("WebView")) {
+                hasWebView = true;
+                continue; // don't look inside the page
+            }
+            n.getBoundsInScreen(bounds);
+            if (bounds.top < headerBottom && bounds.bottom > 0) {
+                for (CharSequence t : new CharSequence[]{n.getText(), n.getContentDescription()}) {
+                    if (t == null || t.length() == 0) continue;
+                    String d = r.matchUrlText(t);
+                    if (d != null && hit == null) hit = r.domains.get(d) != null ? r.domains.get(d) : d;
+                    String title = r.matchTitle(t);
+                    if (title != null && hit == null) hit = title;
+                    if (!headerHasAddress) {
+                        for (String token : t.toString().split("\\s+")) {
+                            if (looksLikeDomain(Prefs.hostOf(token))) {
+                                headerHasAddress = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) queue.add(child);
+            }
+        }
+
+        boolean browserScreen = hasWebView || classLooksLikeBrowser(pkg);
+        if (!browserScreen) return;
+
+        if (hit != null) {
+            block("inapp:" + pkg + ":" + hit, hit, true);
+        } else if (blockAllHere && (classLooksLikeBrowser(pkg) || (hasWebView && headerHasAddress))) {
+            block("inapp:" + pkg, "카카오톡 인앱 브라우저", true);
+        }
+    }
+
+    /** "gall.dcinside.com" yes; "3.5" or "v1.2" no. */
+    static boolean looksLikeDomain(String host) {
+        if (host == null) return false;
+        String tld = host.substring(host.lastIndexOf('.') + 1);
+        if (tld.length() < 2) return false;
+        for (int i = 0; i < tld.length(); i++) {
+            if (!Character.isLetter(tld.charAt(i))) return false;
+        }
+        return true;
     }
 
     private boolean isFrontApp(String pkg) {

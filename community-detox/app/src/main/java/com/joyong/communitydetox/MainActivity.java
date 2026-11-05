@@ -109,6 +109,7 @@ public class MainActivity extends Activity {
         controlCard();
         focusCard();
         protectCard();
+        inAppCard();
         for (String category : Catalog.CATEGORIES) presetCard(category);
         appsCard();
         sitesCard();
@@ -266,6 +267,37 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton("취소", null)
                 .show();
+    }
+
+    private void inAppCard() {
+        boolean locked = Prefs.isLocked(this);
+        LinearLayout c = ui.card();
+        c.addView(ui.title("💬 카카오톡 인앱 브라우저"));
+        c.addView(ui.body("카카오톡 등에서 링크를 눌러 앱 안에서 열린 페이지도 확인해요. "
+                + "차단 목록의 커뮤니티면 자동으로 닫고 대화방으로 돌아가요."));
+
+        LinearLayout r = ui.row();
+        LinearLayout texts = ui.column();
+        texts.addView(ui.text("카카오톡 인앱 브라우저 아예 막기", 15, ui.text, true));
+        texts.addView(ui.text("카톡 안에서 열리는 링크를 모두 닫아요", 12, ui.sub, false));
+        r.addView(texts, Ui.weight(0));
+        Switch sw = new Switch(this);
+        boolean on = Prefs.isInAppBlockAll(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on)); // during a focus lock it can be turned on, not off
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            Prefs.setInAppBlockAll(this, checked);
+            Toast.makeText(this, checked ? "카톡 인앱 브라우저를 막아요" : "차단 목록의 커뮤니티만 막아요",
+                    Toast.LENGTH_SHORT).show();
+        });
+        r.addView(sw);
+        c.addView(r, Ui.fill(ui.dp(12)));
+        content.addView(c);
     }
 
     private void protectCard() {
@@ -660,7 +692,8 @@ public class MainActivity extends Activity {
 
     private void footer() {
         TextView t = ui.body("ℹ️ 크롬, 삼성 인터넷, 웨일, 엣지, 파이어폭스, 오페라, 브레이브 등 브라우저의 주소창을 확인해 차단해요. "
-                + "다른 앱 속에 열리는 내장 브라우저는 막히지 않을 수 있어요.\n\n"
+                + "카카오톡·라인·텔레그램·밴드 등 앱 속 인앱 브라우저는 화면 위쪽의 주소와 제목으로 확인해요. "
+                + "앱 버전에 따라 일부는 막히지 않을 수 있어요.\n\n"
                 + "스스로를 돕는 도구예요. 휴대폰 설정에서 접근성 권한을 끄면 차단도 멈춰요.");
         t.setTextSize(12);
         t.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(16));
