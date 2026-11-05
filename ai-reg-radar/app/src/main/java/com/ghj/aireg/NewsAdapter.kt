@@ -23,6 +23,7 @@ class NewsAdapter(
         val title: TextView = v.findViewById(R.id.tvTitle)
         val meta: TextView = v.findViewById(R.id.tvMeta)
         val reasons: TextView = v.findViewById(R.id.tvReasons)
+        val original: TextView = v.findViewById(R.id.tvOriginal)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
@@ -44,7 +45,14 @@ class NewsAdapter(
         h.region.visibility = if (region == null) View.GONE else View.VISIBLE
         h.region.text = region ?: ""
 
-        h.title.text = item.title
+        h.title.text = item.displayTitle
+        // 번역된 기사는 영어 원문 제목을 작게 함께 보여 줍니다
+        if (item.titleKo != null) {
+            h.original.visibility = View.VISIBLE
+            h.original.text = "🌐 원문: ${item.title}"
+        } else {
+            h.original.visibility = View.GONE
+        }
         h.meta.text = "${item.source} · ${TimeText.ago(item.published)}"
         h.reasons.text = if (item.risk.reasons.isEmpty()) "특별한 규제 신호 없음"
         else item.risk.reasons.joinToString("  ")

@@ -121,11 +121,17 @@ class MainActivity : AppCompatActivity() {
         swipe.isRefreshing = true
         loadJob = lifecycleScope.launch {
             try {
-                val items = NewsRepository.fetchAll()
+                val items = Translator.applyCached(this@MainActivity, NewsRepository.fetchAll())
                 all = items
                 updatedAt = System.currentTimeMillis()
-                NewsCache.save(this@MainActivity, items)
                 render()
+                // 영어 제목을 한국어로 번역한 뒤 다시 그립니다 (실패하면 영어 그대로)
+                val translated = runCatching { Translator.translate(this@MainActivity, items) }.getOrDefault(items)
+                if (all === items) {
+                    all = translated
+                    render()
+                }
+                NewsCache.save(this@MainActivity, all)
             } catch (e: Exception) {
                 if (all.isEmpty()) {
                     tvEmpty.text = "뉴스를 불러오지 못했어요.\n인터넷 연결을 확인하고 아래로 당겨 새로고침해 주세요.\n(${e.message ?: e.javaClass.simpleName})"
@@ -187,7 +193,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun share(item: NewsItem) {
-        val text = "[${item.risk.level.label} ${item.risk.score}점] ${item.title}\n${item.link}"
+        val text = "[${item.risk.level.label} ${item.risk.score}점] ${item.displayTitle}\n${item.link}"
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)

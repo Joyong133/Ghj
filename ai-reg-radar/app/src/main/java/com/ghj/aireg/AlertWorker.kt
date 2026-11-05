@@ -24,11 +24,12 @@ import java.util.concurrent.TimeUnit
 class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result {
-        val items = try {
+        val fetched = try {
             NewsRepository.fetchAll()
         } catch (e: Exception) {
             return Result.retry()
         }
+        val items = runCatching { Translator.translate(applicationContext, fetched) }.getOrDefault(fetched)
         NewsCache.save(applicationContext, items)
 
         val seen = seenIds(applicationContext)
@@ -79,11 +80,11 @@ class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             )
             val top = fresh.maxBy { it.risk.score }
             val style = NotificationCompat.InboxStyle()
-            fresh.take(5).forEach { style.addLine("${it.risk.score}점 · ${it.title}") }
+            fresh.take(5).forEach { style.addLine("${it.risk.score}점 · ${it.displayTitle}") }
             val n = NotificationCompat.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_alert)
                 .setContentTitle("🔴 위험 등급 AI 규제 뉴스 ${fresh.size}건")
-                .setContentText(top.title)
+                .setContentText(top.displayTitle)
                 .setStyle(style)
                 .setColor(ContextCompat.getColor(ctx, R.color.level_danger))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

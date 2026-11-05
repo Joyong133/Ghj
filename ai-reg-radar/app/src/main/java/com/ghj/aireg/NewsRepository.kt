@@ -26,8 +26,13 @@ data class NewsItem(
     val published: Long,
     val summary: String,
     val lang: String, // "ko" 또는 "en"
+    val titleKo: String? = null, // 영어 기사의 한국어 번역 제목
 ) {
+    // 점수는 원문 제목으로 매깁니다 (영어 키워드 규칙이 원문 기준이라서)
     val risk: RiskResult = RiskScorer.score(title, summary)
+
+    /** 화면에 보여 줄 제목: 번역이 있으면 한국어, 없으면 원문 */
+    val displayTitle: String get() = titleKo ?: title
 }
 
 object NewsRepository {
@@ -186,6 +191,7 @@ object NewsCache {
             arr.put(JSONObject().apply {
                 put("id", it.id); put("title", it.title); put("link", it.link); put("source", it.source)
                 put("published", it.published); put("summary", it.summary); put("lang", it.lang)
+                if (it.titleKo != null) put("titleKo", it.titleKo)
             })
         }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -204,6 +210,7 @@ object NewsCache {
                 NewsItem(
                     o.getString("id"), o.getString("title"), o.getString("link"), o.getString("source"),
                     o.getLong("published"), o.optString("summary"), o.optString("lang", "ko"),
+                    if (o.has("titleKo")) o.getString("titleKo") else null,
                 )
             }
         }.getOrDefault(emptyList())
