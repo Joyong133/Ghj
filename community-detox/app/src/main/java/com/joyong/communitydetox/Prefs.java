@@ -130,6 +130,17 @@ final class Prefs {
         return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
     }
 
+    private static final String K_TOSS_INVEST = "toss_invest_block";
+
+    /** Block the securities (증권) part of the Toss app, and tossinvest.com. */
+    static boolean isTossInvestBlocked(Context c) {
+        return sp(c).getBoolean(K_TOSS_INVEST, false);
+    }
+
+    static void setTossInvestBlocked(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_TOSS_INVEST, on).apply();
+    }
+
     private static final String K_BROWSER_ALL = "browser_block_all";
 
     /** Block browser apps entirely (VR: the Meta Quest Browser can't be opened at all). */
@@ -315,6 +326,7 @@ final class Prefs {
         }
         r.inAppBlockAll = isInAppBlockAll(c);
         for (String d : customDomains(c)) r.domains.put(d, d);
+        if (isTossInvestBlocked(c)) r.domains.put("tossinvest.com", "토스증권");
         for (String p : customPackages(c)) {
             if (!r.packages.containsKey(p)) r.packages.put(p, null);
         }

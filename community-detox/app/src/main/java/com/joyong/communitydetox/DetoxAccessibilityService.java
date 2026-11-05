@@ -119,6 +119,12 @@ public class DetoxAccessibilityService extends AccessibilityService {
             lastClassByPkg.put(pkg, event.getClassName().toString());
         }
 
+        // 1b) A blocked screen inside an allowed app (Toss: only the securities part).
+        if (AppScreens.TOSS.equals(pkg) && Prefs.isTossInvestBlocked(this)) {
+            checkTossInvest(event);
+            return;
+        }
+
         // 2) An in-app browser (KakaoTalk link, etc.) showing a blocked site.
         if (!isBrowser(pkg) && isInAppBrowserHost(pkg)) {
             checkInAppBrowser(event, pkg, r);
@@ -188,6 +194,58 @@ public class DetoxAccessibilityService extends AccessibilityService {
             }
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------ screens inside apps
+
+    private long lastScreenCheck;
+
+    private void checkTossInvest(AccessibilityEvent event) {
+        long now = SystemClock.uptimeMillis();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && now - lastScreenCheck < CHECK_INTERVAL_MS) {
+            return;
+        }
+        lastScreenCheck = now;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !AppScreens.TOSS.equals(root.getPackageName().toString())) {
+            return;
+        }
+        if (AppScreens.isTossInvest(screenTexts(root))) {
+            block("screen:toss-invest", "토스증권", true); // BACK leaves the securities screen, Toss stays open
+        }
+    }
+
+    /** Every text on screen with whether it is selected and whether it sits in the title or tab bar. */
+    private List<AppScreens.ScreenText> screenTexts(AccessibilityNodeInfo root) {
+        int h = getResources().getDisplayMetrics().heightPixels;
+        int topLimit = (int) (h * 0.18f), bottomLimit = (int) (h * 0.85f);
+        List<AppScreens.ScreenText> out = new java.util.ArrayList<>();
+        android.graphics.Rect b = new android.graphics.Rect();
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        ArrayDeque<Boolean> selectedParent = new ArrayDeque<>();
+        queue.add(root);
+        selectedParent.add(false);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 800) {
+            AccessibilityNodeInfo n = queue.poll();
+            boolean selected = selectedParent.poll() || n.isSelected() || n.isChecked();
+            visited++;
+            n.getBoundsInScreen(b);
+            for (CharSequence t : new CharSequence[]{n.getText(), n.getContentDescription()}) {
+                if (t != null && t.length() > 0) {
+                    out.add(new AppScreens.ScreenText(t.toString(), selected, b.top < topLimit, b.top >= bottomLimit));
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) {
+                    queue.add(child);
+                    selectedParent.add(selected);
+                }
+            }
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ in-app browsers

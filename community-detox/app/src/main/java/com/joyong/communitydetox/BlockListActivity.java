@@ -93,6 +93,7 @@ public class BlockListActivity extends Activity {
             c.addView(ui.text("🔒 집중 디톡스 중에는 목록에서 뺄 수 없어요. 추가는 언제든 돼요.", 14, ui.accent, true));
             content.addView(c, Ui.fill(ui.dp(8)));
         }
+        appScreensCard();
         for (String category : Catalog.CATEGORIES) presetCard(category);
         appsCard();
         sitesCard();
@@ -110,6 +111,35 @@ public class BlockListActivity extends Activity {
         for (Catalog.Entry e : Catalog.ALL) if (on.contains(e.id)) presets++;
         summary.setText("지금 차단 중: 커뮤니티 " + presets + "곳 + 직접 추가 " + Prefs.customDomains(this).size()
                 + "곳 · 앱 " + Prefs.customPackages(this).size() + "개");
+    }
+
+    /** Screens inside apps that are otherwise allowed (Toss → only 토스증권). */
+    private void appScreensCard() {
+        if (!matches("토스증권 토스 증권 주식", "tossinvest.com")) return;
+        boolean locked = Prefs.isLocked(this);
+        boolean on = Prefs.isTossInvestBlocked(this);
+        LinearLayout c = ui.card();
+        c.addView(ui.title("📱 앱 속 화면 막기"));
+        LinearLayout r = ui.row();
+        LinearLayout texts = ui.column();
+        texts.addView(ui.text("토스 앱의 토스증권 막기", 15, ui.text, true));
+        texts.addView(ui.text("증권 탭·주식 화면만 막고, 송금·결제 등은 그대로 · tossinvest.com 포함", 12, ui.sub, false));
+        r.addView(texts, Ui.weight(0));
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on)); // during a focus lock it can be turned on, not off
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            Prefs.setTossInvestBlocked(this, checked);
+            Toast.makeText(this, checked ? "토스증권을 막아요" : "토스증권 막기를 껐어요", Toast.LENGTH_SHORT).show();
+        });
+        r.addView(sw);
+        c.addView(r, Ui.fill(ui.dp(8)));
+        content.addView(c);
     }
 
     /** Matches the search text against a name and its addresses. */
