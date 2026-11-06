@@ -11,11 +11,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Message
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -24,7 +26,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,7 +36,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.slider.Slider
+import com.google.android.material.snackbar.Snackbar
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import kotlin.math.abs
@@ -116,7 +126,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private var popupView: WebView? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private lateinit var promptButton: FloatingActionButton
+    private lateinit var fabColumn: LinearLayout
+    private lateinit var srrBar: View
+    private lateinit var srrProgress: LinearProgressIndicator
+    private lateinit var srrPlay: MaterialButton
+    private var srrActive = false
+    private var srrPicking = false
+    private var srrSpeed = 25
+    private var pickSnackbar: Snackbar? = null
     private lateinit var promptsSheet: PromptsSheet
 
     private val fileChooser =
@@ -151,13 +168,16 @@ class MainActivity : AppCompatActivity() {
             progress,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3))
         )
-        setupPromptButton()
+        setupFloatingButtons()
+        setupSrrBar()
         setContentView(root)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val popup = popupView
                 when {
+                    srrPicking -> cancelPick()
+                    srrActive -> closeSrr()
                     popup != null && popup.canGoBack() -> popup.goBack()
                     popup != null -> closePopup()
                     webView.canGoBack() -> webView.goBack()
@@ -252,7 +272,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-            if (!isPopup) progress.visibility = View.VISIBLE
+            if (isPopup) return
+            progress.visibility = View.VISIBLE
+            // 새 페이지를 열면 스르륵 화면은 사라지므로 조작 막대도 정리
+            if (srrPicking) cancelPick()
+            if (srrActive) hideSrrBar()
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
@@ -289,7 +313,7 @@ class MainActivity : AppCompatActivity() {
             val popup = createWebView(isPopup = true)
             popupView = popup
             root.addView(popup, matchParent())
-            promptButton.visibility = View.GONE
+            updateFabVisibility()
             val transport = resultMsg.obj as WebView.WebViewTransport
             transport.webView = popup
             resultMsg.sendToTarget()
@@ -326,7 +350,7 @@ class MainActivity : AppCompatActivity() {
     private fun closePopup() {
         val popup = popupView ?: return
         popupView = null
-        promptButton.visibility = View.VISIBLE
+        updateFabVisibility()
         root.removeView(popup)
         popup.stopLoading()
         popup.destroy()
@@ -335,22 +359,36 @@ class MainActivity : AppCompatActivity() {
     // ---- 저장한 프롬프트 ----
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupPromptButton() {
+    private fun setupFloatingButtons() {
         val store = PromptStore(this)
         promptsSheet = PromptsSheet(this, store, ::insertPrompt, ::readInput)
         val prefs = getSharedPreferences("ui", MODE_PRIVATE)
         val bottomMargin = dp(150)
 
-        promptButton = FloatingActionButton(this).apply {
+        // 위: 스르륵 버튼, 아래: 저장한 프롬프트 버튼
+        val srrButton = FloatingActionButton(this).apply {
+            size = FloatingActionButton.SIZE_MINI
+            setImageResource(R.drawable.ic_srr)
+            backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.brand))
+            imageTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
+            contentDescription = "스르륵 (답변 다시 보기)"
+            setOnClickListener { startSrr() }
+        }
+        val promptButton = FloatingActionButton(this).apply {
             size = FloatingActionButton.SIZE_MINI
             setImageResource(R.drawable.ic_prompts)
             backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.brand_dot))
             imageTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.brand))
             contentDescription = "저장한 프롬프트"
-            alpha = 0.92f
             setOnClickListener { promptsSheet.show() }
         }
-        root.addView(promptButton, FrameLayout.LayoutParams(
+        fabColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            alpha = 0.92f
+            addView(srrButton)
+            addView(promptButton)
+        }
+        root.addView(fabColumn, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.END or Gravity.BOTTOM
@@ -361,25 +399,25 @@ class MainActivity : AppCompatActivity() {
 
         // 화면 크기 안에서만 움직이도록 위치를 제한
         fun clamp(t: Float): Float {
-            val min = dp(16) - (root.height - bottomMargin - promptButton.height).toFloat()
+            val min = dp(16) - (root.height - bottomMargin - fabColumn.height).toFloat()
             val max = (bottomMargin - dp(16)).toFloat()
             return if (root.height == 0 || min > max) t else t.coerceIn(min, max)
         }
 
-        // 버튼을 위아래로 끌어서 옮길 수 있음 (위치 기억)
-        promptButton.translationY = prefs.getFloat("promptButtonY", 0f)
+        // 버튼을 위아래로 끌어서 옮길 수 있음 (두 버튼이 함께 움직이고, 위치를 기억)
+        fabColumn.translationY = prefs.getFloat("promptButtonY", 0f)
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            promptButton.translationY = clamp(promptButton.translationY)
+            fabColumn.translationY = clamp(fabColumn.translationY)
         }
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downY = 0f
         var startY = 0f
         var dragging = false
-        promptButton.setOnTouchListener { v, e ->
+        val dragListener = View.OnTouchListener { v, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downY = e.rawY
-                    startY = v.translationY
+                    startY = fabColumn.translationY
                     dragging = false
                     v.isPressed = true
                 }
@@ -389,12 +427,12 @@ class MainActivity : AppCompatActivity() {
                         dragging = true
                         v.isPressed = false
                     }
-                    if (dragging) v.translationY = clamp(startY + dy)
+                    if (dragging) fabColumn.translationY = clamp(startY + dy)
                 }
                 MotionEvent.ACTION_UP -> {
                     v.isPressed = false
                     if (dragging) {
-                        prefs.edit().putFloat("promptButtonY", v.translationY).apply()
+                        prefs.edit().putFloat("promptButtonY", fabColumn.translationY).apply()
                     } else {
                         v.performClick()
                     }
@@ -403,6 +441,167 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+        srrButton.setOnTouchListener(dragListener)
+        promptButton.setOnTouchListener(dragListener)
+    }
+
+    private fun updateFabVisibility() {
+        fabColumn.visibility =
+            if (popupView == null && !srrActive && !srrPicking) View.VISIBLE else View.GONE
+    }
+
+    // ---- 스르륵 모드 (다 나온 답변을 처음부터 원하는 속도로 다시 보기) ----
+
+    private val srrScript: String by lazy {
+        assets.open("srr.js").bufferedReader().use { it.readText() }
+    }
+
+    private fun setupSrrBar() {
+        srrBar = LayoutInflater.from(this).inflate(R.layout.srr_bar, root, false)
+        root.addView(srrBar, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ))
+        srrBar.visibility = View.GONE
+        srrProgress = srrBar.findViewById(R.id.srrProgress)
+        srrPlay = srrBar.findViewById(R.id.srrPlay)
+
+        val prefs = getSharedPreferences("ui", MODE_PRIVATE)
+        val slider = srrBar.findViewById<Slider>(R.id.srrSpeed)
+        val label = srrBar.findViewById<TextView>(R.id.srrSpeedLabel)
+        // 저장된 속도를 슬라이더 눈금(5 단위)에 맞춤
+        srrSpeed = ((prefs.getInt("srrSpeed", 25) / 5) * 5).coerceIn(5, 150)
+        slider.value = srrSpeed.toFloat()
+        label.text = "${srrSpeed}자/초"
+        slider.addOnChangeListener { _, value, fromUser ->
+            srrSpeed = value.toInt()
+            label.text = "${srrSpeed}자/초"
+            if (fromUser) {
+                webView.evaluateJavascript("window.__srr && __srr.setSpeed($srrSpeed)", null)
+                prefs.edit().putInt("srrSpeed", srrSpeed).apply()
+            }
+        }
+
+        srrPlay.setOnClickListener { webView.evaluateJavascript("window.__srr && __srr.toggle()", null) }
+        srrBar.findViewById<View>(R.id.srrRestart).setOnClickListener {
+            webView.evaluateJavascript("window.__srr && __srr.restart()", null)
+        }
+        srrBar.findViewById<View>(R.id.srrEnd).setOnClickListener {
+            webView.evaluateJavascript("window.__srr && __srr.finish()", null)
+        }
+        srrBar.findViewById<View>(R.id.srrPick).setOnClickListener {
+            closeSrr()
+            startPick("다시 볼 답변을 눌러 주세요")
+        }
+        srrBar.findViewById<View>(R.id.srrClose).setOnClickListener { closeSrr() }
+
+        webView.addJavascriptInterface(SrrBridge(), "ArenaSrr")
+    }
+
+    /** 페이지 안의 스르륵 스크립트가 상태를 알려 줄 때 쓰는 통로 */
+    private inner class SrrBridge {
+        @JavascriptInterface
+        fun onState(state: String, percent: Int) {
+            runOnUiThread {
+                if (!srrActive) return@runOnUiThread
+                if (state == "closed") {
+                    hideSrrBar()
+                    return@runOnUiThread
+                }
+                srrProgress.setProgressCompat(percent, true)
+                srrPlay.setIconResource(if (state == "playing") R.drawable.ic_pause else R.drawable.ic_play)
+            }
+        }
+
+        @JavascriptInterface
+        fun onPicked() {
+            runOnUiThread {
+                if (!srrPicking) return@runOnUiThread
+                srrPicking = false
+                pickSnackbar?.dismiss()
+                beginSrr("[0]")
+            }
+        }
+    }
+
+    private fun startSrr() {
+        webView.evaluateJavascript(srrScript) {
+            webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.find()") { result ->
+                val previews = try {
+                    JSONArray(JSONTokener(result ?: "null").nextValue() as String)
+                } catch (e: Exception) {
+                    JSONArray()
+                }
+                when (previews.length()) {
+                    0 -> startPick("답변을 자동으로 찾지 못했어요. 다시 볼 답변을 눌러 주세요")
+                    1 -> beginSrr("[0]")
+                    else -> chooseAnswer(previews)
+                }
+            }
+        }
+    }
+
+    /** 대결 모드처럼 답변이 여러 개면 어느 것을 볼지 물어봄 */
+    private fun chooseAnswer(previews: JSONArray) {
+        val count = previews.length()
+        val items: Array<CharSequence> = (List(count) { i ->
+            "답변 ${i + 1}: " + previews.getString(i).take(40)
+        } + listOf("모두 차례로 보기", "화면에서 직접 고르기")).toTypedArray()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("어느 답변을 스르륵 볼까요?")
+            .setItems(items) { _, which ->
+                when {
+                    which < count -> beginSrr("[$which]")
+                    which == count -> beginSrr((0 until count).joinToString(",", "[", "]"))
+                    else -> startPick("다시 볼 답변을 눌러 주세요")
+                }
+            }
+            .show()
+    }
+
+    private fun beginSrr(indices: String) {
+        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.start($indices)") { result ->
+            if (result?.contains("ok") == true) {
+                srrActive = true
+                srrProgress.setProgressCompat(0, false)
+                srrPlay.setIconResource(R.drawable.ic_pause)
+                srrBar.visibility = View.VISIBLE
+                updateFabVisibility()
+            } else {
+                toast("답변을 찾지 못했어요")
+            }
+        }
+    }
+
+    private fun closeSrr() {
+        webView.evaluateJavascript("window.__srr && __srr.close()", null)
+        hideSrrBar()
+    }
+
+    private fun hideSrrBar() {
+        srrActive = false
+        srrBar.visibility = View.GONE
+        updateFabVisibility()
+    }
+
+    private fun startPick(message: String) {
+        srrPicking = true
+        updateFabVisibility()
+        webView.evaluateJavascript(srrScript) {
+            webView.evaluateJavascript("__srr.pickByTap()", null)
+        }
+        pickSnackbar = Snackbar.make(root, message, Snackbar.LENGTH_INDEFINITE)
+            .setAction("취소") { cancelPick() }
+            .also { it.show() }
+    }
+
+    private fun cancelPick() {
+        srrPicking = false
+        pickSnackbar?.dismiss()
+        pickSnackbar = null
+        webView.evaluateJavascript("window.__srr && __srr.cancelPick()", null)
+        updateFabVisibility()
     }
 
     private fun insertPrompt(prompt: Prompt) {
