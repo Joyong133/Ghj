@@ -2,12 +2,18 @@ package com.ghj.arena
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Message
+import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
@@ -23,8 +29,13 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import org.json.JSONObject
+import org.json.JSONTokener
+import kotlin.math.abs
 
 /**
  * arena.ai를 브라우저 없이 앱 화면 전체로 보여 주는 액티비티.
@@ -47,6 +58,53 @@ class MainActivity : AppCompatActivity() {
             "challenges.cloudflare.com",
         )
 
+        // arena.ai 입력창(textarea 또는 contenteditable)을 찾는 스크립트
+        private const val FIND_INPUT_JS = """
+            function __arenaFindInput() {
+              function visible(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+              var a = document.activeElement;
+              if (a && visible(a) && (a.tagName === 'TEXTAREA' || a.isContentEditable)) return a;
+              var c = [].slice.call(document.querySelectorAll(
+                'textarea, [contenteditable="true"], [contenteditable=""]')).filter(function (e) {
+                  return visible(e) && !e.disabled && !e.readOnly;
+                });
+              return c.length ? c[c.length - 1] : null;
+            };
+        """
+
+        // 입력창 끝에 글을 넣음 (이미 쓴 글이 있으면 줄을 바꿔서 이어 붙임)
+        private const val INSERT_JS = FIND_INPUT_JS + """
+            (function (t) {
+              var el = __arenaFindInput();
+              if (!el) return 'none';
+              el.focus();
+              if (el.isContentEditable) {
+                var sel = window.getSelection();
+                sel.selectAllChildren(el);
+                sel.collapseToEnd();
+                var cur = (el.innerText || '').trim();
+                document.execCommand('insertText', false, (cur ? '\n' : '') + t);
+              } else {
+                var cur = el.value || '';
+                var next = cur.trim() ? cur.replace(/\s+$/, '') + '\n' + t : t;
+                var setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+                setter.call(el, next);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.setSelectionRange(next.length, next.length);
+              }
+              return 'ok';
+            })(__TEXT__)
+        """
+
+        // 입력창에 지금 쓰여 있는 글을 읽음
+        private const val READ_JS = FIND_INPUT_JS + """
+            (function () {
+              var el = __arenaFindInput();
+              if (!el) return null;
+              return el.isContentEditable ? el.innerText : el.value;
+            })()
+        """
+
         fun isInAppHost(host: String?): Boolean {
             if (host == null) return false
             return IN_APP_HOSTS.any { host == it || host.endsWith(".$it") }
@@ -58,6 +116,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private var popupView: WebView? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var promptButton: FloatingActionButton
+    private lateinit var promptsSheet: PromptsSheet
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -91,6 +151,7 @@ class MainActivity : AppCompatActivity() {
             progress,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3))
         )
+        setupPromptButton()
         setContentView(root)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -228,6 +289,7 @@ class MainActivity : AppCompatActivity() {
             val popup = createWebView(isPopup = true)
             popupView = popup
             root.addView(popup, matchParent())
+            promptButton.visibility = View.GONE
             val transport = resultMsg.obj as WebView.WebViewTransport
             transport.webView = popup
             resultMsg.sendToTarget()
@@ -264,9 +326,107 @@ class MainActivity : AppCompatActivity() {
     private fun closePopup() {
         val popup = popupView ?: return
         popupView = null
+        promptButton.visibility = View.VISIBLE
         root.removeView(popup)
         popup.stopLoading()
         popup.destroy()
+    }
+
+    // ---- 저장한 프롬프트 ----
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupPromptButton() {
+        val store = PromptStore(this)
+        promptsSheet = PromptsSheet(this, store, ::insertPrompt, ::readInput)
+        val prefs = getSharedPreferences("ui", MODE_PRIVATE)
+        val bottomMargin = dp(150)
+
+        promptButton = FloatingActionButton(this).apply {
+            size = FloatingActionButton.SIZE_MINI
+            setImageResource(R.drawable.ic_prompts)
+            backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.brand_dot))
+            imageTintList = ColorStateList.valueOf(ContextCompat.getColor(context, R.color.brand))
+            contentDescription = "저장한 프롬프트"
+            alpha = 0.92f
+            setOnClickListener { promptsSheet.show() }
+        }
+        root.addView(promptButton, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.END or Gravity.BOTTOM
+        ).apply {
+            marginEnd = dp(10)
+            this.bottomMargin = bottomMargin
+        })
+
+        // 화면 크기 안에서만 움직이도록 위치를 제한
+        fun clamp(t: Float): Float {
+            val min = dp(16) - (root.height - bottomMargin - promptButton.height).toFloat()
+            val max = (bottomMargin - dp(16)).toFloat()
+            return if (root.height == 0 || min > max) t else t.coerceIn(min, max)
+        }
+
+        // 버튼을 위아래로 끌어서 옮길 수 있음 (위치 기억)
+        promptButton.translationY = prefs.getFloat("promptButtonY", 0f)
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            promptButton.translationY = clamp(promptButton.translationY)
+        }
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        var downY = 0f
+        var startY = 0f
+        var dragging = false
+        promptButton.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downY = e.rawY
+                    startY = v.translationY
+                    dragging = false
+                    v.isPressed = true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = e.rawY - downY
+                    if (!dragging && abs(dy) > slop) {
+                        dragging = true
+                        v.isPressed = false
+                    }
+                    if (dragging) v.translationY = clamp(startY + dy)
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.isPressed = false
+                    if (dragging) {
+                        prefs.edit().putFloat("promptButtonY", v.translationY).apply()
+                    } else {
+                        v.performClick()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> v.isPressed = false
+            }
+            true
+        }
+    }
+
+    private fun insertPrompt(prompt: Prompt) {
+        val js = INSERT_JS.replace("__TEXT__", JSONObject.quote(prompt.text))
+        webView.evaluateJavascript(js) { result ->
+            if (result?.contains("ok") == true) {
+                toast("입력창에 넣었어요")
+            } else {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("prompt", prompt.text))
+                toast("입력창을 찾지 못해서 복사해 두었어요. 입력창을 길게 눌러 붙여 넣으세요.")
+            }
+        }
+    }
+
+    private fun readInput(callback: (String?) -> Unit) {
+        webView.evaluateJavascript(READ_JS) { result ->
+            val text = try {
+                JSONTokener(result ?: "null").nextValue() as? String
+            } catch (e: Exception) {
+                null
+            }
+            callback(text)
+        }
     }
 
     private fun openExternal(uri: Uri) {
