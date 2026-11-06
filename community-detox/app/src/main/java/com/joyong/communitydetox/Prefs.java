@@ -130,6 +130,51 @@ final class Prefs {
         return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
     }
 
+    // ---- app store search blocking (free to change at any time, also during a focus lock) ----
+
+    private static final String K_STORE_ON = "store_search_on";
+    private static final String K_STORE_SELECTED = "store_search_selected";
+    private static final String K_STORE_WORDS = "store_search_words";
+
+    static boolean isStoreSearchOn(Context c) {
+        return sp(c).getBoolean(K_STORE_ON, true);
+    }
+
+    static void setStoreSearchOn(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_STORE_ON, on).apply();
+    }
+
+    /** Communities whose names can't be searched. Until the user picks, the ones in the block list. */
+    static Set<String> storeSelected(Context c) {
+        Set<String> s = sp(c).getStringSet(K_STORE_SELECTED, null);
+        return s != null ? new HashSet<>(s) : enabledPresets(c);
+    }
+
+    static void setStoreSelected(Context c, Set<String> ids) {
+        sp(c).edit().putStringSet(K_STORE_SELECTED, new HashSet<>(ids)).apply();
+    }
+
+    /** Back to "same as the block list". */
+    static void resetStoreSelected(Context c) {
+        sp(c).edit().remove(K_STORE_SELECTED).apply();
+    }
+
+    static Set<String> storeWords(Context c) {
+        return new HashSet<>(sp(c).getStringSet(K_STORE_WORDS, Collections.<String>emptySet()));
+    }
+
+    static void addStoreWord(Context c, String word) {
+        Set<String> s = storeWords(c);
+        s.add(word);
+        sp(c).edit().putStringSet(K_STORE_WORDS, s).apply();
+    }
+
+    static void removeStoreWord(Context c, String word) {
+        Set<String> s = storeWords(c);
+        s.remove(word);
+        sp(c).edit().putStringSet(K_STORE_WORDS, s).apply();
+    }
+
     private static final String K_TOSS_INVEST = "toss_invest_block";
 
     /** Block the securities (증권) part of the Toss app, and tossinvest.com. */
@@ -279,6 +324,8 @@ final class Prefs {
         final Map<String, String> packages = new HashMap<>();
         /** page-title keyword -> display name (checked in in-app browser headers) */
         final Map<String, String> titleKeywords = new HashMap<>();
+        /** normalized app-store search keyword -> keyword as typed */
+        final Map<String, String> storeKeywords = new HashMap<>();
         boolean inAppBlockAll;
 
         /** Returns the community name if the text contains one of its page-title keywords, or null. */
@@ -327,6 +374,14 @@ final class Prefs {
         r.inAppBlockAll = isInAppBlockAll(c);
         for (String d : customDomains(c)) r.domains.put(d, d);
         if (isTossInvestBlocked(c)) r.domains.put("tossinvest.com", "토스증권");
+        if (isStoreSearchOn(c)) {
+            Set<String> picked = storeSelected(c);
+            for (Catalog.Entry e : Catalog.ALL) {
+                if (!picked.contains(e.id)) continue;
+                for (String k : e.searchKeywords()) r.storeKeywords.put(StoreSearch.normalize(k), k);
+            }
+            for (String w : storeWords(c)) r.storeKeywords.put(StoreSearch.normalize(w), w);
+        }
         for (String p : customPackages(c)) {
             if (!r.packages.containsKey(p)) r.packages.put(p, null);
         }

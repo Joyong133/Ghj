@@ -122,6 +122,7 @@ public class MainActivity extends Activity {
         }
         controlCard();
         blockListCard();
+        storeSearchCard();
         focusCard();
         protectCard();
         inAppCard();
@@ -674,6 +675,17 @@ public class MainActivity extends Activity {
     }
 
     // ------------------------------------------------------------------ block list (summary; the list has its own screen)
+
+    private void storeSearchCard() {
+        boolean on = Prefs.isStoreSearchOn(this);
+        LinearLayout c = ui.card();
+        c.addView(ui.title("🔍 플레이스토어 검색 막기"));
+        c.addView(ui.body(on ? "✅ 켜짐 · 커뮤니티 " + Prefs.storeSelected(this).size() + "곳 + 직접 넣은 단어 "
+                + Prefs.storeWords(this).size() + "개를 검색할 수 없어요" : "꺼져 있어요"));
+        c.addView(ui.button("설정", false, v -> startActivity(new Intent(this, StoreSearchActivity.class))),
+                Ui.fill(ui.dp(10)));
+        content.addView(c);
+    }
 
     private void blockListCard() {
         Set<String> on = Prefs.enabledPresets(this);

@@ -46,6 +46,54 @@ final class Catalog {
             }
         }
 
+        /**
+         * Words people type to find this community in an app store: its name, common nicknames
+         * (디시, 펨코, 에타 ...) and the name in its web address (dcinside, fmkorea ...).
+         */
+        java.util.List<String> searchKeywords() {
+            java.util.LinkedHashSet<String> k = new java.util.LinkedHashSet<>();
+            for (String part : name.split("[()]")) {
+                if (part.trim().length() >= 2) k.add(part.trim());
+            }
+            switch (id) {
+                case "dcinside": add(k, "디시", "dc인사이드"); break;
+                case "fmkorea": add(k, "펨코", "에펨"); break;
+                case "clien": add(k, "클량"); break;
+                case "bobae": add(k, "보배"); break;
+                case "mlbpark": add(k, "엠팍", "mlbpark"); break;
+                case "todayhumor": add(k, "오유", "오늘의 유머"); break;
+                case "humoruniv": add(k, "웃대"); break;
+                case "ilbe": add(k, "일베"); break;
+                case "everytime": add(k, "에타", "에브리 타임"); break;
+                case "x": add(k, "트위터", "twitter"); break;
+                case "instagram": add(k, "인스타", "instagram"); break;
+                case "facebook": add(k, "페북", "facebook"); break;
+                case "reddit": add(k, "레딧"); break;
+                case "tiktok": add(k, "tiktok"); break;
+                case "threads": add(k, "threads"); break;
+                case "youtube": add(k, "youtube"); break;
+                case "discord": add(k, "discord"); break;
+                case "natepann": add(k, "네이트 판"); break;
+                default: break;
+            }
+            for (String d : domains) {
+                String[] parts = d.split("\\.");
+                if (parts.length < 2) continue;
+                boolean twoPartSuffix = d.endsWith(".co.kr") || d.endsWith(".or.kr") || d.endsWith(".ne.kr");
+                String label = parts[parts.length - (twoPartSuffix ? 3 : 2)];
+                // "cafe.naver.com" -> "naver" etc. would block far too much
+                if (label.length() >= 4 && !label.equals("naver") && !label.equals("daum") && !label.equals("nate")
+                        && !label.equals("donga") && !label.equals("youtu")) {
+                    k.add(label);
+                }
+            }
+            return new java.util.ArrayList<>(k);
+        }
+
+        private static void add(java.util.Set<String> set, String... words) {
+            java.util.Collections.addAll(set, words);
+        }
+
         String domainSummary() {
             return String.join(", ", domains);
         }

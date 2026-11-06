@@ -55,6 +55,13 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".StoreSearchActivity"
+            android:exported="false"
+            android:label="플레이스토어 검색 막기"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".BlockedActivity"
             android:excludeFromRecents="true"
             android:exported="false"

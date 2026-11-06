@@ -119,6 +119,15 @@ public class DetoxAccessibilityService extends AccessibilityService {
             lastClassByPkg.put(pkg, event.getClassName().toString());
         }
 
+        // 1a) App store search: the chosen communities' names can't be searched.
+        if (STORES.contains(pkg)) {
+            if (!r.storeKeywords.isEmpty()) checkStoreSearch(event, pkg, r);
+            return;
+        }
+
+        // Typing events are only needed for app stores (above) and browser address bars.
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED && !isBrowser(pkg)) return;
+
         // 1b) A blocked screen inside an allowed app (Toss: only the securities part).
         if (AppScreens.TOSS.equals(pkg) && Prefs.isTossInvestBlocked(this)) {
             checkTossInvest(event);
@@ -194,6 +203,85 @@ public class DetoxAccessibilityService extends AccessibilityService {
             }
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------ app store search
+
+    /** Play Store, Galaxy Store, ONE store. */
+    static final Set<String> STORES = new HashSet<>(Arrays.asList(
+            "com.android.vending", "com.sec.android.app.samsungapps", "com.skt.skaf.A000Z00040"));
+
+    private long lastStoreCheck;
+    private long lastStoreNotice;
+
+    private void checkStoreSearch(AccessibilityEvent event, String pkg, Prefs.Rules r) {
+        // Typing: the event carries the new text and the field itself.
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            String hit = StoreSearch.match(joined(event.getText()), r.storeKeywords);
+            if (hit != null) {
+                AccessibilityNodeInfo field = event.getSource();
+                if (field == null || !clearText(field)) performGlobalAction(GLOBAL_ACTION_BACK);
+                storeNotice(hit);
+            }
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && now - lastStoreCheck < CHECK_INTERVAL_MS) {
+            return;
+        }
+        lastStoreCheck = now;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !pkg.equals(root.getPackageName().toString())) return;
+
+        // The search box (editable), or the search bar at the very top of a results screen.
+        int topLimit = (int) (getResources().getDisplayMetrics().heightPixels * 0.12f);
+        android.graphics.Rect b = new android.graphics.Rect();
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        queue.add(root);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 500) {
+            AccessibilityNodeInfo n = queue.poll();
+            visited++;
+            CharSequence text = n.getText();
+            if (text != null && text.length() > 0) {
+                n.getBoundsInScreen(b);
+                boolean searchBox = n.isEditable();
+                if (searchBox || b.top < topLimit) {
+                    String hit = StoreSearch.match(text, r.storeKeywords);
+                    if (hit != null) {
+                        boolean typing = searchBox && n.isFocused();
+                        if (searchBox) clearText(n);
+                        if (!typing) performGlobalAction(GLOBAL_ACTION_BACK); // leave the results screen
+                        storeNotice(hit);
+                        return;
+                    }
+                }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) queue.add(child);
+            }
+        }
+    }
+
+    private static String joined(List<CharSequence> parts) {
+        StringBuilder sb = new StringBuilder();
+        if (parts != null) for (CharSequence p : parts) if (p != null) sb.append(p).append(' ');
+        return sb.toString();
+    }
+
+    private static boolean clearText(AccessibilityNodeInfo field) {
+        android.os.Bundle args = new android.os.Bundle();
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+    }
+
+    private void storeNotice(String word) {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastStoreNotice < 2500) return;
+        lastStoreNotice = now;
+        Prefs.recordBlock(this);
+        android.widget.Toast.makeText(this, "‘" + word + "’은(는) 검색할 수 없어요 🌿 디톡스 중이에요", android.widget.Toast.LENGTH_SHORT).show();
     }
 
     // ------------------------------------------------------------------ screens inside apps
