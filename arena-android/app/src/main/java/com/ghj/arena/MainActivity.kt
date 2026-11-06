@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val HOME_URL = "https://arena.ai/"
         private const val OFFLINE_URL = "file:///android_asset/offline.html"
+        private const val DIRECT_URL = "https://arena.ai/text/direct"
 
         // 앱 안에서 그대로 여는 도메인 (사이트 자체 + 로그인 화면)
         private val IN_APP_HOSTS = listOf(
@@ -134,6 +135,9 @@ class MainActivity : AppCompatActivity() {
     private var srrPicking = false
     private var srrSpeed = 25
     private var pickSnackbar: Snackbar? = null
+    private lateinit var pinButton: FloatingActionButton
+    private var lockedModel: String? = null
+    private var pendingLock: JSONObject? = null
     private lateinit var promptsSheet: PromptsSheet
 
     private val fileChooser =
@@ -280,7 +284,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            if (!isPopup) progress.visibility = View.GONE
+            if (!isPopup) {
+                progress.visibility = View.GONE
+                onMainPageFinished(url)
+            }
             CookieManager.getInstance().flush()
         }
 
@@ -382,9 +389,18 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "저장한 프롬프트"
             setOnClickListener { promptsSheet.show() }
         }
+        pinButton = FloatingActionButton(this).apply {
+            size = FloatingActionButton.SIZE_MINI
+            setImageResource(R.drawable.ic_pin)
+            imageTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
+            setOnClickListener { onPinClicked() }
+        }
+        lockedModel = prefs.getString("lockedModel", null)
+        updatePinButton()
         fabColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             alpha = 0.92f
+            addView(pinButton)
             addView(srrButton)
             addView(promptButton)
         }
@@ -442,6 +458,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
         srrButton.setOnTouchListener(dragListener)
+        pinButton.setOnTouchListener(dragListener)
         promptButton.setOnTouchListener(dragListener)
     }
 
@@ -497,6 +514,7 @@ class MainActivity : AppCompatActivity() {
         srrBar.findViewById<View>(R.id.srrClose).setOnClickListener { closeSrr() }
 
         webView.addJavascriptInterface(SrrBridge(), "ArenaSrr")
+        webView.addJavascriptInterface(LockBridge(), "ArenaLock")
     }
 
     /** 페이지 안의 스르륵 스크립트가 상태를 알려 줄 때 쓰는 통로 */
@@ -607,6 +625,168 @@ class MainActivity : AppCompatActivity() {
         pickSnackbar = null
         webView.evaluateJavascript("window.__srr && __srr.cancelPick()", null)
         updateFabVisibility()
+    }
+
+    // ---- 고정 모드 (배틀에서 공개된 AI로 고정해서 계속 대화) ----
+
+    private val lockScript: String by lazy {
+        assets.open("lock.js").bufferedReader().use { it.readText() }
+    }
+
+    private fun updatePinButton() {
+        val color = if (lockedModel != null) R.color.pin_on else R.color.pin_off
+        pinButton.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, color))
+        pinButton.contentDescription =
+            lockedModel?.let { "고정 모드: $it (눌러서 해제)" } ?: "고정 모드 (지금 AI로 고정)"
+    }
+
+    private fun setLock(model: String?) {
+        lockedModel = model
+        getSharedPreferences("ui", MODE_PRIVATE).edit().putString("lockedModel", model).apply()
+        updatePinButton()
+        webView.evaluateJavascript("window.__lock && __lock.setModel(${JSONObject.quote(model ?: "")})", null)
+    }
+
+    /** arena.ai 페이지가 열릴 때마다 고정 스크립트를 넣고, 넘겨받은 일이 있으면 처리 */
+    private fun onMainPageFinished(url: String?) {
+        if (url == null || !url.startsWith("https://")) return
+        if (!isInAppHost(Uri.parse(url).host)) return
+        if (lockedModel == null && pendingLock == null) return
+        webView.evaluateJavascript(lockScript) {
+            webView.evaluateJavascript("__lock.setModel(${JSONObject.quote(lockedModel ?: "")})", null)
+            val pending = pendingLock
+            if (pending != null && url.contains("/text/direct")) {
+                pendingLock = null
+                webView.evaluateJavascript("__lock.apply($pending)", null)
+            }
+        }
+    }
+
+    private fun onPinClicked() {
+        val locked = lockedModel
+        if (locked != null) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("📌 $locked 고정 중")
+                .setItems(arrayOf<CharSequence>("고정 해제", "다른 AI로 바꾸기")) { _, which ->
+                    if (which == 0) {
+                        setLock(null)
+                        toast("고정을 풀었어요")
+                    } else {
+                        detectForLock()
+                    }
+                }
+                .show()
+        } else {
+            detectForLock()
+        }
+    }
+
+    private fun detectForLock() {
+        webView.evaluateJavascript(lockScript) {
+            webView.evaluateJavascript("__lock.detect()") { result ->
+                val info = try {
+                    JSONObject(JSONTokener(result ?: "null").nextValue() as String)
+                } catch (e: Exception) {
+                    null
+                }
+                if (info == null) {
+                    toast("이 화면에서는 고정할 수 없어요")
+                    return@evaluateJavascript
+                }
+                val kind = info.optString("kind")
+                val current = info.optString("current")
+                val answers = info.optJSONArray("answers") ?: JSONArray()
+                when {
+                    kind == "battle" && answers.length() > 0 -> chooseBattleAnswer(answers)
+                    kind == "direct" && current.isNotBlank() -> confirmLockCurrent(current)
+                    else -> toast("배틀 화면에서 답변이 나온 뒤, 또는 다이렉트 대화 화면에서 눌러 주세요")
+                }
+            }
+        }
+    }
+
+    private fun confirmLockCurrent(model: String) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("📌 $model 로 고정할까요?")
+            .setMessage("새 대화를 시작해도 이 모델로 자동으로 맞춰 줘요.")
+            .setNegativeButton("취소", null)
+            .setPositiveButton("고정") { _, _ ->
+                setLock(model)
+                toast("$model 로 고정했어요")
+            }
+            .show()
+    }
+
+    private fun chooseBattleAnswer(answers: JSONArray) {
+        val count = answers.length()
+        val anyRevealed = (0 until count).any { answers.getJSONObject(it).optBoolean("revealed") }
+        val items: Array<CharSequence> = Array(count) { i ->
+            val a = answers.getJSONObject(i)
+            val side = if (count == 2) (if (i == 0) "A" else "B") else "${i + 1}"
+            if (a.optBoolean("revealed")) "${a.optString("name")}  (답변 $side)"
+            else "답변 $side (이름 비공개): ${a.optString("preview").take(24)}…"
+        }
+        if (!anyRevealed) toast("아직 모델 이름이 공개되지 않았어요. 투표하면 이름이 나와요. 지금 고르면 모델 목록에서 직접 골라야 해요.")
+        MaterialAlertDialogBuilder(this)
+            .setTitle("어느 AI로 고정할까요?")
+            .setItems(items) { _, which ->
+                val a = answers.getJSONObject(which)
+                val name = if (a.optBoolean("revealed")) a.optString("name") else null
+                askCarryOver(which, name)
+            }
+            .show()
+    }
+
+    private fun askCarryOver(index: Int, model: String?) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("이전 대화를 이어갈까요?")
+            .setMessage("다이렉트 모드로 옮겨서 ${model ?: "고른 AI"}와 계속 대화해요.\n\n" +
+                "'이어가기'를 누르면 지금까지의 질문과 이 AI의 답변을 입력창에 넣어 드려요. " +
+                "끝에 이어서 물어볼 내용을 적고 보내면 돼요.")
+            .setNegativeButton("새로 시작") { _, _ -> moveToDirect(model, "") }
+            .setPositiveButton("이어가기") { _, _ ->
+                webView.evaluateJavascript("__lock.transcript($index)") { result ->
+                    val text = try {
+                        JSONTokener(result ?: "null").nextValue() as? String
+                    } catch (e: Exception) {
+                        null
+                    }
+                    moveToDirect(model, text.orEmpty())
+                }
+            }
+            .show()
+    }
+
+    private fun moveToDirect(model: String?, transcript: String) {
+        if (model != null) setLock(model)
+        pendingLock = JSONObject().put("model", model ?: JSONObject.NULL).put("transcript", transcript)
+        toast(if (model != null) "$model 로 고정하고 다이렉트 모드로 옮겨요" else "다이렉트 모드에서 모델을 골라 주세요")
+        webView.loadUrl(DIRECT_URL)
+    }
+
+    /** 고정 스크립트가 결과를 알려 주는 통로 */
+    private inner class LockBridge {
+        @JavascriptInterface
+        fun onEvent(type: String, data: String) {
+            runOnUiThread {
+                when (type) {
+                    "applied" -> if (data == "ok") {
+                        toast("${lockedModel ?: "AI"}로 고정했어요. 이어서 질문을 적고 보내세요")
+                    } else {
+                        toast("모델 목록에서 이어서 쓸 AI를 골라 주세요. 고른 AI로 고정돼요")
+                    }
+                    "picked", "pickedSame" -> {
+                        setLock(data)
+                        toast("$data 로 고정했어요")
+                    }
+                    "reselect" -> if (data == "ok") {
+                        toast("고정한 ${lockedModel}로 다시 맞췄어요")
+                    } else {
+                        toast("고정한 ${lockedModel}을(를) 목록에서 찾지 못했어요")
+                    }
+                }
+            }
+        }
     }
 
     private fun insertPrompt(prompt: Prompt) {

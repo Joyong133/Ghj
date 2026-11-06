@@ -3,4 +3,6 @@
     <color name="brand">#1D1E2C</color>
     <color name="brand_dot">#F5B942</color>
     <color name="accent">#1D1E2C</color>
+    <color name="pin_off">#5B5D70</color>
+    <color name="pin_on">#2E7D32</color>
 </resources>
