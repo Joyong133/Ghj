@@ -10,7 +10,8 @@
 
   function bridge() {
     return window.ArenaSrr ||
-      { onState: function () {}, onPicked: function () {}, onPickedUser: function () {} };
+      { onState: function () {}, onPicked: function () {}, onPickedUser: function () {},
+        getProgress: function () { return 0; }, saveProgress: function () {}, clearProgress: function () {} };
   }
 
   var cands = [];   // 고를 수 있는 답변 요소
@@ -22,6 +23,27 @@
   var playing = false, follow = true, speed = 25;
   var raf = 0, lastT = 0, lastReport = 0, followTimer = 0;
   var pickHandler = null;
+  var key = '', lastSave = 0;  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
+
+  // 답변 내용으로 이름표를 만듦 (같은 답변이면 앱을 다시 켜도 같은 이름표)
+  function keyOf(sel) {
+    var s = sel.map(textOf).join('\u0001');
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return 'srr_' + (h >>> 0).toString(36) + '_' + s.length;
+  }
+
+  // 본 위치를 앱에 저장 (끝까지 봤으면 기록을 지움)
+  function save(force) {
+    if (!key || !box || !total) return;
+    var now = Date.now();
+    if (!force && now - lastSave < 1500) return;
+    lastSave = now;
+    try {
+      if (pos >= total || pos < 1) bridge().clearProgress(key);
+      else bridge().saveProgress(key, Math.floor(pos), total);
+    } catch (e) {}
+  }
 
   function visible(e) {
     var r = e.getBoundingClientRect();
@@ -110,10 +132,22 @@
   function start(indices) {
     var sel = (indices || [0]).map(function (i) { return cands[i]; }).filter(Boolean);
     if (!sel.length) return 'none';
+    if (box) close(true);          // 보던 답변이 있으면 그 위치를 먼저 저장
+    key = keyOf(sel);
+    var saved = 0;
+    try { saved = +bridge().getProgress(key) || 0; } catch (e) {}
     lastSel = sel;
     build();
+    var result = 'ok';
+    if (saved > 0 && saved < total) {
+      // 지난번에 멈춘 곳까지 바로 펼쳐 놓고 거기서부터 이어서 보여 줌
+      pos = saved;
+      render();
+      save(true);
+      result = 'resumed:' + Math.round(saved * 100 / total);
+    }
     play();
-    return 'ok';
+    return result;
   }
 
   function build() {
@@ -240,6 +274,7 @@
     if (pos >= total) {
       playing = false;
       report(true);
+      save(true);
       return;
     }
     report(false);
@@ -253,6 +288,7 @@
     var state = !box ? 'closed' : (pos >= total ? 'done' : (playing ? 'playing' : 'paused'));
     var pct = total ? Math.round(pos * 100 / total) : 100;
     try { bridge().onState(state, pct); } catch (e) {}
+    save(false);
   }
 
   function play() {
@@ -272,19 +308,27 @@
   function pause() {
     stopLoop();
     report(true);
+    save(true);
   }
   function toggle() { if (playing) pause(); else play(); }
-  function restart() { if (!lastSel.length) return; build(); play(); }
+  function restart() {
+    if (!lastSel.length) return;
+    build();
+    save(true);
+    play();
+  }
   function finish() {
     if (!box) return;
     stopLoop();
     pos = total;
     render();
     report(true);
+    save(true);
   }
   function setSpeed(v) { speed = Math.max(1, +v || 25); }
   function close(silent) {
     stopLoop();
+    save(true);
     if (box) box.remove();
     box = null;
     if (!silent) report(true);

@@ -532,6 +532,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // ---- 어디까지 봤는지 저장 (답변마다, 휴대폰 안에) ----
+
+        private val savedSpots = getSharedPreferences("srr_progress", MODE_PRIVATE)
+
+        @JavascriptInterface
+        fun getProgress(key: String): Int =
+            savedSpots.getString(key, null)?.split('/')?.firstOrNull()?.toIntOrNull() ?: 0
+
+        @JavascriptInterface
+        fun saveProgress(key: String, pos: Int, total: Int) {
+            val editor = savedSpots.edit().putString(key, "$pos/$total/${System.currentTimeMillis()}")
+            // 오래된 기록은 정리 (최근 100개만 보관)
+            val all = savedSpots.all
+            if (all.size > 100) {
+                all.entries
+                    .sortedBy { (it.value as? String)?.split('/')?.getOrNull(2)?.toLongOrNull() ?: 0L }
+                    .take(all.size - 100)
+                    .forEach { editor.remove(it.key) }
+            }
+            editor.apply()
+        }
+
+        @JavascriptInterface
+        fun clearProgress(key: String) {
+            savedSpots.edit().remove(key).apply()
+        }
+
         @JavascriptInterface
         fun onPickedUser() {
             runOnUiThread { toast("내 질문은 스르륵 할 수 없어요. AI 답변을 눌러 주세요") }
@@ -585,7 +612,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginSrr(indices: String) {
         webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.start($indices)") { result ->
-            if (result?.contains("ok") == true) {
+            val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
+            if (result?.contains("ok") == true || resumed != null) {
+                if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요. 처음부터 보려면 ⟲")
                 srrActive = true
                 srrProgress.setProgressCompat(0, false)
                 srrPlay.setIconResource(R.drawable.ic_pause)
@@ -845,6 +874,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        // 앱을 나가면 스르륵을 멈추고 본 위치를 저장
+        if (srrActive) webView.evaluateJavascript("window.__srr && __srr.pause()", null)
         webView.onPause()
         CookieManager.getInstance().flush()
     }
