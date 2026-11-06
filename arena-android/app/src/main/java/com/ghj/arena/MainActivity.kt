@@ -136,6 +136,7 @@ class MainActivity : AppCompatActivity() {
     private var srrPicking = false
     private var srrSpeed = 25
     private var srrRain = false
+    private var srrRainSound = true
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
     private var lockedModel: String? = null
@@ -508,12 +509,24 @@ class MainActivity : AppCompatActivity() {
 
         // 비 내리기 효과 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
         srrRain = prefs.getBoolean("srrRain", false)
+        srrRainSound = prefs.getBoolean("srrRainSound", true)
+        val soundBox = srrBar.findViewById<CompoundButton>(R.id.srrRainSound)
         srrBar.findViewById<CompoundButton>(R.id.srrRain).apply {
             isChecked = srrRain
             setOnCheckedChangeListener { _, checked ->
                 srrRain = checked
+                soundBox.isEnabled = checked  // 빗소리는 비가 내릴 때만
                 prefs.edit().putBoolean("srrRain", checked).apply()
                 webView.evaluateJavascript("window.__srr && __srr.setRain($checked)", null)
+            }
+        }
+        soundBox.apply {
+            isChecked = srrRainSound
+            isEnabled = srrRain
+            setOnCheckedChangeListener { _, checked ->
+                srrRainSound = checked
+                prefs.edit().putBoolean("srrRainSound", checked).apply()
+                webView.evaluateJavascript("window.__srr && __srr.setSound($checked)", null)
             }
         }
         srrBar.findViewById<View>(R.id.srrPick).setOnClickListener {
@@ -620,7 +633,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSrr(indices: String) {
-        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setRain($srrRain); __srr.start($indices)") { result ->
+        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setSound($srrRainSound); __srr.setRain($srrRain); __srr.start($indices)") { result ->
             val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
             if (result?.contains("ok") == true || resumed != null) {
                 if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")
@@ -898,13 +911,14 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         // 앱을 나가면 스르륵을 멈추고 본 위치를 저장
-        if (srrActive) webView.evaluateJavascript("window.__srr && __srr.pause()", null)
+        if (srrActive) webView.evaluateJavascript("window.__srr && (__srr.pause(), __srr.holdSound(true))", null)
         webView.onPause()
         CookieManager.getInstance().flush()
     }
 
     override fun onResume() {
         super.onResume()
+        if (srrActive) webView.evaluateJavascript("window.__srr && __srr.holdSound(false)", null)
         webView.onResume()
     }
 

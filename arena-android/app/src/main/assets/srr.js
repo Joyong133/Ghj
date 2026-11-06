@@ -24,7 +24,8 @@
   var raf = 0, lastT = 0, lastReport = 0, followTimer = 0;
   var pickHandler = null;
   var key = '', lastSave = 0;
-  var rainOn = false, rain = null;  // 비 내리기 효과  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
+  var rainOn = false, rain = null;  // 비 내리기 효과
+  var soundOn = true, snd = null, soundHold = false;  // 빗소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
 
   // 답변 내용으로 이름표를 만듦 (같은 답변이면 앱을 다시 켜도 같은 이름표)
   function keyOf(sel) {
@@ -226,53 +227,214 @@
     follow = true;
     document.body.appendChild(box);
     if (rainOn) startRain();
+    updateSound();
     report(true);
   }
 
-  // ---- 비 내리기 효과: 글 뒤에 캔버스를 깔고 빗줄기를 그림 ----
+  // ---- 비 내리기 효과: 글 뒤에 캔버스를 깔고 비를 그림 ----
+  // 원근감 있는 3겹 빗줄기(잔상), 바람, 바닥에 튀는 물방울, 유리창 물방울, 물안개
+  var LAYERS = [
+    { per: 9000, len: [7, 13], v: [330, 470], w: 1.0, a: 0.24, wind: 0.8 },                // 멀리
+    { per: 17000, len: [14, 24], v: [580, 780], w: 1.4, a: 0.40, wind: 1.0 },              // 중간
+    { per: 42000, len: [28, 46], v: [950, 1250], w: 2.1, a: 0.62, wind: 1.15, splash: true } // 가까이
+  ];
+  function rnd(a, b) { return a + Math.random() * (b - a); }
   function rainColor() {
     var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(box).backgroundColor || '');
     var lum = m ? (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) : 255;
-    return lum < 128 ? { rgb: '174,194,224', k: 1 } : { rgb: '70,95,140', k: 0.75 };
+    return lum < 128 ? { rgb: '182,204,234', dark: true, k: 1 } : { rgb: '58,84,132', dark: false, k: 0.8 };
   }
-  function newDrop(anywhere) {
-    var z = Math.random();  // 0 = 멀리, 1 = 가까이
+  // 빗줄기 모양을 미리 그려 둠 (꼬리는 투명, 끝은 진하게)
+  function streakSprite(layer, col, dpr) {
+    var L = layer.len[1], pad = 2, W = layer.w + pad * 2;
+    var c = document.createElement('canvas');
+    c.width = Math.ceil(W * dpr);
+    c.height = Math.ceil(L * dpr);
+    var x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    var a = layer.a * col.k;
+    var g = x.createLinearGradient(0, 0, 0, L);
+    g.addColorStop(0, 'rgba(' + col.rgb + ',0)');
+    g.addColorStop(0.65, 'rgba(' + col.rgb + ',' + (a * 0.55).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(' + col.rgb + ',' + a.toFixed(3) + ')');
+    x.strokeStyle = g;
+    x.lineWidth = layer.w;
+    x.lineCap = 'round';
+    x.beginPath();
+    x.moveTo(W / 2, layer.w);
+    x.lineTo(W / 2, L - layer.w / 2);
+    x.stroke();
+    return { img: c, w: W };
+  }
+  // 유리창 물방울 모양 (테두리는 진하고 가운데는 맑게, 위쪽에 반짝임)
+  function beadSprite(col, dpr) {
+    var R = 16, c = document.createElement('canvas');
+    c.width = c.height = Math.ceil(R * 2 * dpr);
+    var x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    var rim = col.dark ? '200,220,245' : '50,75,120';
+    var g = x.createRadialGradient(R * 0.85, R * 0.8, R * 0.1, R, R, R);
+    g.addColorStop(0, 'rgba(' + rim + ',0.02)');
+    g.addColorStop(0.7, 'rgba(' + rim + ',' + (col.dark ? 0.10 : 0.08) + ')');
+    g.addColorStop(0.92, 'rgba(' + rim + ',' + (col.dark ? 0.38 : 0.28) + ')');
+    g.addColorStop(1, 'rgba(' + rim + ',0)');
+    x.fillStyle = g;
+    x.beginPath();
+    x.arc(R, R, R, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = 'rgba(255,255,255,' + (col.dark ? 0.55 : 0.85) + ')';
+    x.beginPath();
+    x.ellipse(R * 0.68, R * 0.58, R * 0.22, R * 0.14, -0.6, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = 'rgba(0,0,0,' + (col.dark ? 0.18 : 0.07) + ')';
+    x.beginPath();
+    x.ellipse(R * 1.08, R * 1.55, R * 0.55, R * 0.16, 0, 0, Math.PI * 2);
+    x.fill();
+    return c;
+  }
+  function newDrop(L, anywhere) {
     return {
-      x: Math.random() * (rain.w + 160) - 80,
-      y: anywhere ? Math.random() * rain.h : -30 - Math.random() * rain.h * 0.3,
-      len: 10 + z * 20, v: 420 + z * 680, w: 0.6 + z * 1.1, a: (0.18 + z * 0.42) * rain.color.k
+      L: L, x: rnd(-120, rain.w + 60), y: anywhere ? rnd(-40, rain.h) : rnd(-rain.h * 0.25, -20),
+      len: rnd(L.len[0], L.len[1]), v: rnd(L.v[0], L.v[1]), o: rnd(0.65, 1),
+      ground: rain.h * rnd(0.84, 0.99)
+    };
+  }
+  function newBead(r) {
+    return {
+      x: rnd(0, rain.w), y: rnd(0, rain.h * 0.92), r: r || rnd(1.6, 6.5), grow: 0,
+      life: rnd(8, 20), age: 0, vy: 0, slide: false, wait: rnd(1, 9), trail: [], wob: rnd(0, 6)
     };
   }
   function sizeRain() {
     if (!rain) return;
-    var dpr = window.devicePixelRatio || 1;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    rain.dpr = dpr;
     rain.w = window.innerWidth;
     rain.h = window.innerHeight;
     rain.canvas.width = Math.round(rain.w * dpr);
     rain.canvas.height = Math.round(rain.h * dpr);
-    rain.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    var n = Math.round(Math.min(240, Math.max(60, rain.w * rain.h / 6500)));
+    var area = rain.w * rain.h;
+    rain.sprites = LAYERS.map(function (L) { return streakSprite(L, rain.color, dpr); });
+    rain.bead = beadSprite(rain.color, dpr);
     rain.drops = [];
-    for (var i = 0; i < n; i++) rain.drops.push(newDrop(true));
+    LAYERS.forEach(function (L) {
+      var n = Math.round(Math.min(160, Math.max(12, area / L.per)));
+      for (var i = 0; i < n; i++) rain.drops.push(newDrop(L, true));
+    });
+    rain.maxBeads = Math.round(Math.min(40, Math.max(12, area / 22000)));
+    rain.beads = [];
+    for (var j = 0; j < rain.maxBeads * 0.6; j++) rain.beads.push(newBead());
+    rain.fx = [];
+  }
+  // 바람: 세기가 천천히 바뀜
+  function windAt(t) {
+    return 0.13 + 0.08 * Math.sin(t * 0.23) + 0.05 * Math.sin(t * 0.71 + 1.3) + 0.02 * Math.sin(t * 2.1);
+  }
+  function splash(x, y, near) {
+    rain.fx.push({ k: 'ring', x: x, y: y, t: 0, life: rnd(0.35, 0.6), r: rnd(5, 12) });
+    var n = 2 + Math.floor(Math.random() * 3);
+    for (var i = 0; i < n; i++) {
+      rain.fx.push({ k: 'dot', x: x, y: y, vx: rnd(-70, 70) + near * 20, vy: -rnd(70, 190), t: 0, life: rnd(0.25, 0.45), r: rnd(0.7, 1.4) });
+    }
   }
   function rainFrame(t) {
     if (!rain) return;
     var dt = rain.last ? Math.min(t - rain.last, 50) / 1000 : 0;
     rain.last = t;
-    var ctx = rain.ctx, wind = 0.16;
-    ctx.clearRect(0, 0, rain.w, rain.h);
-    ctx.lineCap = 'round';
+    rain.time += dt;
+    var ctx = rain.ctx, dpr = rain.dpr, col = rain.color;
+    var wind = windAt(rain.time);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, rain.canvas.width, rain.canvas.height);
+
+    // 1) 유리창 물방울 (맨 뒤)
+    if (rain.beads.length < rain.maxBeads && Math.random() < dt * 3) rain.beads.push(newBead());
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (var b = rain.beads.length - 1; b >= 0; b--) {
+      var bd = rain.beads[b];
+      bd.age += dt;
+      bd.grow = Math.min(1, bd.grow + dt * 2.5);
+      if (!bd.slide && bd.r > 4.6 && bd.age > bd.wait) bd.slide = true;
+      if (bd.slide) {
+        bd.vy = Math.min(bd.vy + dt * rnd(40, 120), 95);
+        if (Math.random() < dt * 2) bd.vy *= 0.3;  // 걸렸다가 다시 흘러내림
+        bd.y += bd.vy * dt;
+        bd.x += Math.sin(bd.age * 3 + bd.wob) * dt * 6;
+        var last = bd.trail[bd.trail.length - 1];
+        if (!last || bd.y - last.y > 4) {
+          bd.trail.push({ x: bd.x, y: bd.y - bd.r * 0.6, t: rain.time });
+          if (bd.trail.length > 60) bd.trail.shift();
+          if (Math.random() < 0.06 && rain.beads.length < rain.maxBeads + 10) {
+            var left = newBead(rnd(0.9, 1.8));
+            left.x = bd.x; left.y = bd.y - bd.r; left.wait = 999; left.life = rnd(4, 9);
+            rain.beads.push(left);
+          }
+        }
+      }
+      var fade = bd.slide ? 1 : Math.max(0, Math.min(1, (bd.life - bd.age) / 1.5));
+      if (bd.y - bd.r > rain.h || fade <= 0) { rain.beads.splice(b, 1); continue; }
+      if (bd.trail.length > 1) {  // 흘러내린 물자국
+        ctx.lineWidth = Math.max(0.7, bd.r * 0.42);
+        ctx.lineCap = 'round';
+        for (var q = 1; q < bd.trail.length; q++) {
+          var age = rain.time - bd.trail[q].t;
+          var al = Math.max(0, 0.12 - age * 0.025) * (col.dark ? 1 : 0.8);
+          if (al <= 0) continue;
+          ctx.strokeStyle = 'rgba(' + col.rgb + ',' + al.toFixed(3) + ')';
+          ctx.beginPath();
+          ctx.moveTo(bd.trail[q - 1].x, bd.trail[q - 1].y);
+          ctx.lineTo(bd.trail[q].x, bd.trail[q].y);
+          ctx.stroke();
+        }
+      }
+      var rr = bd.r * (0.4 + 0.6 * bd.grow);
+      ctx.globalAlpha = fade;
+      ctx.drawImage(rain.bead, bd.x - rr, bd.y - rr * (bd.slide ? 1.15 : 1), rr * 2, rr * 2 * (bd.slide ? 1.15 : 1));
+      ctx.globalAlpha = 1;
+    }
+
+    // 2) 빗줄기 (먼 것부터)
     for (var i = 0; i < rain.drops.length; i++) {
-      var d = rain.drops[i];
+      var d = rain.drops[i], L = d.L, wl = wind * L.wind;
       d.y += d.v * dt;
-      d.x += d.v * dt * wind;
-      if (d.y - d.len > rain.h || d.x > rain.w + 80) rain.drops[i] = d = newDrop(false);
-      ctx.strokeStyle = 'rgba(' + rain.color.rgb + ',' + d.a.toFixed(2) + ')';
-      ctx.lineWidth = d.w;
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y);
-      ctx.lineTo(d.x - d.len * wind, d.y - d.len);
-      ctx.stroke();
+      d.x += d.v * dt * wl;
+      if (L.splash && d.y >= d.ground) {
+        splash(d.x, d.ground, wl);
+        rain.drops[i] = d = newDrop(L, false);
+      } else if (d.y - d.len > rain.h || d.x - d.len > rain.w + 40) {
+        rain.drops[i] = d = newDrop(L, false);
+      }
+      var phi = Math.atan(wl), cs = Math.cos(phi), sn = Math.sin(phi);
+      var sp = rain.sprites[LAYERS.indexOf(L)];
+      ctx.setTransform(dpr * cs, -dpr * sn, dpr * sn, dpr * cs, d.x * dpr, d.y * dpr);
+      ctx.globalAlpha = d.o;
+      ctx.drawImage(sp.img, -sp.w / 2, -d.len, sp.w, d.len);
+    }
+    ctx.globalAlpha = 1;
+
+    // 3) 바닥에 튀는 물방울과 물결
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (var f = rain.fx.length - 1; f >= 0; f--) {
+      var e = rain.fx[f];
+      e.t += dt;
+      var p = e.t / e.life;
+      if (p >= 1) { rain.fx.splice(f, 1); continue; }
+      if (e.k === 'ring') {
+        var rad = e.r * (0.2 + p);
+        ctx.strokeStyle = 'rgba(' + col.rgb + ',' + (0.45 * (1 - p) * col.k).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(e.x, e.y, rad, rad * 0.32, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        e.vy += 900 * dt;
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        ctx.fillStyle = 'rgba(' + col.rgb + ',' + (0.7 * (1 - p) * col.k).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     rain.raf = requestAnimationFrame(rainFrame);
   }
@@ -280,9 +442,13 @@
     if (!box || rain) return;
     var c = document.createElement('canvas');
     c.id = '__srr_rain';
-    c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0';
+    var col = rainColor();
+    // 물안개: 화면 아래쪽이 옅게 뿌옇게 (CSS 배경이라 그릴 때 부담 없음)
+    c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;' +
+      'background:linear-gradient(to bottom, rgba(' + col.rgb + ',0) 55%, rgba(' + col.rgb + ',' +
+      (col.dark ? 0.10 : 0.07) + ') 100%)';
     box.insertBefore(c, box.firstChild);
-    rain = { canvas: c, ctx: c.getContext('2d'), drops: [], raf: 0, last: 0, color: rainColor() };
+    rain = { canvas: c, ctx: c.getContext('2d'), drops: [], beads: [], fx: [], raf: 0, last: 0, time: rnd(0, 100), color: col };
     sizeRain();
     window.addEventListener('resize', sizeRain);
     rain.raf = requestAnimationFrame(rainFrame);
@@ -296,9 +462,115 @@
   }
   function setRain(on) {
     rainOn = !!on;
-    if (!box) return;
-    if (rainOn) startRain(); else stopRain();
+    if (box) {
+      if (rainOn) startRain(); else stopRain();
+    }
+    updateSound();
   }
+
+  // ---- 빗소리: 음원 파일 없이 Web Audio로 직접 만듦 ----
+  // 쏴아 하는 소리(높은 소리) + 낮게 울리는 소리 + 여기저기 떨어지는 빗방울 소리
+  function noiseBuffer(ctx, seconds) {
+    var len = Math.floor(ctx.sampleRate * seconds);
+    var buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (var ch = 0; ch < 2; ch++) {
+      var d = buf.getChannelData(ch);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return buf;
+  }
+  function loopNoise(ctx, buf, offset) {
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.start(0, offset);
+    return src;
+  }
+  function filter(ctx, type, freq, q) {
+    var f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    if (q) f.Q.value = q;
+    return f;
+  }
+  function startSound() {
+    if (snd) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    var ctx;
+    try { ctx = new AC(); } catch (e) { return; }
+    var master = ctx.createGain();
+    master.gain.value = 0;
+    master.connect(ctx.destination);
+    var bed = noiseBuffer(ctx, 3);
+
+    // 쏴아 하는 빗소리
+    var hiss = ctx.createGain();
+    hiss.gain.value = 0.22;
+    loopNoise(ctx, bed, 0).connect(filter(ctx, 'highpass', 350)).connect(filter(ctx, 'lowpass', 5200)).connect(hiss);
+    hiss.connect(master);
+    // 소리 크기가 천천히 오르내리게 (자연스럽게)
+    var lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.13;
+    var lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.06;
+    lfo.connect(lfoGain).connect(hiss.gain);
+    lfo.start();
+
+    // 낮게 울리는 소리
+    var rumble = ctx.createGain();
+    rumble.gain.value = 0.2;
+    loopNoise(ctx, bed, 1.37).connect(filter(ctx, 'lowpass', 420)).connect(rumble);
+    rumble.connect(master);
+
+    // 빗방울 소리: 짧은 소리를 무작위로, 좌우로 퍼지게
+    var drop = noiseBuffer(ctx, 0.08);
+    function plink(at) {
+      var src = ctx.createBufferSource();
+      src.buffer = drop;
+      var bp = filter(ctx, 'bandpass', 1400 + Math.random() * 4200, 1.4 + Math.random() * 2);
+      var g = ctx.createGain();
+      var peak = 0.025 + Math.random() * 0.07;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(peak, at + 0.002);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.02 + Math.random() * 0.05);
+      var node = src.connect(bp).connect(g);
+      if (ctx.createStereoPanner) {
+        var pan = ctx.createStereoPanner();
+        pan.pan.value = Math.random() * 1.6 - 0.8;
+        node = node.connect(pan);
+      }
+      node.connect(master);
+      src.start(at);
+      src.stop(at + 0.09);
+    }
+    var timer = setInterval(function () {
+      if (ctx.state !== 'running') return;
+      var now = ctx.currentTime;
+      var n = Math.random() < 0.5 ? 1 : 2;  // 1초에 40개쯤
+      for (var i = 0; i < n; i++) plink(now + 0.05 + Math.random() * 0.04);
+    }, 40);
+
+    master.gain.setTargetAtTime(0.9, ctx.currentTime, 0.5);  // 천천히 커지며 시작
+    if (ctx.state === 'suspended') ctx.resume();
+    snd = { ctx: ctx, master: master, timer: timer };
+  }
+  function stopSound() {
+    if (!snd) return;
+    var s = snd;
+    snd = null;
+    clearInterval(s.timer);
+    try { s.master.gain.setTargetAtTime(0, s.ctx.currentTime, 0.15); } catch (e) {}
+    setTimeout(function () { try { s.ctx.close(); } catch (e) {} }, 700);  // 부드럽게 줄인 뒤 끔
+  }
+  // 스르륵 화면이 열려 있고, 비가 켜져 있고, 빗소리가 켜져 있을 때만 소리를 냄
+  function updateSound() {
+    if (box && rainOn && soundOn && !soundHold && !document.hidden) startSound();
+    else stopSound();
+  }
+  function setSound(on) { soundOn = !!on; updateSound(); }
+  function holdSound(on) { soundHold = !!on; updateSound(); }
+  document.addEventListener('visibilitychange', function () { updateSound(); });
 
   function revealElements(upTo) {
     while (ei < els.length && els[ei].at <= upTo) {
@@ -406,6 +678,7 @@
     stopLoop();
     save(true);
     stopRain();
+    stopSound();
     if (box) box.remove();
     box = null;
     if (!silent) report(true);
@@ -414,6 +687,8 @@
   window.__srr = {
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,
     play: play, pause: pause, toggle: toggle, restart: restart, finish: finish,
-    setSpeed: setSpeed, setRain: setRain, close: function () { close(false); }
+    setSpeed: setSpeed, setRain: setRain, setSound: setSound, holdSound: holdSound,
+    soundPlaying: function () { return !!snd; },
+    close: function () { close(false); }
   };
 })();
