@@ -70,37 +70,19 @@
                 style="@style/Widget.Material3.Button.IconButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="24dp"
                 android:contentDescription="다른 답변 고르기"
                 app:icon="@drawable/ic_touch" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/srrRestart"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
-                android:contentDescription="처음부터"
-                app:icon="@drawable/ic_replay" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/srrPlay"
                 style="@style/Widget.Material3.Button.IconButton.Filled"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="24dp"
                 android:contentDescription="재생 / 일시정지"
                 app:icon="@drawable/ic_pause"
                 app:iconSize="28dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/srrEnd"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
-                android:contentDescription="끝까지 바로 보기"
-                app:icon="@drawable/ic_skip" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/srrClose"

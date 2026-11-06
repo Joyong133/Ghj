@@ -503,12 +503,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         srrPlay.setOnClickListener { webView.evaluateJavascript("window.__srr && __srr.toggle()", null) }
-        srrBar.findViewById<View>(R.id.srrRestart).setOnClickListener {
-            webView.evaluateJavascript("window.__srr && __srr.restart()", null)
-        }
-        srrBar.findViewById<View>(R.id.srrEnd).setOnClickListener {
-            webView.evaluateJavascript("window.__srr && __srr.finish()", null)
-        }
         srrBar.findViewById<View>(R.id.srrPick).setOnClickListener {
             closeSrr()
             startPick("다시 볼 답변을 눌러 주세요")
@@ -616,7 +610,7 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.start($indices)") { result ->
             val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
             if (result?.contains("ok") == true || resumed != null) {
-                if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요. 처음부터 보려면 ⟲")
+                if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")
                 srrActive = true
                 srrProgress.setProgressCompat(0, false)
                 srrPlay.setIconResource(R.drawable.ic_pause)
