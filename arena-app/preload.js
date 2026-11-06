@@ -24,6 +24,7 @@ function setup() {
   // ---- 공용 스크립트가 앱에 알려 주는 통로 ----
   window.ArenaSrr = {
     onState: (state, pct) => srrOnState(state, pct),
+    onTime: (sec) => srrOnTime(sec),
     onPicked: () => srrOnPicked(),
     onPickedUser: () => toast('내 질문은 스르륵 할 수 없어요. AI 답변을 눌러 주세요'),
     getProgress: (key) => {
@@ -66,6 +67,7 @@ function setup() {
     pause: 'M6,19h4V5H6v14zM14,5v14h4V5h-4z',
     close: 'M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z',
     touch: 'M9,11.24V7.5C9,6.12 10.12,5 11.5,5S14,6.12 14,7.5v3.74c1.21,-0.81 2,-2.18 2,-3.74C16,5.01 13.99,3 11.5,3S7,5.01 7,7.5c0,1.56 0.79,2.93 2,3.74zM18.84,15.87l-4.54,-2.26c-0.17,-0.07 -0.35,-0.11 -0.54,-0.11H13v-6C13,6.67 12.33,6 11.5,6S10,6.67 10,7.5v10.74l-3.43,-0.72c-0.08,-0.01 -0.15,-0.03 -0.24,-0.03 -0.31,0 -0.59,0.13 -0.79,0.33l-0.79,0.8 4.94,4.94c0.27,0.27 0.65,0.44 1.06,0.44h6.79c0.75,0 1.33,-0.55 1.44,-1.28l0.75,-5.27c0.01,-0.07 0.02,-0.14 0.02,-0.2 0,-0.62 -0.38,-1.16 -0.91,-1.38z',
+    text: 'M9,4v3h5v12h3L17,7h5L22,4H9zM3,12h3v7h3v-7h3L12,9L3,9v3z',
     more: 'M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z',
   };
   function icon(name, size = 22) {
@@ -179,6 +181,19 @@ function setup() {
       user-select: none; }
     .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .check.off { opacity: .45; cursor: default; } .check.off input { cursor: default; }
+    .opts .time { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .backdrop.side { background: rgba(0,0,0,.08); justify-content: flex-end; align-items: flex-start; padding: 16px; }
+    .backdrop.side .card { width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+    .sw { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 52px; background: none; border: 0;
+      cursor: pointer; color: var(--fg); font-size: 12px; padding: 0; }
+    .sw i { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
+      font-size: 15px; font-weight: 700; border: 1px solid rgba(0,0,0,.2); }
+    .sw.on i { outline: 3px solid #2E7D32; outline-offset: 2px; }
+    .stepper { display: flex; align-items: center; gap: 8px; } .stepper .val { flex: 1; text-align: center; font-weight: 700; }
+    .srow { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .srow .main { flex: 1; } .srow .t { font-weight: 600; font-size: 14px; } .srow .p { font-size: 12px; color: var(--muted); }
+    input[type=range].wide { width: 100%; accent-color: var(--accent); }
     .ctl .play { width: 50px; height: 50px; background: var(--accent); color: var(--accent-fg); }
     .ctl .play:hover { background: var(--accent); filter: brightness(.94); }
   `;
@@ -194,13 +209,14 @@ function setup() {
       root.append(toastEl);
     }
     toastEl.textContent = text;
+    toastEl.style.bottom = srrActive ? '180px' : '36px';  // 스르륵 막대 위로
     toastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.add('hidden'), ms);
   }
 
   /** 대화상자. content는 노드 또는 글, actions는 [{label, primary, onClick → false면 안 닫힘}] */
-  function dialog({ title, content, actions = [], items = null, wide = false }) {
+  function dialog({ title, content, actions = [], items = null, wide = false, side = false }) {
     const close = () => {
       backdrop.remove();
       const i = dialogs.indexOf(close);
@@ -223,7 +239,7 @@ function setup() {
         onclick: () => { if (!a.onClick || a.onClick() !== false) close(); },
       }))) : null);
     if (wide) card.style.width = 'min(620px, calc(100vw - 32px))';
-    const backdrop = h('div', { class: 'backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, card);
+    const backdrop = h('div', { class: 'backdrop' + (side ? ' side' : ''), onmousedown: (e) => { if (e.target === backdrop) close(); } }, card);
     root.append(backdrop);
     dialogs.push(close);
     return close;
@@ -458,6 +474,93 @@ function setup() {
   let srrSpeed = store.get('srrSpeed', 25);
   let srrRain = store.get('srrRain', false);
   let srrRainSound = store.get('srrRainSound', true);
+  const VIEW_DEFAULT = { theme: 'site', scale: 1, lh: 0, font: 'site', width: 820, focus: false, caret: false, volume: 0.9 };
+  let srrView = Object.assign({}, VIEW_DEFAULT, store.get('srrView', {}));
+  let timeEl = null;
+  // 화면 색 (srr.js의 THEMES와 같은 색)
+  const THEMES = [
+    ['site', '기본', 'linear-gradient(135deg,#fff 50%,#2a2b30 50%)', '#888'],
+    ['night', '밤', '#0f1115', '#d6d8de'], ['paper', '종이', '#f4ecd8', '#3b3125'],
+    ['forest', '숲', '#13201a', '#cfe3d4'], ['ocean', '바다', '#0d1a2b', '#cfe0f5'],
+    ['sunset', '노을', '#2b1a22', '#f4dad3'], ['mint', '민트', '#eef7f3', '#20352b'],
+    ['contrast', '고대비', '#000', '#ff0'],
+  ];
+  function setView(patch) {
+    Object.assign(srrView, patch);
+    srrView.scale = Math.round(Math.min(2, Math.max(0.8, srrView.scale)) * 10) / 10;
+    store.set('srrView', srrView);
+    srr.setView(srrView);
+  }
+  function srrOnTime(sec) {
+    if (!timeEl) return;
+    timeEl.textContent = sec <= 0 ? '다 봤어요' : sec < 60 ? `약 ${sec}초 남음` : `약 ${Math.floor(sec / 60)}분 ${sec % 60}초 남음`;
+  }
+
+  function openViewSettings() {
+    const seg = (labels, values, key) => {
+      const box = h('div', { class: 'seg' });
+      const paint = () => [...box.children].forEach((b, i) => b.classList.toggle('on', values[i] === srrView[key]));
+      labels.forEach((label, i) => box.append(h('button', { text: label, onclick: () => { setView({ [key]: values[i] }); paint(); } })));
+      paint();
+      return { box, paint };
+    };
+    const swatches = h('div', { class: 'swatches' });
+    const paintSw = () => [...swatches.children].forEach((b, i) => b.classList.toggle('on', THEMES[i][0] === srrView.theme));
+    THEMES.forEach(([key, label, bg, fg]) => {
+      const dot = h('i', { text: '가' });
+      dot.style.background = bg;
+      dot.style.color = fg;
+      swatches.append(h('button', { class: 'sw', title: `화면 색: ${label}`, onclick: () => { setView({ theme: key }); paintSw(); } }, dot, h('span', { text: label })));
+    });
+    paintSw();
+
+    const sizeVal = h('span', { class: 'val' });
+    const showSize = () => { sizeVal.textContent = Math.round(srrView.scale * 100) + '%'; };
+    showSize();
+    const size = (d) => { setView({ scale: d === null ? 1 : srrView.scale + d }); showSize(); };
+
+    const lh = seg(['기본', '보통', '넓게', '아주 넓게'], [0, 1.6, 1.9, 2.3], 'lh');
+    const font = seg(['기본', '고딕', '명조'], ['site', 'gothic', 'serif'], 'font');
+    const width = seg(['좁게', '보통', '넓게'], [640, 820, 1100], 'width');
+
+    const sw = (label, hint, key) => {
+      const box = h('input', { type: 'checkbox', class: 'switch', checked: !!srrView[key], onchange: () => setView({ [key]: box.checked }) });
+      return { row: h('div', { class: 'srow' }, h('div', { class: 'main' }, h('div', { class: 't', text: label }), h('div', { class: 'p', text: hint })), box), box };
+    };
+    const focus = sw('읽는 줄 강조', '지금 나오는 문단만 또렷하게, 나머지는 흐리게', 'focus');
+    const caret = sw('커서 표시', '글자가 나오는 자리에 깜빡이는 커서', 'caret');
+
+    const volLabel = h('label', { class: 'f' });
+    const showVol = () => {
+      volLabel.textContent = `빗소리 크기  ${Math.round(srrView.volume * 100)}%` + (srrRain && srrRainSound ? '' : ' (빗소리를 켜면 들려요)');
+    };
+    const vol = h('input', { type: 'range', class: 'wide', min: '0', max: '150', step: '10', value: String(Math.round(srrView.volume * 10) * 10),
+      oninput: () => { setView({ volume: parseInt(vol.value, 10) / 100 }); showVol(); } });
+    showVol();
+
+    dialog({
+      title: '스르륵 보기 설정', side: true,
+      content: h('div', null,
+        h('label', { class: 'f', text: '화면 색  (단축키 T)' }), swatches,
+        h('label', { class: 'f', text: '글자 크기  (단축키 + / −)' }),
+        h('div', { class: 'stepper' },
+          h('button', { class: 'btn', text: '가 −', onclick: () => size(-0.1) }), sizeVal,
+          h('button', { class: 'btn', text: '가 +', onclick: () => size(0.1) }),
+          h('button', { class: 'btn tonal', text: '기본', onclick: () => size(null) })),
+        h('label', { class: 'f', text: '줄 간격' }), lh.box,
+        h('label', { class: 'f', text: '글꼴' }), font.box,
+        h('label', { class: 'f', text: '글 폭' }), width.box,
+        focus.row, caret.row,
+        volLabel, vol,
+        h('div', { class: 'two' }, h('button', { class: 'btn', text: '모두 기본값으로', onclick: () => {
+          setView(Object.assign({}, VIEW_DEFAULT));
+          paintSw(); showSize(); lh.paint(); font.paint(); width.paint();
+          focus.box.checked = false; caret.box.checked = false;
+          vol.value = '90'; showVol();
+        } }))),
+      actions: [{ label: '닫기', primary: true }],
+    });
+  }
 
   function buildBar() {
     barProg = h('i');
@@ -491,13 +594,15 @@ function setup() {
       h('div', { class: 'speed' }, h('span', { text: '속도' }), slider, label),
       h('div', { class: 'opts' },
         h('label', { class: 'check', title: '스르륵 화면에 비가 내리게 해요' }, rainBox, h('span', { text: '비 내리기' })),
-        soundLabel),
+        soundLabel,
+        timeEl = h('span', { class: 'time' })),
       h('div', { class: 'ctl' },
         h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
           closeSrr();
           startPick('다시 볼 답변을 눌러 주세요');
         } }, icon('touch', 24)),
         barPlay,
+        h('button', { class: 'iconbtn', title: '보기 설정 (화면 색, 글자 크기 등)', onclick: () => openViewSettings() }, icon('text', 24)),
         h('button', { class: 'iconbtn', title: '스르륵 닫기 (Esc)', onclick: () => closeSrr() }, icon('close', 24))));
     root.append(bar);
   }
@@ -523,6 +628,7 @@ function setup() {
 
   function beginSrr(indices) {
     srr.setSpeed(srrSpeed);
+    srr.setView(srrView);
     srr.setSound(srrRainSound);
     srr.setRain(srrRain);
     const result = srr.start(indices);
@@ -725,6 +831,19 @@ function setup() {
       e.preventDefault();
       e.stopPropagation();
       srr.toggle();
+    } else if (srrActive && !dialogs.length && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const t = e.composedPath()[0];
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === '+' || e.key === '=') setView({ scale: srrView.scale + 0.1 });
+      else if (e.key === '-' || e.key === '_') setView({ scale: srrView.scale - 0.1 });
+      else if (e.key === 't' || e.key === 'T' || e.key === 'ㅅ') {
+        const i = THEMES.findIndex((x) => x[0] === srrView.theme);
+        const next = THEMES[(i + 1) % THEMES.length];
+        setView({ theme: next[0] });
+        toast(`화면 색: ${next[1]}`, 1200);
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
     }
   }
 

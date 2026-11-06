@@ -25,7 +25,111 @@
   var pickHandler = null;
   var key = '', lastSave = 0;
   var rainOn = false, rain = null;  // 비 내리기 효과
-  var soundOn = true, snd = null, soundHold = false;  // 빗소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
+  var soundOn = true, snd = null, soundHold = false;  // 빗소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)
+
+  // ---- 보기 설정 (화면 색, 글자 크기, 줄 간격, 글꼴, 글 폭, 읽는 줄 강조, 커서, 빗소리 크기) ----
+  var view = { theme: 'site', scale: 1, lh: 0, font: 'site', width: 820, focus: false, caret: false, volume: 0.9 };
+  var THEMES = {
+    night:    { bg: '#0f1115', fg: '#d6d8de', head: '#ffffff', accent: '#8ab4f8', code: '#1b1e25', line: '#2c303a' },
+    paper:    { bg: '#f4ecd8', fg: '#3b3125', head: '#24190f', accent: '#9a5b20', code: '#ebe0c4', line: '#d6c7a3' },
+    forest:   { bg: '#13201a', fg: '#cfe3d4', head: '#effaf1', accent: '#7fd1a0', code: '#1b2b22', line: '#2c4236' },
+    ocean:    { bg: '#0d1a2b', fg: '#cfe0f5', head: '#eef5ff', accent: '#7cc4ff', code: '#15263d', line: '#253b58' },
+    sunset:   { bg: '#2b1a22', fg: '#f4dad3', head: '#fff1ec', accent: '#ffab91', code: '#3a2430', line: '#4c3142' },
+    mint:     { bg: '#eef7f3', fg: '#20352b', head: '#0f2419', accent: '#16865a', code: '#dcefe5', line: '#c2dfd1' },
+    contrast: { bg: '#000000', fg: '#ffff00', head: '#ffffff', accent: '#00ffff', code: '#141414', line: '#777777' }
+  };
+  var FONTS = {
+    gothic: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif',
+    serif: '"Noto Serif KR","Noto Serif CJK KR","Nanum Myeongjo","Batang","바탕","AppleMyungjo",serif'
+  };
+  var BLOCKS = 'p,h1,h2,h3,h4,h5,h6,pre,blockquote,td,th,li';
+  var viewSheet = null, viewStyleEl = null, caretEl = null, curBlock = null;
+
+  // 보기 설정을 CSS로 만들어 문서에 붙임 (CSSOM이라 페이지 보안 정책에 막히지 않음)
+  function viewCss() {
+    var S = '#__srr', css = [];
+    var t = THEMES[view.theme];
+    if (t) {
+      css.push(S + '{background:' + t.bg + '!important;color:' + t.fg + '!important}');
+      css.push(S + ' *:not(canvas){color:inherit!important;border-color:' + t.line + '!important}');
+      css.push(S + ' :is(h1,h2,h3,h4,h5,h6,strong,b,th){color:' + t.head + '!important}');
+      css.push(S + ' a{color:' + t.accent + '!important}');
+      css.push(S + ' :is(pre,code,pre *){background-color:' + t.code + '!important}');
+      css.push(S + ' :is(div,section,article,table,tr,td,th,ul,ol,li,p,blockquote):not(.__srr_caret){background-color:transparent!important}');
+    }
+    css.push(S + ' > :not(canvas):not(.__srr_caret){zoom:' + view.scale + ';max-width:min(100%,' + view.width + 'px)!important}');
+    if (view.lh > 0) css.push(S + ' *:not(canvas){line-height:' + view.lh + '!important}');
+    if (FONTS[view.font]) css.push(S + ' *:not(canvas):not(pre):not(code):not(pre *){font-family:' + FONTS[view.font] + '!important}');
+    // 안쪽 문단만 흐리게 (목록 안 문단처럼 겹치면 두 번 흐려지지 않게)
+    css.push(S + '[data-srr-focus]:not([data-srr-done]) :is(' + BLOCKS + '):not(:has(' + BLOCKS + ')):not([data-srr-cur]){opacity:.3}');
+    css.push(S + ' :is(' + BLOCKS + '){transition:opacity .35s}');
+    css.push('.__srr_caret{position:absolute;width:2px;border-radius:1px;z-index:2;pointer-events:none;' +
+      'background:' + (t ? t.accent : 'currentColor') + '!important;animation:__srr_blink 1s steps(1) infinite}');
+    css.push('@keyframes __srr_blink{50%{opacity:0}}');
+    return css.join('\n');
+  }
+  function applyView() {
+    var css = viewCss();
+    try {
+      if (!viewSheet) {
+        viewSheet = new CSSStyleSheet();
+        document.adoptedStyleSheets = document.adoptedStyleSheets.concat([viewSheet]);
+      }
+      viewSheet.replaceSync(css);
+    } catch (e) {  // 오래된 브라우저: <style>로
+      if (!viewStyleEl) {
+        viewStyleEl = document.createElement('style');
+        document.head.appendChild(viewStyleEl);
+      }
+      viewStyleEl.textContent = css;
+    }
+    if (box) {
+      if (view.focus) box.setAttribute('data-srr-focus', ''); else box.removeAttribute('data-srr-focus');
+      if (rain) { stopRain(); startRain(); }  // 화면 색이 바뀌면 빗줄기 색도 다시
+      updateCaret();
+      if (follow && ci < texts.length) scrollTo(texts[ci].node);
+    }
+    if (snd) snd.master.gain.setTargetAtTime(view.volume, snd.ctx.currentTime, 0.1);
+  }
+  function setView(v) {
+    for (var k in v) if (k in view) view[k] = v[k];
+    view.scale = Math.min(2.2, Math.max(0.7, +view.scale || 1));
+    view.volume = Math.min(1.5, Math.max(0, +view.volume));
+    applyView();
+  }
+
+  // 지금 나오는 글자 자리에 깜빡이는 커서
+  function updateCaret() {
+    if (!box) return;
+    var node = ci < texts.length ? texts[ci].node : null;
+    if (!view.caret || !node || !node.nodeValue || pos >= total) {
+      if (caretEl) caretEl.style.display = 'none';
+      return;
+    }
+    if (!caretEl || caretEl.parentNode !== box) {
+      caretEl = document.createElement('div');
+      caretEl.className = '__srr_caret';
+      box.appendChild(caretEl);
+    }
+    var r = document.createRange();
+    r.selectNodeContents(node);
+    var rects = r.getClientRects();
+    if (!rects.length) { caretEl.style.display = 'none'; return; }
+    var last = rects[rects.length - 1], br = box.getBoundingClientRect();
+    caretEl.style.display = 'block';
+    caretEl.style.left = (last.right - br.left + box.scrollLeft + 1) + 'px';
+    caretEl.style.top = (last.top - br.top + box.scrollTop) + 'px';
+    caretEl.style.height = last.height + 'px';
+  }
+  // 읽는 줄 강조: 지금 나오는 문단 표시
+  function markBlock(node) {
+    var b = node && node.parentElement ? node.parentElement.closest(BLOCKS) : null;
+    if (b && !box.contains(b)) b = null;
+    if (b === curBlock) return;
+    if (curBlock) curBlock.removeAttribute('data-srr-cur');
+    curBlock = b;
+    if (b) b.setAttribute('data-srr-cur', '');
+  }
 
   // 답변 내용으로 이름표를 만듦 (같은 답변이면 앱을 다시 켜도 같은 이름표)
   function keyOf(sel) {
@@ -225,7 +329,10 @@
     }
     pos = 0; ci = 0; ei = 0;
     follow = true;
+    curBlock = null;
+    caretEl = null;
     document.body.appendChild(box);
+    applyView();
     if (rainOn) startRain();
     updateSound();
     report(true);
@@ -551,7 +658,7 @@
       for (var i = 0; i < n; i++) plink(now + 0.05 + Math.random() * 0.04);
     }, 40);
 
-    master.gain.setTargetAtTime(0.9, ctx.currentTime, 0.5);  // 천천히 커지며 시작
+    master.gain.setTargetAtTime(view.volume, ctx.currentTime, 0.5);  // 천천히 커지며 시작
     if (ctx.state === 'suspended') ctx.resume();
     snd = { ctx: ctx, master: master, timer: timer };
   }
@@ -594,11 +701,16 @@
       var code = t.full.charCodeAt(cut - 1);
       if (code >= 0xD800 && code <= 0xDBFF) cut++;
       t.node.nodeValue = t.full.slice(0, cut);
+      if (/\S/.test(t.full)) markBlock(t.node);
       if (follow) scrollTo(t.node);
     } else {
       revealElements(Infinity);
       if (follow && texts.length) scrollTo(texts[texts.length - 1].node);
     }
+    if (box) {
+      if (pos >= total) box.setAttribute('data-srr-done', ''); else box.removeAttribute('data-srr-done');
+    }
+    updateCaret();
   }
 
   function scrollTo(node) {
@@ -636,6 +748,7 @@
     var state = !box ? 'closed' : (pos >= total ? 'done' : (playing ? 'playing' : 'paused'));
     var pct = total ? Math.round(pos * 100 / total) : 100;
     try { bridge().onState(state, pct); } catch (e) {}
+    try { if (bridge().onTime) bridge().onTime(Math.ceil(Math.max(0, total - pos) / Math.max(1, speed))); } catch (e) {}
     save(false);
   }
 
@@ -673,7 +786,10 @@
     report(true);
     save(true);
   }
-  function setSpeed(v) { speed = Math.max(1, +v || 25); }
+  function setSpeed(v) {
+    speed = Math.max(1, +v || 25);
+    if (box) report(true);
+  }
   function close(silent) {
     stopLoop();
     save(true);
@@ -688,6 +804,7 @@
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,
     play: play, pause: pause, toggle: toggle, restart: restart, finish: finish,
     setSpeed: setSpeed, setRain: setRain, setSound: setSound, holdSound: holdSound,
+    setView: setView, getView: function () { return JSON.stringify(view); },
     soundPlaying: function () { return !!snd; },
     close: function () { close(false); }
   };

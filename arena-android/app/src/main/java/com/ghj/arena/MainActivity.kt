@@ -137,6 +137,8 @@ class MainActivity : AppCompatActivity() {
     private var srrSpeed = 25
     private var srrRain = false
     private var srrRainSound = true
+    private lateinit var srrViewSheet: SrrViewSheet
+    private lateinit var srrTime: TextView
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
     private var lockedModel: String? = null
@@ -535,6 +537,13 @@ class MainActivity : AppCompatActivity() {
         }
         srrBar.findViewById<View>(R.id.srrClose).setOnClickListener { closeSrr() }
 
+        // 보기 설정 (화면 색, 글자 크기, 줄 간격, 글꼴, 읽는 줄 강조, 커서, 빗소리 크기)
+        srrTime = srrBar.findViewById(R.id.srrTime)
+        srrViewSheet = SrrViewSheet(this, prefs) { json ->
+            webView.evaluateJavascript("window.__srr && __srr.setView($json)", null)
+        }
+        srrBar.findViewById<View>(R.id.srrView).setOnClickListener { srrViewSheet.show(srrRain && srrRainSound) }
+
         webView.addJavascriptInterface(SrrBridge(), "ArenaSrr")
         webView.addJavascriptInterface(LockBridge(), "ArenaLock")
     }
@@ -579,6 +588,18 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun clearProgress(key: String) {
             savedSpots.edit().remove(key).apply()
+        }
+
+        /** 지금 속도로 끝까지 남은 시간(초) */
+        @JavascriptInterface
+        fun onTime(seconds: Int) {
+            runOnUiThread {
+                srrTime.text = when {
+                    seconds <= 0 -> "다 봤어요"
+                    seconds < 60 -> "약 ${seconds}초 남음"
+                    else -> "약 ${seconds / 60}분 ${seconds % 60}초 남음"
+                }
+            }
         }
 
         @JavascriptInterface
@@ -633,7 +654,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSrr(indices: String) {
-        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setSound($srrRainSound); __srr.setRain($srrRain); __srr.start($indices)") { result ->
+        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setView(${srrViewSheet.current()}); __srr.setSound($srrRainSound); __srr.setRain($srrRain); __srr.start($indices)") { result ->
             val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
             if (result?.contains("ok") == true || resumed != null) {
                 if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")

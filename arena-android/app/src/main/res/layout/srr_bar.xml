@@ -81,6 +81,16 @@
                 android:minHeight="40dp"
                 android:text="빗소리"
                 android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <TextView
+                android:id="@+id/srrTime"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?android:attr/textColorSecondary" />
         </LinearLayout>
 
         <LinearLayout
@@ -107,6 +117,15 @@
                 android:contentDescription="재생 / 일시정지"
                 app:icon="@drawable/ic_pause"
                 app:iconSize="28dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/srrView"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="24dp"
+                android:contentDescription="보기 설정 (화면 색, 글자 크기 등)"
+                app:icon="@drawable/ic_text" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/srrClose"
