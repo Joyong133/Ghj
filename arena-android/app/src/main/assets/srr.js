@@ -9,7 +9,8 @@
   var REMOVE = 'button, [role="button"], script, input, textarea, select, #__srr';
 
   function bridge() {
-    return window.ArenaSrr || { onState: function () {}, onPicked: function () {} };
+    return window.ArenaSrr ||
+      { onState: function () {}, onPicked: function () {}, onPickedUser: function () {} };
   }
 
   var cands = [];   // 고를 수 있는 답변 요소
@@ -28,7 +29,22 @@
   }
   function textOf(e) { return (e.innerText || e.textContent || '').trim(); }
 
-  // 마지막 답변(대결 모드면 나란히 있는 답변들)을 찾음
+  // 내가 보낸 질문인지 판단.
+  // arena.ai는 질문 줄(ol의 바로 아래 칸)에 justify-end(오른쪽 정렬)가 붙고, 답변 줄에는 없음.
+  function isUserMessage(e) {
+    for (var n = e; n && n !== document.body; n = n.parentElement) {
+      if (n.matches && n.matches('[data-message-author-role="user"], [data-role="user"]')) return true;
+      if (n.matches && n.matches('[data-message-author-role="assistant"], [data-role="assistant"]')) return false;
+      var parent = n.parentElement;
+      if (parent && (parent.tagName === 'OL' || parent.tagName === 'UL')) {
+        return n.classList.contains('justify-end');
+      }
+    }
+    return false;
+  }
+
+  // 가장 최근 AI 답변(대결 모드면 나란히 있는 답변들)을 찾음.
+  // arena.ai의 대화 목록은 최신 글이 DOM 맨 앞에 오므로(flex-col-reverse) 화면 위치로 순서를 정함.
   function find() {
     var all = [].slice.call(document.querySelectorAll(SEL)).filter(function (e) {
       return !e.closest('#__srr') && visible(e) && textOf(e).length > 0;
@@ -36,11 +52,16 @@
     all = all.filter(function (e) {
       return !all.some(function (o) { return o !== e && o.contains(e); });
     });
-    if (!all.length) { cands = []; return '[]'; }
-    var last = all[all.length - 1].getBoundingClientRect();
-    cands = all.filter(function (e) {
-      var r = e.getBoundingClientRect();
-      return Math.abs(r.top - last.top) < 120;
+    var answers = all.filter(function (e) { return !isUserMessage(e); });
+    if (!answers.length) { cands = []; return '[]'; }
+    var latest = answers.reduce(function (a, b) {
+      return b.getBoundingClientRect().top > a.getBoundingClientRect().top ? b : a;
+    });
+    var lt = latest.getBoundingClientRect().top;
+    cands = answers.filter(function (e) {
+      return Math.abs(e.getBoundingClientRect().top - lt) < 120;
+    }).sort(function (a, b) {
+      return a.getBoundingClientRect().left - b.getBoundingClientRect().left;
     });
     return JSON.stringify(cands.map(function (e) {
       return textOf(e).replace(/\s+/g, ' ').slice(0, 80);
@@ -55,7 +76,6 @@
       if (!t || t.closest('#__srr')) return;
       ev.preventDefault();
       ev.stopPropagation();
-      cancelPick();
       var m = t.closest(SEL);
       if (!m) {
         m = t;
@@ -63,6 +83,12 @@
           m = m.parentElement;
         }
       }
+      // 내 질문을 누르면 고르지 않고 계속 기다림
+      if (isUserMessage(m)) {
+        try { bridge().onPickedUser(); } catch (e) {}
+        return;
+      }
+      cancelPick();
       cands = [m];
       bridge().onPicked();
     };

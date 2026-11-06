@@ -515,6 +515,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun onPickedUser() {
+            runOnUiThread { toast("내 질문은 스르륵 할 수 없어요. AI 답변을 눌러 주세요") }
+        }
+
+        @JavascriptInterface
         fun onPicked() {
             runOnUiThread {
                 if (!srrPicking) return@runOnUiThread
