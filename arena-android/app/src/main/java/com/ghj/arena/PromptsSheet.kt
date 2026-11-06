@@ -30,6 +30,8 @@ class PromptsSheet(
     private val store: PromptStore,
     private val onPick: (Prompt) -> Unit,
     private val readInput: ((String?) -> Unit) -> Unit,
+    private val length: LengthSettings,
+    private val onLengthChanged: () -> Unit,
 ) {
     private var dialog: BottomSheetDialog? = null
     private var query = ""
@@ -42,6 +44,30 @@ class PromptsSheet(
         sheet.behavior.skipCollapsed = true
         dialog = sheet
         query = ""
+
+        // 답변 분량: 줄을 누르면 설정, 스위치로 켜고 끄기
+        val lengthSwitch = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.lengthSwitch)
+        val lengthSummary = view.findViewById<TextView>(R.id.lengthSummary)
+        fun showLength() {
+            lengthSwitch.isChecked = length.enabled
+            lengthSummary.text = if (length.enabled) "켜짐 · ${length.summary()} (보낼 때 질문 끝에 붙여요)"
+            else "꺼짐 · 눌러서 분량을 정하세요"
+        }
+        showLength()
+        lengthSwitch.setOnCheckedChangeListener { _, checked ->
+            if (checked == length.enabled) return@setOnCheckedChangeListener
+            length.enabled = checked
+            showLength()
+            onLengthChanged()
+            toast(if (checked) "답변 분량 ${length.summary()}을(를) 켰어요" else "답변 분량을 껐어요")
+        }
+        view.findViewById<View>(R.id.lengthRow).setOnClickListener {
+            length.edit {
+                showLength()
+                onLengthChanged()
+                toast("답변 분량 ${length.summary()}로 정했어요")
+            }
+        }
 
         view.findViewById<View>(R.id.btnNew).setOnClickListener { edit(null, "") }
         view.findViewById<View>(R.id.btnFromInput).setOnClickListener {

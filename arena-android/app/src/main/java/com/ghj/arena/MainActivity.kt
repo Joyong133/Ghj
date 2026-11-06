@@ -139,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     private var lockedModel: String? = null
     private var pendingLock: JSONObject? = null
     private lateinit var promptsSheet: PromptsSheet
+    private lateinit var lengthSettings: LengthSettings
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -368,7 +369,8 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("ClickableViewAccessibility")
     private fun setupFloatingButtons() {
         val store = PromptStore(this)
-        promptsSheet = PromptsSheet(this, store, ::insertPrompt, ::readInput)
+        lengthSettings = LengthSettings(this)
+        promptsSheet = PromptsSheet(this, store, ::insertPrompt, ::readInput, lengthSettings, ::applyLength)
         val prefs = getSharedPreferences("ui", MODE_PRIVATE)
         val bottomMargin = dp(150)
 
@@ -680,6 +682,7 @@ class MainActivity : AppCompatActivity() {
     private fun onMainPageFinished(url: String?) {
         if (url == null || !url.startsWith("https://")) return
         if (!isInAppHost(Uri.parse(url).host)) return
+        if (lengthSettings.enabled) applyLength()
         if (lockedModel == null && pendingLock == null) return
         webView.evaluateJavascript(lockScript) {
             webView.evaluateJavascript("__lock.setModel(${JSONObject.quote(lockedModel ?: "")})", null)
@@ -815,6 +818,19 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    // ---- 답변 분량 ----
+
+    private val lengthScript: String by lazy {
+        assets.open("length.js").bufferedReader().use { it.readText() }
+    }
+
+    /** 페이지에 분량 스크립트를 넣고 지금 설정(켜짐/꺼짐)을 알려 줌 */
+    private fun applyLength() {
+        webView.evaluateJavascript(lengthScript) {
+            webView.evaluateJavascript("__len.set(${lengthSettings.scriptConfig()})", null)
         }
     }
 
