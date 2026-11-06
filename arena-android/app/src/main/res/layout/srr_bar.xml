@@ -62,8 +62,18 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
+
+            <!-- 왼쪽: 비 내리기 체크, 가운데: 버튼들, 오른쪽: 같은 너비의 빈칸 (버튼을 가운데에 두려고) -->
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/srrRain"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="40dp"
+                android:text="비 내리기"
+                android:textAppearance="?attr/textAppearanceLabelLarge" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/srrPick"
@@ -91,6 +101,11 @@
                 android:layout_height="wrap_content"
                 android:contentDescription="스르륵 닫기"
                 app:icon="@drawable/ic_close" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

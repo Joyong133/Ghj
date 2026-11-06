@@ -23,7 +23,8 @@
   var playing = false, follow = true, speed = 25;
   var raf = 0, lastT = 0, lastReport = 0, followTimer = 0;
   var pickHandler = null;
-  var key = '', lastSave = 0;  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
+  var key = '', lastSave = 0;
+  var rainOn = false, rain = null;  // 비 내리기 효과  // 어디까지 봤는지 저장할 때 쓰는 답변 이름표
 
   // 답변 내용으로 이름표를 만듦 (같은 답변이면 앱을 다시 켜도 같은 이름표)
   function keyOf(sel) {
@@ -168,7 +169,8 @@
       if (lastSel.length > 1) {
         var label = document.createElement('div');
         label.textContent = '답변 ' + (i + 1);
-        label.style.cssText = 'font-weight:700;opacity:.6;max-width:820px;margin:' + (i ? '28px' : '0') + ' auto 8px';
+        label.style.cssText = 'font-weight:700;opacity:.6;max-width:820px;margin:' + (i ? '28px' : '0') +
+          ' auto 8px;position:relative;z-index:1';
         box.appendChild(label);
       }
       var clone = orig.cloneNode(true);
@@ -176,6 +178,8 @@
       clone.removeAttribute('id');
       clone.style.maxWidth = 'min(100%, 820px)';
       clone.style.margin = '0 auto';
+      clone.style.position = 'relative';
+      clone.style.zIndex = '1';
       box.appendChild(clone);
     });
 
@@ -221,7 +225,79 @@
     pos = 0; ci = 0; ei = 0;
     follow = true;
     document.body.appendChild(box);
+    if (rainOn) startRain();
     report(true);
+  }
+
+  // ---- 비 내리기 효과: 글 뒤에 캔버스를 깔고 빗줄기를 그림 ----
+  function rainColor() {
+    var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(box).backgroundColor || '');
+    var lum = m ? (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) : 255;
+    return lum < 128 ? { rgb: '174,194,224', k: 1 } : { rgb: '70,95,140', k: 0.75 };
+  }
+  function newDrop(anywhere) {
+    var z = Math.random();  // 0 = 멀리, 1 = 가까이
+    return {
+      x: Math.random() * (rain.w + 160) - 80,
+      y: anywhere ? Math.random() * rain.h : -30 - Math.random() * rain.h * 0.3,
+      len: 10 + z * 20, v: 420 + z * 680, w: 0.6 + z * 1.1, a: (0.18 + z * 0.42) * rain.color.k
+    };
+  }
+  function sizeRain() {
+    if (!rain) return;
+    var dpr = window.devicePixelRatio || 1;
+    rain.w = window.innerWidth;
+    rain.h = window.innerHeight;
+    rain.canvas.width = Math.round(rain.w * dpr);
+    rain.canvas.height = Math.round(rain.h * dpr);
+    rain.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var n = Math.round(Math.min(240, Math.max(60, rain.w * rain.h / 6500)));
+    rain.drops = [];
+    for (var i = 0; i < n; i++) rain.drops.push(newDrop(true));
+  }
+  function rainFrame(t) {
+    if (!rain) return;
+    var dt = rain.last ? Math.min(t - rain.last, 50) / 1000 : 0;
+    rain.last = t;
+    var ctx = rain.ctx, wind = 0.16;
+    ctx.clearRect(0, 0, rain.w, rain.h);
+    ctx.lineCap = 'round';
+    for (var i = 0; i < rain.drops.length; i++) {
+      var d = rain.drops[i];
+      d.y += d.v * dt;
+      d.x += d.v * dt * wind;
+      if (d.y - d.len > rain.h || d.x > rain.w + 80) rain.drops[i] = d = newDrop(false);
+      ctx.strokeStyle = 'rgba(' + rain.color.rgb + ',' + d.a.toFixed(2) + ')';
+      ctx.lineWidth = d.w;
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - d.len * wind, d.y - d.len);
+      ctx.stroke();
+    }
+    rain.raf = requestAnimationFrame(rainFrame);
+  }
+  function startRain() {
+    if (!box || rain) return;
+    var c = document.createElement('canvas');
+    c.id = '__srr_rain';
+    c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0';
+    box.insertBefore(c, box.firstChild);
+    rain = { canvas: c, ctx: c.getContext('2d'), drops: [], raf: 0, last: 0, color: rainColor() };
+    sizeRain();
+    window.addEventListener('resize', sizeRain);
+    rain.raf = requestAnimationFrame(rainFrame);
+  }
+  function stopRain() {
+    if (!rain) return;
+    cancelAnimationFrame(rain.raf);
+    rain.canvas.remove();
+    window.removeEventListener('resize', sizeRain);
+    rain = null;
+  }
+  function setRain(on) {
+    rainOn = !!on;
+    if (!box) return;
+    if (rainOn) startRain(); else stopRain();
   }
 
   function revealElements(upTo) {
@@ -329,6 +405,7 @@
   function close(silent) {
     stopLoop();
     save(true);
+    stopRain();
     if (box) box.remove();
     box = null;
     if (!silent) report(true);
@@ -337,6 +414,6 @@
   window.__srr = {
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,
     play: play, pause: pause, toggle: toggle, restart: restart, finish: finish,
-    setSpeed: setSpeed, close: function () { close(false); }
+    setSpeed: setSpeed, setRain: setRain, close: function () { close(false); }
   };
 })();

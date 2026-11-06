@@ -173,7 +173,11 @@ function setup() {
     .speed { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; font-size: 13px; font-weight: 600; }
     .speed input { flex: 1; accent-color: var(--accent); }
     .speed span:last-child { min-width: 64px; text-align: right; }
-    .ctl { display: flex; justify-content: center; align-items: center; gap: 28px; }
+    .ctl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+    .ctl .btns { display: flex; align-items: center; gap: 28px; }
+    .check { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+      user-select: none; justify-self: start; }
+    .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .ctl .play { width: 50px; height: 50px; background: var(--accent); color: var(--accent-fg); }
     .ctl .play:hover { background: var(--accent); filter: brightness(.94); }
   `;
@@ -451,6 +455,7 @@ function setup() {
   // ---- 스르륵 ----
   let srrActive = false, srrPicking = false;
   let srrSpeed = store.get('srrSpeed', 25);
+  let srrRain = store.get('srrRain', false);
 
   function buildBar() {
     barProg = h('i');
@@ -464,16 +469,25 @@ function setup() {
         store.set('srrSpeed', srrSpeed);
       } });
     barPlay = h('button', { class: 'iconbtn play', title: '재생 / 일시정지 (스페이스)', onclick: () => srr.toggle() }, icon('pause', 28));
+    // 비 내리기 효과 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
+    const rainBox = h('input', { type: 'checkbox', checked: srrRain, onchange: () => {
+      srrRain = rainBox.checked;
+      store.set('srrRain', srrRain);
+      srr.setRain(srrRain);
+    } });
     bar = h('div', { class: 'bar hidden' },
       h('div', { class: 'prog' }, barProg),
       h('div', { class: 'speed' }, h('span', { text: '속도' }), slider, label),
       h('div', { class: 'ctl' },
-        h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
-          closeSrr();
-          startPick('다시 볼 답변을 눌러 주세요');
-        } }, icon('touch', 24)),
-        barPlay,
-        h('button', { class: 'iconbtn', title: '스르륵 닫기 (Esc)', onclick: () => closeSrr() }, icon('close', 24))));
+        h('label', { class: 'check', title: '스르륵 화면에 비가 내리게 해요' }, rainBox, h('span', { text: '비 내리기' })),
+        h('div', { class: 'btns' },
+          h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
+            closeSrr();
+            startPick('다시 볼 답변을 눌러 주세요');
+          } }, icon('touch', 24)),
+          barPlay,
+          h('button', { class: 'iconbtn', title: '스르륵 닫기 (Esc)', onclick: () => closeSrr() }, icon('close', 24))),
+        h('span')));
     root.append(bar);
   }
 
@@ -498,6 +512,7 @@ function setup() {
 
   function beginSrr(indices) {
     srr.setSpeed(srrSpeed);
+    srr.setRain(srrRain);
     const result = srr.start(indices);
     const resumed = /resumed:(\d+)/.exec(result || '');
     if (result === 'ok' || resumed) {

@@ -25,6 +25,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.CompoundButton
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -134,6 +135,7 @@ class MainActivity : AppCompatActivity() {
     private var srrActive = false
     private var srrPicking = false
     private var srrSpeed = 25
+    private var srrRain = false
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
     private var lockedModel: String? = null
@@ -503,6 +505,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         srrPlay.setOnClickListener { webView.evaluateJavascript("window.__srr && __srr.toggle()", null) }
+
+        // 비 내리기 효과 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
+        srrRain = prefs.getBoolean("srrRain", false)
+        srrBar.findViewById<CompoundButton>(R.id.srrRain).apply {
+            isChecked = srrRain
+            setOnCheckedChangeListener { _, checked ->
+                srrRain = checked
+                prefs.edit().putBoolean("srrRain", checked).apply()
+                webView.evaluateJavascript("window.__srr && __srr.setRain($checked)", null)
+            }
+        }
         srrBar.findViewById<View>(R.id.srrPick).setOnClickListener {
             closeSrr()
             startPick("다시 볼 답변을 눌러 주세요")
@@ -607,7 +620,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSrr(indices: String) {
-        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.start($indices)") { result ->
+        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setRain($srrRain); __srr.start($indices)") { result ->
             val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
             if (result?.contains("ok") == true || resumed != null) {
                 if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")
