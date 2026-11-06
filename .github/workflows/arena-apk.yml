@@ -1,0 +1,91 @@
+name: Arena APK 빌드
+
+on:
+  push:
+    paths:
+      - "arena-android/**"
+      - ".github/workflows/arena-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: arena-android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # 같은 서명 키를 계속 써야 앱을 지우지 않고 업데이트할 수 있습니다.
+      # ARENA_KEYSTORE_BASE64 Secret이 있으면 그 키를, 없으면 캐시에 보관한 키를 씁니다.
+      - name: 서명 키 캐시
+        uses: actions/cache@v4
+        with:
+          path: arena-android/app/arena.keystore
+          key: arena-android-keystore-v1
+
+      - name: 서명 키 준비
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ARENA_KEYSTORE_BASE64 }}
+          ARENA_KEYSTORE_PASSWORD: ${{ secrets.ARENA_KEYSTORE_PASSWORD || 'android' }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/arena.keystore
+            echo "Secret의 서명 키를 사용합니다."
+          elif [ -f app/arena.keystore ]; then
+            echo "캐시에 보관된 서명 키를 사용합니다."
+          else
+            keytool -genkeypair -keystore app/arena.keystore -storetype PKCS12 \
+              -alias arena -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$ARENA_KEYSTORE_PASSWORD" -keypass "$ARENA_KEYSTORE_PASSWORD" \
+              -dname "CN=Arena"
+            echo "새 서명 키를 만들었습니다."
+          fi
+
+      - name: APK 빌드
+        env:
+          ARENA_KEYSTORE_PASSWORD: ${{ secrets.ARENA_KEYSTORE_PASSWORD || 'android' }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ../Arena.apk
+
+      - name: 빌드 결과 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arena-APK
+          path: Arena.apk
+
+      - name: 릴리스에 APK 올리기 (휴대폰에서 바로 다운로드)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: arena-android-v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Arena 앱 v1.0.${{ github.run_number }}
+          make_latest: false
+          files: Arena.apk
+          body: |
+            휴대폰에서 아래 **Arena.apk** 를 눌러 받은 뒤 설치하세요.
+            (처음 설치할 때 "출처를 알 수 없는 앱 설치"를 허용해야 해요.)
+
+      - name: 고정 링크용 릴리스 갱신 (항상 최신 APK)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: arena-android-latest
+          name: Arena 앱 (항상 최신)
+          make_latest: false
+          overwrite_files: true
+          files: Arena.apk
+          body: |
+            이 링크는 항상 최신 Arena APK를 받습니다:
+            https://github.com/Joyong133/Ghj/releases/download/arena-android-latest/Arena.apk
