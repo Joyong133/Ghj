@@ -95,7 +95,7 @@
     cancelPick();
     pickHandler = function (ev) {
       var t = ev.target && ev.target.nodeType === 1 ? ev.target : ev.target.parentElement;
-      if (!t || t.closest('#__srr')) return;
+      if (!t || t.closest('#__srr') || t.closest('[data-arena-ui]')) return;
       ev.preventDefault();
       ev.stopPropagation();
       var m = t.closest(SEL);
@@ -168,14 +168,14 @@
       if (lastSel.length > 1) {
         var label = document.createElement('div');
         label.textContent = '답변 ' + (i + 1);
-        label.style.cssText = 'font-weight:700;opacity:.6;margin:' + (i ? '28px' : '0') + ' 0 8px';
+        label.style.cssText = 'font-weight:700;opacity:.6;max-width:820px;margin:' + (i ? '28px' : '0') + ' auto 8px';
         box.appendChild(label);
       }
       var clone = orig.cloneNode(true);
       [].slice.call(clone.querySelectorAll(REMOVE)).forEach(function (n) { n.remove(); });
       clone.removeAttribute('id');
-      clone.style.maxWidth = '100%';
-      clone.style.margin = '0';
+      clone.style.maxWidth = 'min(100%, 820px)';
+      clone.style.margin = '0 auto';
       box.appendChild(clone);
     });
 
@@ -228,7 +228,7 @@
     while (ei < els.length && els[ei].at <= upTo) {
       var e = els[ei++];
       if (e.style === null) e.el.removeAttribute('style');
-      else e.el.setAttribute('style', e.style);
+      else e.el.style.cssText = e.style;
     }
   }
 

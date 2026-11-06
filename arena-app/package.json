@@ -2,15 +2,18 @@
   "name": "arena-app",
   "productName": "Arena",
   "version": "1.0.0",
-  "description": "arena.ai를 브라우저 없이 바로 여는 데스크톱 앱",
+  "description": "arena.ai를 브라우저 없이 바로 여는 데스크톱 앱 (저장한 프롬프트, 답변 분량, 스르륵, 고정 모드)",
   "main": "main.js",
   "private": true,
   "scripts": {
+    "sync-web": "node scripts/sync-web.js",
+    "prestart": "node scripts/sync-web.js",
     "start": "electron .",
+    "predist": "node scripts/sync-web.js",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:win": "node scripts/sync-web.js && electron-builder --win",
+    "dist:mac": "node scripts/sync-web.js && electron-builder --mac",
+    "dist:linux": "node scripts/sync-web.js && electron-builder --linux"
   },
   "devDependencies": {
     "electron": "^45.2.3",
@@ -19,9 +22,23 @@
   "build": {
     "appId": "com.joyong133.arena",
     "productName": "Arena",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "offline.html", "build/icon.png"],
-    "win": { "target": ["nsis", "portable"] },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "offline.html",
+      "web/**",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -30,8 +47,24 @@
       "shortcutName": "Arena",
       "artifactName": "Arena-Setup-${version}.${ext}"
     },
-    "portable": { "artifactName": "Arena-Portable-${version}.${ext}" },
-    "mac": { "target": ["dmg"], "category": "public.app-category.productivity", "artifactName": "Arena-${version}-${arch}.${ext}" },
-    "linux": { "target": ["AppImage", "deb"], "category": "Network", "maintainer": "joyong133", "artifactName": "Arena-${version}.${ext}" }
+    "portable": {
+      "artifactName": "Arena-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "Arena-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network",
+      "maintainer": "joyong133",
+      "artifactName": "Arena-${version}.${ext}"
+    }
   }
 }

@@ -1,0 +1,80 @@
+name: Arena 윈도우 앱 빌드
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "arena-app/**"
+      - "arena-android/app/src/main/assets/**"
+      - ".github/workflows/arena-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: arena-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: arena-app/package-lock.json
+
+      - run: npm ci
+
+      - name: 버전 정하기 (빌드할 때마다 올라감)
+        run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version --allow-same-version
+
+      - name: 설치 파일 만들기
+        run: |
+          npm run sync-web
+          npx electron-builder --win --publish never
+          cp dist/Arena-Setup-*.exe ../Arena-Setup.exe
+          cp dist/Arena-Portable-*.exe ../Arena-Portable.exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: 빌드 결과 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arena-Windows
+          path: |
+            Arena-Setup.exe
+            Arena-Portable.exe
+
+      - name: 릴리스에 올리기
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: arena-windows-v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Arena 윈도우 앱 v1.0.${{ github.run_number }}
+          make_latest: false
+          files: |
+            Arena-Setup.exe
+            Arena-Portable.exe
+          body: |
+            - **Arena-Setup.exe**: 설치형 (바탕화면·시작 메뉴 바로가기 생성)
+            - **Arena-Portable.exe**: 설치 없이 바로 실행
+
+      - name: 고정 링크용 릴리스 갱신 (항상 최신)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: arena-windows-latest
+          name: Arena 윈도우 앱 (항상 최신)
+          make_latest: false
+          overwrite_files: true
+          files: |
+            Arena-Setup.exe
+            Arena-Portable.exe
+          body: |
+            항상 최신 윈도우 앱을 받는 링크:
+            - 설치형: https://github.com/Joyong133/Ghj/releases/download/arena-windows-latest/Arena-Setup.exe
+            - 설치 없이 실행: https://github.com/Joyong133/Ghj/releases/download/arena-windows-latest/Arena-Portable.exe

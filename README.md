@@ -19,8 +19,9 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 ## Arena 데스크톱 앱
 
-[arena.ai](https://arena.ai)를 브라우저 없이 앱으로 여는 데스크톱 앱이 [`arena-app/`](arena-app/) 폴더에 있습니다.
-설치 방법은 [arena-app/README.md](arena-app/README.md)를 보세요.
+[arena.ai](https://arena.ai)를 브라우저 없이 앱으로 여는 윈도우 앱이 [`arena-app/`](arena-app/) 폴더에 있습니다.
+[설치 파일 받기](https://github.com/Joyong133/Ghj/releases/download/arena-windows-latest/Arena-Setup.exe) ·
+자세한 내용은 [arena-app/README.md](arena-app/README.md)를 보세요.
 
 안드로이드 앱(APK)은 [`arena-android/`](arena-android/) 폴더에 있습니다. 휴대폰에서
 [이 링크](https://github.com/Joyong133/Ghj/releases/download/arena-android-latest/Arena.apk)로 최신 APK를 받을 수 있습니다.

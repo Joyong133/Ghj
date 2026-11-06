@@ -1,5 +1,5 @@
 // arena.ai를 브라우저 없이 독립된 창으로 여는 데스크톱 앱
-const { app, BrowserWindow, Menu, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, shell, session, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -36,6 +36,48 @@ function openExternal(url) {
     /* 잘못된 주소는 무시 */
   }
 }
+
+// ---- 앱 데이터 저장 (프롬프트, 스르륵 위치, 설정) ----
+const dataFile = () => path.join(app.getPath('userData'), 'arena-data.json');
+let data = null;
+let saveTimer = null;
+
+function loadData() {
+  if (data) return data;
+  try {
+    data = JSON.parse(fs.readFileSync(dataFile(), 'utf8'));
+  } catch {
+    data = {};
+  }
+  return data;
+}
+
+function saveDataSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDataNow, 300);
+}
+
+function saveDataNow() {
+  clearTimeout(saveTimer);
+  if (!data) return;
+  try {
+    const tmp = dataFile() + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data));
+    fs.renameSync(tmp, dataFile());
+  } catch {
+    /* 저장 실패는 무시 */
+  }
+}
+
+ipcMain.on('store-get', (event, key) => {
+  event.returnValue = loadData()[key] ?? null;
+});
+ipcMain.on('store-set', (event, key, value) => {
+  loadData()[key] = value;
+  saveDataSoon();
+  event.returnValue = true;
+});
+ipcMain.on('copy-text', (_event, text) => clipboard.writeText(String(text)));
 
 // ---- 창 크기·위치 기억 ----
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
@@ -90,6 +132,15 @@ function buildMenu(getWin) {
       ],
     },
     {
+      label: '도구',
+      submenu: [
+        { label: '저장한 프롬프트', accelerator: 'CmdOrCtrl+P', click: () => uiAction('prompts') },
+        { label: '답변 분량 정하기', click: () => uiAction('length') },
+        { label: '스르륵 (답변 다시 보기)', accelerator: 'CmdOrCtrl+J', click: () => uiAction('srr') },
+        { label: '고정 모드', accelerator: 'CmdOrCtrl+L', click: () => uiAction('lock') },
+      ],
+    },
+    {
       label: '편집',
       submenu: [
         { label: '실행 취소', role: 'undo' },
@@ -115,6 +166,11 @@ function buildMenu(getWin) {
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
+  function uiAction(name) {
+    const w = mainWindow;
+    if (w) w.webContents.send('ui-action', name);
+  }
 }
 
 // ---- 창 만들기 ----
@@ -135,9 +191,11 @@ function createWindow() {
     autoHideMenuBar: true, // Alt 키를 누르면 메뉴가 보입니다
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
+      // preload.js가 arena.ai 위에 앱 기능을 얹음 (페이지와 분리된 공간에서 실행)
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
       spellcheck: true,
     },
   });
@@ -216,6 +274,8 @@ if (!app.requestSingleInstanceLock()) {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
+
+  app.on('before-quit', saveDataNow);
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

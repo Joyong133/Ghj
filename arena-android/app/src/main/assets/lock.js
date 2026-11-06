@@ -93,15 +93,14 @@
     return !!name && !/^(assistant|model|모델|어시스턴트|응답|answer)\s*[ab12]?$|^[ab]$/i.test(name.trim());
   }
 
+  // 지금 화면이 배틀(비교) 화면인지, 다이렉트 화면인지
   function pageKind() {
     var p = location.pathname, label = modeLabel();
     if (/^\/text\/(battle|side-by-side|arena)/.test(p)) return 'battle';
     if (/^\/text\/direct/.test(p)) return 'direct';
-    if (/^\/c\//.test(p)) {
-      if (/direct/i.test(label)) return 'direct';
-      if (/battle|side|배틀/i.test(label)) return 'battle';
-      return modelButton() ? 'direct' : 'battle';
-    }
+    if (/direct/i.test(label)) return 'direct';
+    if (/battle|side|배틀|비교/i.test(label)) return 'battle';
+    if (p === '/' || /^\/c\//.test(p) || /^\/text\//.test(p)) return modelButton() ? 'direct' : 'battle';
     return 'other';
   }
 
