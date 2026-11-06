@@ -1,0 +1,37 @@
+{
+  "name": "arena-app",
+  "productName": "Arena",
+  "version": "1.0.0",
+  "description": "arena.ai를 브라우저 없이 바로 여는 데스크톱 앱",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.joyong133.arena",
+    "productName": "Arena",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "offline.html", "build/icon.png"],
+    "win": { "target": ["nsis", "portable"] },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Arena",
+      "artifactName": "Arena-Setup-${version}.${ext}"
+    },
+    "portable": { "artifactName": "Arena-Portable-${version}.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.productivity", "artifactName": "Arena-${version}-${arch}.${ext}" },
+    "linux": { "target": ["AppImage", "deb"], "category": "Network", "maintainer": "joyong133", "artifactName": "Arena-${version}.${ext}" }
+  }
+}

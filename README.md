@@ -16,3 +16,8 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 영양 수치는 100ml당 근삿값(열량 43kcal, 당류 10.8g, 카페인 9.6mg)으로 계산합니다.
 실제 값은 나라와 제품마다 다릅니다.
+
+## Arena 데스크톱 앱
+
+[arena.ai](https://arena.ai)를 브라우저 없이 앱으로 여는 데스크톱 앱이 [`arena-app/`](arena-app/) 폴더에 있습니다.
+설치 방법은 [arena-app/README.md](arena-app/README.md)를 보세요.
