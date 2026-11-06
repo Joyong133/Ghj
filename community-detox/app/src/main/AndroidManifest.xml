@@ -10,6 +10,8 @@
     <!-- In-app update: install the newer version of this app directly (Android asks the first time). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- Opens the "remove app?" screen when a blocked community app gets installed. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!-- Lets the app list installed apps (for the app picker) and find installed browsers. -->
     <queries>
@@ -51,13 +53,6 @@
             android:name=".BlockListActivity"
             android:exported="false"
             android:label="차단 목록"
-            android:parentActivityName=".MainActivity"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name=".StoreSearchActivity"
-            android:exported="false"
-            android:label="플레이스토어 검색 막기"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
 

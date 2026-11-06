@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
         }
         controlCard();
         blockListCard();
-        storeSearchCard();
+        installBlockCard();
         focusCard();
         protectCard();
         inAppCard();
@@ -676,14 +676,31 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ block list (summary; the list has its own screen)
 
-    private void storeSearchCard() {
-        boolean on = Prefs.isStoreSearchOn(this);
+    private void installBlockCard() {
+        boolean locked = Prefs.isLocked(this);
+        boolean on = Prefs.isInstallBlockOn(this);
         LinearLayout c = ui.card();
-        c.addView(ui.title("🔍 플레이스토어 검색 막기"));
-        c.addView(ui.body(on ? "✅ 켜짐 · 커뮤니티 " + Prefs.storeSelected(this).size() + "곳 + 직접 넣은 단어 "
-                + Prefs.storeWords(this).size() + "개를 검색할 수 없어요" : "꺼져 있어요"));
-        c.addView(ui.button("설정", false, v -> startActivity(new Intent(this, StoreSearchActivity.class))),
-                Ui.fill(ui.dp(10)));
+        LinearLayout r = ui.row();
+        LinearLayout texts = ui.column();
+        texts.addView(ui.text("📵 커뮤니티 앱 설치 막기", 16, ui.text, true));
+        texts.addView(ui.text(on ? "✅ 차단 목록의 커뮤니티 앱을 설치할 수 없어요" : "꺼져 있어요", 12, ui.sub, false));
+        r.addView(texts, Ui.weight(0));
+        Switch sw = new Switch(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on)); // during a focus lock it can be turned on, not off
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            Prefs.setInstallBlockOn(this, checked);
+            render();
+        });
+        r.addView(sw);
+        c.addView(r);
+        c.addView(ui.body("플레이스토어·갤럭시 스토어·원스토어에서 커뮤니티 앱의 설치 화면이 열리면 바로 닫아요. "
+                + "APK 파일 등 다른 방법으로 설치돼도 곧바로 삭제 화면을 띄워요."), Ui.wrap(ui.dp(8)));
         content.addView(c);
     }
 

@@ -69,6 +69,13 @@ public class DetoxAccessibilityService extends AccessibilityService {
         Prefs.sp(this).registerOnSharedPreferenceChangeListener(prefsListener);
         loadBrowsers();
         keepVpnAlive();
+        android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_PACKAGE_ADDED);
+        f.addDataScheme("package");
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(packageAdded, f, RECEIVER_NOT_EXPORTED);
+            else registerReceiver(packageAdded, f);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     private long lastVpnCheck;
@@ -83,6 +90,10 @@ public class DetoxAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        try {
+            unregisterReceiver(packageAdded);
+        } catch (RuntimeException ignored) {
+        }
         Prefs.sp(this).unregisterOnSharedPreferenceChangeListener(prefsListener);
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -119,14 +130,11 @@ public class DetoxAccessibilityService extends AccessibilityService {
             lastClassByPkg.put(pkg, event.getClassName().toString());
         }
 
-        // 1a) App store search: the chosen communities' names can't be searched.
+        // 1a) App stores: a community app's install page is closed.
         if (STORES.contains(pkg)) {
-            if (!r.storeKeywords.isEmpty()) checkStoreSearch(event, pkg, r);
+            if (!r.storeKeywords.isEmpty()) checkStoreInstall(event, pkg, r);
             return;
         }
-
-        // Typing events are only needed for app stores (above) and browser address bars.
-        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED && !isBrowser(pkg)) return;
 
         // 1b) A blocked screen inside an allowed app (Toss: only the securities part).
         if (AppScreens.TOSS.equals(pkg) && Prefs.isTossInvestBlocked(this)) {
@@ -205,26 +213,16 @@ public class DetoxAccessibilityService extends AccessibilityService {
         return null;
     }
 
-    // ------------------------------------------------------------------ app store search
+    // ------------------------------------------------------------------ community app installs
 
     /** Play Store, Galaxy Store, ONE store. */
     static final Set<String> STORES = new HashSet<>(Arrays.asList(
             "com.android.vending", "com.sec.android.app.samsungapps", "com.skt.skaf.A000Z00040"));
 
     private long lastStoreCheck;
-    private long lastStoreNotice;
 
-    private void checkStoreSearch(AccessibilityEvent event, String pkg, Prefs.Rules r) {
-        // Typing: the event carries the new text and the field itself.
-        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
-            String hit = StoreSearch.match(joined(event.getText()), r.storeKeywords);
-            if (hit != null) {
-                AccessibilityNodeInfo field = event.getSource();
-                if (field == null || !clearText(field)) performGlobalAction(GLOBAL_ACTION_BACK);
-                storeNotice(hit);
-            }
-            return;
-        }
+    /** Closes a store page that offers to install a blocked community app. */
+    private void checkStoreInstall(AccessibilityEvent event, String pkg, Prefs.Rules r) {
         long now = SystemClock.uptimeMillis();
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && now - lastStoreCheck < CHECK_INTERVAL_MS) {
             return;
@@ -232,57 +230,32 @@ public class DetoxAccessibilityService extends AccessibilityService {
         lastStoreCheck = now;
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null || !pkg.equals(root.getPackageName().toString())) return;
+        String name = StoreSearch.matchAppPage(screenTexts(root, 0.45f), r.storeKeywords);
+        if (name != null) block("install:" + name, name, true); // BACK leaves the app's page
+    }
 
-        // The search box (editable), or the search bar at the very top of a results screen.
-        int topLimit = (int) (getResources().getDisplayMetrics().heightPixels * 0.12f);
-        android.graphics.Rect b = new android.graphics.Rect();
-        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
-        queue.add(root);
-        int visited = 0;
-        while (!queue.isEmpty() && visited < 500) {
-            AccessibilityNodeInfo n = queue.poll();
-            visited++;
-            CharSequence text = n.getText();
-            if (text != null && text.length() > 0) {
-                n.getBoundsInScreen(b);
-                boolean searchBox = n.isEditable();
-                if (searchBox || b.top < topLimit) {
-                    String hit = StoreSearch.match(text, r.storeKeywords);
-                    if (hit != null) {
-                        boolean typing = searchBox && n.isFocused();
-                        if (searchBox) clearText(n);
-                        if (!typing) performGlobalAction(GLOBAL_ACTION_BACK); // leave the results screen
-                        storeNotice(hit);
-                        return;
-                    }
-                }
+    /** Fresh installs from anywhere (APK files, other stores): ask to remove a blocked community app. */
+    private final android.content.BroadcastReceiver packageAdded = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context context, Intent intent) {
+            if (intent.getData() == null || intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
+            String added = intent.getData().getSchemeSpecificPart();
+            Prefs.Rules r = rules;
+            if (added == null || !Prefs.isInstallBlockOn(context) || !Prefs.isBlockingActive(context)
+                    || !r.packages.containsKey(added)) {
+                return;
             }
-            for (int i = 0; i < n.getChildCount(); i++) {
-                AccessibilityNodeInfo child = n.getChild(i);
-                if (child != null) queue.add(child);
+            String name = r.packages.get(added);
+            Prefs.recordBlock(context);
+            android.widget.Toast.makeText(context, Ui.topic(name != null ? name : appLabel(added))
+                    + " 설치할 수 없어요. 삭제 화면을 열게요 🌿", android.widget.Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + added))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException ignored) {
             }
         }
-    }
-
-    private static String joined(List<CharSequence> parts) {
-        StringBuilder sb = new StringBuilder();
-        if (parts != null) for (CharSequence p : parts) if (p != null) sb.append(p).append(' ');
-        return sb.toString();
-    }
-
-    private static boolean clearText(AccessibilityNodeInfo field) {
-        android.os.Bundle args = new android.os.Bundle();
-        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
-        return field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
-    }
-
-    private void storeNotice(String word) {
-        long now = SystemClock.uptimeMillis();
-        if (now - lastStoreNotice < 2500) return;
-        lastStoreNotice = now;
-        Prefs.recordBlock(this);
-        android.widget.Toast.makeText(this, "‘" + word + "’은(는) 검색할 수 없어요 🌿 디톡스 중이에요", android.widget.Toast.LENGTH_SHORT).show();
-    }
+    };
 
     // ------------------------------------------------------------------ screens inside apps
 
@@ -306,8 +279,12 @@ public class DetoxAccessibilityService extends AccessibilityService {
 
     /** Every text on screen with whether it is selected and whether it sits in the title or tab bar. */
     private List<AppScreens.ScreenText> screenTexts(AccessibilityNodeInfo root) {
+        return screenTexts(root, 0.18f);
+    }
+
+    private List<AppScreens.ScreenText> screenTexts(AccessibilityNodeInfo root, float topFraction) {
         int h = getResources().getDisplayMetrics().heightPixels;
-        int topLimit = (int) (h * 0.18f), bottomLimit = (int) (h * 0.85f);
+        int topLimit = (int) (h * topFraction), bottomLimit = (int) (h * 0.85f);
         List<AppScreens.ScreenText> out = new java.util.ArrayList<>();
         android.graphics.Rect b = new android.graphics.Rect();
         ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
