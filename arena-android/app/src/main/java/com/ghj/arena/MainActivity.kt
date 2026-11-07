@@ -37,6 +37,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.button.MaterialButton
@@ -850,6 +853,25 @@ class MainActivity : AppCompatActivity() {
         updateGuard()
     }
 
+    /**
+     * 원앱 집중 중에는 아래쪽 버튼 줄(뒤로·홈·최근 앱)을 숨김.
+     * 화면 아래 끝을 쓸어 올리면 잠깐 나오지만(안드로이드가 막을 수 없음), 눌러도 접근성 잠금이 바로 되돌려 놓음.
+     */
+    private fun applyFocusImmersive() {
+        val ctl = WindowCompat.getInsetsController(window, window.decorView)
+        if (LockGuardService.guardActive) {
+            ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            ctl.hide(WindowInsetsCompat.Type.navigationBars())
+        } else {
+            ctl.show(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyFocusImmersive()  // 다른 화면에서 돌아오면 다시 숨김
+    }
+
     /** 전화·문자·카카오톡 열기 (5분 동안은 앱으로 다시 불러오지 않음) */
     private fun openAllowed(intent: Intent) {
         // 접근성 잠금(또는 사용 정보 접근)이 있으면 앱마다 확인하므로 통째로 허용하지 않음
@@ -869,6 +891,7 @@ class MainActivity : AppCompatActivity() {
         val need = focusActive && srrLockOn && key != null && (srrLocked() || resumePending)
         if (need && !LockGuardService.guardActive) LockGuardService.start(this)
         else if (!need && LockGuardService.guardActive) LockGuardService.stop(this)
+        applyFocusImmersive()
         srrAllowRow.visibility = if (need && srrActive) View.VISIBLE else View.GONE
     }
 

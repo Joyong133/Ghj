@@ -44,7 +44,11 @@ class FocusAccessibilityService : AccessibilityService() {
         }
         // 앱마다 확인: 전화·메시지·허용한 앱만 통과. (📞·💬 버튼의 '잠깐 허용'은 여기서는 쓰지 않음 —
         // 쓰면 그 사이에 홈·최근 앱으로 빠져나갈 수 있음)
-        if (pkg in allowed) return
+        // 시스템 화면(알림창 등)은 허용하지만, 최근 앱 화면은 막음 (최근 앱이 시스템 화면 소속인 휴대폰이 있음)
+        val cls = event.className?.toString().orEmpty()
+        val recents = pkg == "com.android.systemui" &&  // 전화 앱의 '최근 기록' 같은 화면은 건드리지 않음
+            (cls.contains("recent", ignoreCase = true) || cls.contains("overview", ignoreCase = true))
+        if (pkg in allowed && !recents) return
         if (now - lastBounce < 400) return
         lastBounce = now
         try {
