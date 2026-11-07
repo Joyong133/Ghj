@@ -64,7 +64,11 @@ class SrrViewSheet(
         apply(o.toString())
     }
 
-    fun show(rainSoundOn: Boolean) {
+    /**
+     * @param lockOn 끝까지 보기 잠금이 켜져 있는지
+     * @param canChangeLock 지금 잠금 설정을 바꿀 수 있는지 (다 보기 전에는 못 바꿈)
+     */
+    fun show(rainSoundOn: Boolean, lockOn: Boolean, canChangeLock: Boolean, onLockChanged: (Boolean) -> Unit) {
         val view = LayoutInflater.from(activity).inflate(R.layout.srr_view_sheet, null)
         val sheet = BottomSheetDialog(activity)
         sheet.setContentView(view)
@@ -180,6 +184,15 @@ class SrrViewSheet(
         caret.isChecked = o.optBoolean("caret")
         focus.setOnCheckedChangeListener { _, c -> o.put("focus", c); save(o) }
         caret.setOnCheckedChangeListener { _, c -> o.put("caret", c); save(o) }
+
+        // 끝까지 보기 잠금
+        val lock = view.findViewById<MaterialSwitch>(R.id.lockSwitch)
+        lock.isChecked = lockOn
+        lock.isEnabled = canChangeLock
+        if (!canChangeLock) {
+            view.findViewById<TextView>(R.id.lockHint).text = "다 보기 전에는 바꿀 수 없어요"
+        }
+        lock.setOnCheckedChangeListener { _, c -> onLockChanged(c) }
 
         // 빗소리 크기
         val volume = view.findViewById<Slider>(R.id.volumeSlider)

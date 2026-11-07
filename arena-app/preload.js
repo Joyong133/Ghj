@@ -25,6 +25,8 @@ function setup() {
   window.ArenaSrr = {
     onState: (state, pct) => srrOnState(state, pct),
     onTime: (sec) => srrOnTime(sec),
+    onAutoStarted: (result) => showSrrStarted(result, true),
+    onAutoFailed: () => toast('끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요', 4000),
     onPicked: () => srrOnPicked(),
     onPickedUser: () => toast('내 질문은 스르륵 할 수 없어요. AI 답변을 눌러 주세요'),
     getProgress: (key) => {
@@ -68,6 +70,7 @@ function setup() {
     close: 'M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z',
     touch: 'M9,11.24V7.5C9,6.12 10.12,5 11.5,5S14,6.12 14,7.5v3.74c1.21,-0.81 2,-2.18 2,-3.74C16,5.01 13.99,3 11.5,3S7,5.01 7,7.5c0,1.56 0.79,2.93 2,3.74zM18.84,15.87l-4.54,-2.26c-0.17,-0.07 -0.35,-0.11 -0.54,-0.11H13v-6C13,6.67 12.33,6 11.5,6S10,6.67 10,7.5v10.74l-3.43,-0.72c-0.08,-0.01 -0.15,-0.03 -0.24,-0.03 -0.31,0 -0.59,0.13 -0.79,0.33l-0.79,0.8 4.94,4.94c0.27,0.27 0.65,0.44 1.06,0.44h6.79c0.75,0 1.33,-0.55 1.44,-1.28l0.75,-5.27c0.01,-0.07 0.02,-0.14 0.02,-0.2 0,-0.62 -0.38,-1.16 -0.91,-1.38z',
     text: 'M9,4v3h5v12h3L17,7h5L22,4H9zM3,12h3v7h3v-7h3L12,9L3,9v3z',
+    lock: 'M18,8h-1V6c0,-2.76 -2.24,-5 -5,-5S7,3.24 7,6v2H6c-1.1,0 -2,0.9 -2,2v10c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V10C20,8.9 19.1,8 18,8zM12,17c-1.1,0 -2,-0.9 -2,-2s0.9,-2 2,-2 2,0.9 2,2S13.1,17 12,17zM15.1,8H8.9V6c0,-1.71 1.39,-3.1 3.1,-3.1s3.1,1.39 3.1,3.1V8z',
     more: 'M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z',
   };
   function icon(name, size = 22) {
@@ -491,10 +494,31 @@ function setup() {
     store.set('srrView', srrView);
     srr.setView(srrView);
   }
+  let lastTimeText = '';
   function srrOnTime(sec) {
-    if (!timeEl) return;
-    timeEl.textContent = sec <= 0 ? '다 봤어요' : sec < 60 ? `약 ${sec}초 남음` : `약 ${Math.floor(sec / 60)}분 ${sec % 60}초 남음`;
+    lastTimeText = sec <= 0 ? '다 봤어요' : sec < 60 ? `약 ${sec}초 남음` : `약 ${Math.floor(sec / 60)}분 ${sec % 60}초 남음`;
+    if (timeEl) timeEl.textContent = lastTimeText;
   }
+
+  // ---- 끝까지 보기 잠금 ----
+  let srrLockOn = store.get('srrLock', true);
+  let srrDone = false;
+  let closeBtn = null, pickBtn = null;
+  const srrLocked = () => srrLockOn && srrActive && !srrDone;
+  function toastLocked() {
+    toast('끝까지 보면 닫을 수 있어요' + (lastTimeText ? ` (${lastTimeText})` : ''));
+  }
+  function updateLockUi() {
+    if (!closeBtn) return;
+    const locked = srrLocked();
+    closeBtn.replaceChildren(icon(locked ? 'lock' : 'close', 24));
+    closeBtn.title = locked ? '끝까지 보면 닫을 수 있어요' : '스르륵 닫기 (Esc)';
+    pickBtn.style.opacity = locked ? '0.35' : '1';
+  }
+  function saveLockKey() {
+    if (srrLocked()) store.set('srrLockKey', srr.currentKey());
+  }
+  function clearLockKey() { store.set('srrLockKey', null); }
 
   function openViewSettings() {
     const seg = (labels, values, key) => {
@@ -529,6 +553,17 @@ function setup() {
     };
     const focus = sw('읽는 줄 강조', '지금 나오는 문단만 또렷하게, 나머지는 흐리게', 'focus');
     const caret = sw('커서 표시', '글자가 나오는 자리에 깜빡이는 커서', 'caret');
+    const canChangeLock = !srrLocked();
+    const lockBox = h('input', { type: 'checkbox', class: 'switch', checked: srrLockOn, disabled: !canChangeLock,
+      onchange: () => {
+        srrLockOn = lockBox.checked;
+        store.set('srrLock', srrLockOn);
+        if (!srrLockOn) clearLockKey();
+        updateLockUi();
+      } });
+    const lockRow = h('div', { class: 'srow' }, h('div', { class: 'main' },
+      h('div', { class: 't', text: '끝까지 보기 잠금' }),
+      h('div', { class: 'p', text: canChangeLock ? '켜 두면 다 볼 때까지 스르륵을 닫을 수 없어요' : '다 보기 전에는 바꿀 수 없어요' })), lockBox);
 
     const volLabel = h('label', { class: 'f' });
     const showVol = () => {
@@ -550,7 +585,7 @@ function setup() {
         h('label', { class: 'f', text: '줄 간격' }), lh.box,
         h('label', { class: 'f', text: '글꼴' }), font.box,
         h('label', { class: 'f', text: '글 폭' }), width.box,
-        focus.row, caret.row,
+        focus.row, caret.row, lockRow,
         volLabel, vol,
         h('div', { class: 'two' }, h('button', { class: 'btn', text: '모두 기본값으로', onclick: () => {
           setView(Object.assign({}, VIEW_DEFAULT));
@@ -597,13 +632,16 @@ function setup() {
         soundLabel,
         timeEl = h('span', { class: 'time' })),
       h('div', { class: 'ctl' },
-        h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
+        pickBtn = h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
+          if (srrLocked()) return toastLocked();
           closeSrr();
           startPick('다시 볼 답변을 눌러 주세요');
         } }, icon('touch', 24)),
         barPlay,
         h('button', { class: 'iconbtn', title: '보기 설정 (화면 색, 글자 크기 등)', onclick: () => openViewSettings() }, icon('text', 24)),
-        h('button', { class: 'iconbtn', title: '스르륵 닫기 (Esc)', onclick: () => closeSrr() }, icon('close', 24))));
+        closeBtn = h('button', { class: 'iconbtn', title: '스르륵 닫기 (Esc)', onclick: () => {
+          if (srrLocked()) toastLocked(); else closeSrr();
+        } }, icon('close', 24))));
     root.append(bar);
   }
 
@@ -626,22 +664,28 @@ function setup() {
     }
   }
 
-  function beginSrr(indices) {
+  function srrSetup() {
     srr.setSpeed(srrSpeed);
     srr.setView(srrView);
     srr.setSound(srrRainSound);
     srr.setRain(srrRain);
-    const result = srr.start(indices);
+  }
+  function beginSrr(indices) {
+    srrSetup();
+    showSrrStarted(srr.start(indices), false);
+  }
+  function showSrrStarted(result, auto) {
     const resumed = /resumed:(\d+)/.exec(result || '');
-    if (result === 'ok' || resumed) {
-      if (resumed) toast(`지난번에 본 곳(${resumed[1]}%)부터 이어서 보여 줘요`);
-      srrActive = true;
-      barProg.style.width = (resumed ? resumed[1] : 0) + '%';
-      bar.classList.remove('hidden');
-      updateFabs();
-    } else {
-      toast('답변을 찾지 못했어요');
-    }
+    if (result !== 'ok' && !resumed) { toast('답변을 찾지 못했어요'); return; }
+    if (auto) toast('끝까지 보지 않은 스르륵을 이어서 보여 줘요' + (resumed ? ` (${resumed[1]}%부터)` : ''), 3500);
+    else if (resumed) toast(`지난번에 본 곳(${resumed[1]}%)부터 이어서 보여 줘요`);
+    srrActive = true;
+    srrDone = false;
+    barProg.style.width = (resumed ? resumed[1] : 0) + '%';
+    bar.classList.remove('hidden');
+    updateFabs();
+    saveLockKey();
+    updateLockUi();
   }
 
   function srrOnState(state, pct) {
@@ -649,6 +693,17 @@ function setup() {
     if (state === 'closed') { hideBar(); return; }
     barProg.style.width = pct + '%';
     barPlay.replaceChildren(icon(state === 'playing' ? 'pause' : 'play', 28));
+    const done = state === 'done';
+    if (done !== srrDone) {
+      srrDone = done;
+      if (done) {
+        clearLockKey();
+        if (srrLockOn) toast('끝까지 다 봤어요. 이제 닫을 수 있어요');
+      } else {
+        saveLockKey();  // 끝난 뒤 다시 재생하면 다시 잠금
+      }
+      updateLockUi();
+    }
   }
   function hideBar() {
     srrActive = false;
@@ -821,7 +876,7 @@ function setup() {
     if (e.key === 'Escape') {
       if (dialogs.length) dialogs[dialogs.length - 1]();
       else if (srrPicking) cancelPick();
-      else if (srrActive) closeSrr();
+      else if (srrActive) { if (srrLocked()) toastLocked(); else closeSrr(); }
       else return;
       e.preventDefault();
       e.stopPropagation();
@@ -851,7 +906,9 @@ function setup() {
   ipcRenderer.on('ui-action', (_e, name) => {
     if (!root || dialogs.length) return;
     if (name === 'prompts') openPrompts();
-    else if (name === 'srr') { if (srrActive) closeSrr(); else if (!srrPicking) startSrr(); }
+    else if (name === 'srr') {
+      if (srrActive) { if (srrLocked()) toastLocked(); else closeSrr(); } else if (!srrPicking) startSrr();
+    }
     else if (name === 'lock') onPinClicked();
     else if (name === 'length') editLength();
   });
@@ -874,6 +931,12 @@ function setup() {
     });
 
     applyLength();
+    // 끝까지 보지 않은 스르륵이 있으면 같은 답변을 찾아 자동으로 다시 켬
+    const lockKey = store.get('srrLockKey', null);
+    if (lockKey && srrLockOn) {
+      srrSetup();
+      srr.autoResume(lockKey);
+    }
     lock.setModel(lockedModel || '');
     const pending = store.get('pendingLock', null);
     if (pending && location.pathname.startsWith('/text/direct')) {

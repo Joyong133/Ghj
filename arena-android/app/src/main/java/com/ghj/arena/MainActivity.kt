@@ -138,6 +138,11 @@ class MainActivity : AppCompatActivity() {
     private var srrRain = false
     private var srrRainSound = true
     private lateinit var srrViewSheet: SrrViewSheet
+    private lateinit var srrClose: MaterialButton
+    private lateinit var srrPick: View
+    private var srrDone = false          // 끝까지 다 봤는지
+    private var srrLockOn = true         // 끝까지 보기 잠금 (설정)
+    private var srrLastTime = ""         // 남은 시간 글
     private lateinit var srrTime: TextView
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
@@ -187,7 +192,7 @@ class MainActivity : AppCompatActivity() {
                 val popup = popupView
                 when {
                     srrPicking -> cancelPick()
-                    srrActive -> closeSrr()
+                    srrActive -> if (srrLocked()) toastLocked() else closeSrr()
                     popup != null && popup.canGoBack() -> popup.goBack()
                     popup != null -> closePopup()
                     webView.canGoBack() -> webView.goBack()
@@ -531,18 +536,31 @@ class MainActivity : AppCompatActivity() {
                 webView.evaluateJavascript("window.__srr && __srr.setSound($checked)", null)
             }
         }
-        srrBar.findViewById<View>(R.id.srrPick).setOnClickListener {
+        srrPick = srrBar.findViewById(R.id.srrPick)
+        srrClose = srrBar.findViewById(R.id.srrClose)
+        srrLockOn = prefs.getBoolean("srrLock", true)
+        srrPick.setOnClickListener {
+            if (srrLocked()) return@setOnClickListener toastLocked()
             closeSrr()
             startPick("다시 볼 답변을 눌러 주세요")
         }
-        srrBar.findViewById<View>(R.id.srrClose).setOnClickListener { closeSrr() }
+        srrClose.setOnClickListener {
+            if (srrLocked()) toastLocked() else closeSrr()
+        }
 
         // 보기 설정 (화면 색, 글자 크기, 줄 간격, 글꼴, 읽는 줄 강조, 커서, 빗소리 크기)
         srrTime = srrBar.findViewById(R.id.srrTime)
         srrViewSheet = SrrViewSheet(this, prefs) { json ->
             webView.evaluateJavascript("window.__srr && __srr.setView($json)", null)
         }
-        srrBar.findViewById<View>(R.id.srrView).setOnClickListener { srrViewSheet.show(srrRain && srrRainSound) }
+        srrBar.findViewById<View>(R.id.srrView).setOnClickListener {
+            srrViewSheet.show(srrRain && srrRainSound, srrLockOn, !srrLocked()) { on ->
+                srrLockOn = on
+                prefs.edit().putBoolean("srrLock", on).apply()
+                if (!on) clearLockKey()
+                updateLockUi()
+            }
+        }
 
         webView.addJavascriptInterface(SrrBridge(), "ArenaSrr")
         webView.addJavascriptInterface(LockBridge(), "ArenaLock")
@@ -560,7 +578,29 @@ class MainActivity : AppCompatActivity() {
                 }
                 srrProgress.setProgressCompat(percent, true)
                 srrPlay.setIconResource(if (state == "playing") R.drawable.ic_pause else R.drawable.ic_play)
+                val done = state == "done"
+                if (done != srrDone) {
+                    srrDone = done
+                    if (done) {
+                        clearLockKey()
+                        if (srrLockOn) toast("끝까지 다 봤어요. 이제 닫을 수 있어요")
+                    } else {
+                        saveLockKey()  // 끝난 뒤 다시 재생하면 다시 잠금
+                    }
+                    updateLockUi()
+                }
             }
+        }
+
+        /** 잠금 중 새로 열린 페이지에서 같은 답변을 찾아 자동으로 다시 켰을 때 */
+        @JavascriptInterface
+        fun onAutoStarted(result: String) {
+            runOnUiThread { showSrrStarted(result, auto = true) }
+        }
+
+        @JavascriptInterface
+        fun onAutoFailed() {
+            runOnUiThread { toast("끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요") }
         }
 
         // ---- 어디까지 봤는지 저장 (답변마다, 휴대폰 안에) ----
@@ -594,11 +634,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onTime(seconds: Int) {
             runOnUiThread {
-                srrTime.text = when {
+                srrLastTime = when {
                     seconds <= 0 -> "다 봤어요"
                     seconds < 60 -> "약 ${seconds}초 남음"
                     else -> "약 ${seconds / 60}분 ${seconds % 60}초 남음"
                 }
+                srrTime.text = srrLastTime
             }
         }
 
@@ -654,19 +695,64 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSrr(indices: String) {
-        webView.evaluateJavascript("__srr.setSpeed($srrSpeed); __srr.setView(${srrViewSheet.current()}); __srr.setSound($srrRainSound); __srr.setRain($srrRain); __srr.start($indices)") { result ->
-            val resumed = Regex("resumed:(\\d+)").find(result.orEmpty())?.groupValues?.get(1)
-            if (result?.contains("ok") == true || resumed != null) {
-                if (resumed != null) toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")
-                srrActive = true
-                srrProgress.setProgressCompat(0, false)
-                srrPlay.setIconResource(R.drawable.ic_pause)
-                srrBar.visibility = View.VISIBLE
-                updateFabVisibility()
-            } else {
-                toast("답변을 찾지 못했어요")
+        webView.evaluateJavascript("${srrSetupJs()} __srr.start($indices)") { result ->
+            showSrrStarted(result.orEmpty(), auto = false)
+        }
+    }
+
+    /** 스르륵을 시작하기 전에 속도·보기·비·빗소리 설정을 페이지에 알려 주는 스크립트 */
+    private fun srrSetupJs() =
+        "__srr.setSpeed($srrSpeed); __srr.setView(${srrViewSheet.current()}); " +
+            "__srr.setSound($srrRainSound); __srr.setRain($srrRain);"
+
+    private fun showSrrStarted(result: String, auto: Boolean) {
+        val resumed = Regex("resumed:(\\d+)").find(result)?.groupValues?.get(1)
+        if (!result.contains("ok") && resumed == null) {
+            toast("답변을 찾지 못했어요")
+            return
+        }
+        when {
+            auto -> toast("끝까지 보지 않은 스르륵을 이어서 보여 줘요" + (resumed?.let { " ($it%부터)" } ?: ""))
+            resumed != null -> toast("지난번에 본 곳($resumed%)부터 이어서 보여 줘요")
+        }
+        srrActive = true
+        srrDone = false
+        srrProgress.setProgressCompat(resumed?.toIntOrNull() ?: 0, false)
+        srrPlay.setIconResource(R.drawable.ic_pause)
+        srrBar.visibility = View.VISIBLE
+        updateFabVisibility()
+        saveLockKey()
+        updateLockUi()
+    }
+
+    // ---- 끝까지 보기 잠금 ----
+
+    private fun srrLocked() = srrLockOn && srrActive && !srrDone
+
+    private fun toastLocked() {
+        toast("끝까지 보면 닫을 수 있어요" + if (srrLastTime.isNotEmpty()) " ($srrLastTime)" else "")
+    }
+
+    private fun updateLockUi() {
+        val locked = srrLocked()
+        srrClose.setIconResource(if (locked) R.drawable.ic_lock else R.drawable.ic_close)
+        srrClose.contentDescription = if (locked) "끝까지 보면 닫을 수 있어요" else "스르륵 닫기"
+        srrPick.alpha = if (locked) 0.35f else 1f
+    }
+
+    /** 잠금 중인 답변의 이름표를 저장 (앱을 껐다 켜도 다시 열어 주려고) */
+    private fun saveLockKey() {
+        if (!srrLockOn) return
+        webView.evaluateJavascript("window.__srr && __srr.currentKey()") { r ->
+            val k = try { JSONTokener(r ?: "null").nextValue() as? String } catch (e: Exception) { null }
+            if (!k.isNullOrEmpty() && srrLocked()) {
+                getSharedPreferences("ui", MODE_PRIVATE).edit().putString("srrLockKey", k).apply()
             }
         }
+    }
+
+    private fun clearLockKey() {
+        getSharedPreferences("ui", MODE_PRIVATE).edit().remove("srrLockKey").apply()
     }
 
     private fun closeSrr() {
@@ -724,6 +810,13 @@ class MainActivity : AppCompatActivity() {
         if (url == null || !url.startsWith("https://")) return
         if (!isInAppHost(Uri.parse(url).host)) return
         if (lengthSettings.enabled) applyLength()
+        // 끝까지 보지 않은 스르륵이 있으면 같은 답변을 찾아 자동으로 다시 켬
+        val lockKey = getSharedPreferences("ui", MODE_PRIVATE).getString("srrLockKey", null)
+        if (lockKey != null && srrLockOn && !srrActive) {
+            webView.evaluateJavascript(srrScript) {
+                webView.evaluateJavascript("${srrSetupJs()} __srr.autoResume(${JSONObject.quote(lockKey)})", null)
+            }
+        }
         if (lockedModel == null && pendingLock == null) return
         webView.evaluateJavascript(lockScript) {
             webView.evaluateJavascript("__lock.setModel(${JSONObject.quote(lockedModel ?: "")})", null)

@@ -800,7 +800,39 @@
     if (!silent) report(true);
   }
 
+  // ---- 끝까지 보기 잠금: 다 보기 전에 페이지가 새로 열리면 같은 답변을 찾아 자동으로 이어서 보여 줌 ----
+  var autoTimer = 0;
+  function indicesForKey(k) {
+    var list;
+    try { list = JSON.parse(find()); } catch (e) { list = []; }
+    if (!list.length) return null;
+    for (var i = 0; i < cands.length; i++) if (keyOf([cands[i]]) === k) return [i];
+    if (cands.length > 1 && keyOf(cands) === k) return cands.map(function (_, j) { return j; });
+    return null;
+  }
+  function autoResume(k) {
+    clearInterval(autoTimer);
+    var tries = 0;
+    function attempt() {
+      if (box) { clearInterval(autoTimer); return; }
+      var idx = indicesForKey(k);
+      if (idx) {
+        clearInterval(autoTimer);
+        var r = start(idx);
+        try { bridge().onAutoStarted(r); } catch (e) {}
+      } else if (++tries >= 20) {  // 20초 동안 못 찾으면 그만 (다른 대화를 연 경우)
+        clearInterval(autoTimer);
+        try { bridge().onAutoFailed(); } catch (e) {}
+      }
+    }
+    autoTimer = setInterval(attempt, 1000);
+    attempt();
+  }
+
   window.__srr = {
+    currentKey: function () { return key; },
+    isDone: function () { return !!box && pos >= total; },
+    autoResume: autoResume,
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,
     play: play, pause: pause, toggle: toggle, restart: restart, finish: finish,
     setSpeed: setSpeed, setRain: setRain, setSound: setSound, holdSound: holdSound,
