@@ -155,8 +155,9 @@ class MainActivity : AppCompatActivity() {
     private var srrDone = false          // 끝까지 다 봤는지
     private var srrLockOn = true         // 끝까지 보기 잠금 (설정)
     private var srrLastTime = ""         // 남은 시간 글
-    private var srrStrong = false        // 앱 밖으로 못 나가게 (설정)
-    private var strongPending = false    // 권한 설정 화면에서 돌아오면 켜기
+    private var srrStrong = true         // 스르륵을 열 때 원앱 집중 창 띄우기 (설정)
+    private var focusActive = false      // 지금 원앱 집중 중인지 (집중 시작을 누른 스르륵)
+    private lateinit var focusSheet: FocusSheet
     private var resumePending = false    // 잠금 중인 스르륵을 다시 여는 중
     private lateinit var srrAllowRow: View
     private lateinit var srrSpeedSlider: Slider
@@ -587,7 +588,9 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
         // 앱 밖으로 못 나가게: 나가지 않고 쓸 수 있는 전화·문자·카카오톡
-        srrStrong = prefs.getBoolean("srrStrong", false)
+        srrStrong = prefs.getBoolean("focusPrompt", true)
+        focusActive = prefs.getBoolean("focusActive", false)
+        focusSheet = FocusSheet(this)
         srrAllowRow = srrBar.findViewById(R.id.srrAllowRow)
         srrBar.findViewById<View>(R.id.srrCall).setOnClickListener { openAllowed(Intent(Intent.ACTION_DIAL)) }
         srrBar.findViewById<View>(R.id.srrSms).setOnClickListener {
@@ -643,10 +646,16 @@ class MainActivity : AppCompatActivity() {
                 }
                 srrProgress.setProgressCompat(percent, true)
                 srrPlay.setIconResource(if (state == "playing") R.drawable.ic_pause else R.drawable.ic_play)
+                LockGuardService.timerPaused = state != "playing"  // 스르륵을 멈추면 집중 타이머도 멈춤
                 val done = state == "done"
                 if (done != srrDone) {
                     srrDone = done
                     if (done) {
+                        if (focusActive) {
+                            setFocusActive(false)
+                            LockGuardService.notifyDone(this@MainActivity)
+                            toast("🎉 집중 완료! 수고했어요.")
+                        }
                         clearLockKey()
                         if (srrLockOn) toast("끝까지 다 봤어요. 이제 닫을 수 있어요")
                     } else {
@@ -712,6 +721,7 @@ class MainActivity : AppCompatActivity() {
                     else -> "약 ${seconds / 60}분 ${seconds % 60}초 남음"
                 }
                 srrTime.text = srrLastTime
+                LockGuardService.timerSeconds = seconds
             }
         }
 
@@ -795,6 +805,25 @@ class MainActivity : AppCompatActivity() {
         updateFabVisibility()
         saveLockKey()
         updateLockUi()
+        if (!auto && srrLockOn && srrStrong) showFocusSheet()
+        else if (!auto) setFocusActive(false)  // 자동으로 다시 연 경우에는 하던 집중을 그대로 이어 감
+    }
+
+    /** 원앱 집중 창: 스르륵을 잠깐 멈추고, ⏱ 타이머를 고르면 스르륵에 나온 시간만큼 집중 */
+    private fun showFocusSheet() {
+        webView.evaluateJavascript("window.__srr && (__srr.pause(), __srr.remainingSeconds())") { r ->
+            val seconds = r?.toDoubleOrNull()?.toInt() ?: 0
+            focusSheet.show(seconds, onStart = {
+                LockGuardService.timerSeconds = seconds
+                LockGuardService.timerPaused = false
+                setFocusActive(true)
+                webView.evaluateJavascript("window.__srr && __srr.play()", null)
+                toast("집중을 시작해요. 다 읽을 때까지 「Arena」만 쓸 수 있어요")
+            }, onSkip = {
+                setFocusActive(false)
+                webView.evaluateJavascript("window.__srr && __srr.play()", null)
+            })
+        }
     }
 
     // ---- 끝까지 보기 잠금 ----
@@ -807,46 +836,18 @@ class MainActivity : AppCompatActivity() {
 
     // ---- 앱 밖으로 못 나가게 ----
 
-    /** 켜려면 '다른 앱 위에 표시' 권한이 필요. 바뀐 결과(켜졌는지)를 돌려줌 */
+    /** 스르륵을 열 때 원앱 집중 창을 띄울지 (잠금 기능 권한은 집중 창에서 안내) */
     private fun setStrong(on: Boolean): Boolean {
-        if (on && !LockGuardService.canDrawOverlays(this)) {
-            MaterialAlertDialogBuilder(this)
-                .setTitle("권한이 하나 필요해요")
-                .setMessage("다른 앱으로 나갔을 때 이 앱을 다시 불러오려면 '다른 앱 위에 표시' 권한이 필요해요.\n\n" +
-                    "다음 화면에서 Arena를 허용한 뒤 돌아오면 바로 켜져요.")
-                .setNegativeButton("취소", null)
-                .setPositiveButton("설정 열기") { _, _ ->
-                    strongPending = true
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    } catch (e: Exception) {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-                    }
-                }
-                .show()
-            return false
-        }
         srrStrong = on
-        getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("srrStrong", on).apply()
-        if (on) {
-            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 11)
-            if (!LockGuardService.hasUsageAccess(this)) askUsageAccess()
-            else toast("앱 밖으로 못 나가게를 켰어요. 전화·문자·카카오톡은 쓸 수 있어요")
-        }
-        updateLockUi()
+        getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("focusPrompt", on).apply()
+        toast(if (on) "다음에 스르륵을 열면 원앱 집중 창이 떠요" else "원앱 집중 창을 띄우지 않아요")
         return on
     }
 
-    private fun askUsageAccess() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("문자·카카오톡도 쓰려면")
-            .setMessage("'사용 정보 접근'을 허용하면, 알림을 눌러 문자나 카카오톡으로 가도 이 앱으로 끌려오지 않아요.\n\n" +
-                "허용하지 않으면 스르륵 막대의 📞·💬·카카오톡 버튼으로 연 뒤 5분 동안만 쓸 수 있어요.")
-            .setNegativeButton("나중에", null)
-            .setPositiveButton("설정 열기") { _, _ ->
-                try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) { }
-            }
-            .show()
+    private fun setFocusActive(on: Boolean) {
+        focusActive = on
+        getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("focusActive", on).apply()
+        updateGuard()
     }
 
     /** 전화·문자·카카오톡 열기 (5분 동안은 앱으로 다시 불러오지 않음) */
@@ -862,7 +863,7 @@ class MainActivity : AppCompatActivity() {
     /** 감시가 필요하면 켜고, 아니면 끔 */
     private fun updateGuard() {
         val key = getSharedPreferences("ui", MODE_PRIVATE).getString("srrLockKey", null)
-        val need = srrStrong && srrLockOn && key != null && (srrLocked() || resumePending)
+        val need = focusActive && srrLockOn && key != null && (srrLocked() || resumePending)
         if (need && !LockGuardService.guardActive) LockGuardService.start(this)
         else if (!need && LockGuardService.guardActive) LockGuardService.stop(this)
         srrAllowRow.visibility = if (need && srrActive) View.VISIBLE else View.GONE
@@ -1186,12 +1187,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 권한 설정 화면에서 돌아왔을 때
-        if (strongPending) {
-            strongPending = false
-            if (LockGuardService.canDrawOverlays(this)) setStrong(true)
-            else toast("권한이 없어서 '앱 밖으로 못 나가게'를 켜지 못했어요")
-        }
+        // 접근성 설정에서 돌아왔을 때 원앱 집중 창의 상태를 새로 보여 줌
+        if (::focusSheet.isInitialized) focusSheet.onResume()
         if (srrActive) webView.evaluateJavascript("window.__srr && __srr.holdSound(false)", null)
         webView.onResume()
     }

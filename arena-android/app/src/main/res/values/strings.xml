@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Arena</string>
+    <string name="focus_service_label">Arena 원앱 집중 잠금</string>
+    <string name="focus_service_desc">스르륵 원앱 집중 중에는 Arena와 허용한 앱(전화·메시지·연락처·카카오톡 등)만 쓸 수 있게 합니다. 다른 앱이 열리면 바로 Arena로 돌아옵니다. 화면 내용은 읽지 않고, 어떤 앱이 앞에 떴는지만 확인합니다.</string>
 </resources>

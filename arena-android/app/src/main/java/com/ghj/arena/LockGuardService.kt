@@ -20,8 +20,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
-import android.provider.Telephony
-import android.telecom.TelecomManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
@@ -42,19 +40,33 @@ class LockGuardService : Service() {
         @Volatile var appInForeground = false
         /** 📞·💬 버튼으로 다른 앱을 연 경우, 이 시각까지는 불러오지 않음 */
         @Volatile var allowUntil = 0L
+        /** 원앱 집중 타이머: 스르륵에 나온 남은 시간(초)과 멈춤 여부 (스르륵을 멈추면 타이머도 멈춤) */
+        @Volatile var timerSeconds = 0
+        @Volatile var timerPaused = false
+        private const val DONE_ID = 7002
+
+        /** 🎉 집중 완료 알림 */
+        fun notifyDone(ctx: Context) {
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            ensureChannel(nm)
+            nm.notify(DONE_ID, NotificationCompat.Builder(ctx, CHANNEL)
+                .setSmallIcon(R.drawable.ic_lock)
+                .setContentTitle("🎉 집중 완료! 수고했어요.")
+                .setContentText("목표를 다 채웠어요. 이제 다른 앱을 자유롭게 쓸 수 있어요.")
+                .setAutoCancel(true)
+                .build())
+        }
+
+        private fun ensureChannel(nm: NotificationManager) {
+            if (nm.getNotificationChannel(CHANNEL) == null) {
+                nm.createNotificationChannel(NotificationChannel(CHANNEL, "원앱 집중", NotificationManager.IMPORTANCE_LOW))
+            }
+        }
 
         private const val CHANNEL = "reading_lock"
         private const val NOTIFY_ID = 7001
         private const val GRACE_MS = 1500L
 
-        // 써도 되는 앱 (전화·문자·메신저)
-        private val ALWAYS_ALLOWED = setOf(
-            "com.kakao.talk",
-            "com.samsung.android.messaging", "com.google.android.apps.messaging", "com.android.mms",
-            "com.samsung.android.dialer", "com.google.android.dialer", "com.android.dialer",
-            "com.samsung.android.incallui", "com.android.incallui", "com.android.server.telecom",
-            "com.android.phone", "com.skt.prod.dialer", "com.skt.prod.phone", "com.lguplus.phone"
-        )
 
         fun canDrawOverlays(ctx: Context) = Settings.canDrawOverlays(ctx)
 
@@ -86,7 +98,9 @@ class LockGuardService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var awaySince = 0L
-    private val allowedApps = mutableSetOf<String>()
+    private var allowedApps: Set<String> = emptySet()
+    private var allowedAt = 0L
+    private var shownText = ""
 
     private val tick = object : Runnable {
         override fun run() {
@@ -103,35 +117,39 @@ class LockGuardService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        allowedApps += ALWAYS_ALLOWED
-        allowedApps += packageName
-        try {
-            Telephony.Sms.getDefaultSmsPackage(this)?.let { allowedApps += it }
-        } catch (e: Exception) { }
-        try {
-            (getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage?.let { allowedApps += it }
-        } catch (e: Exception) { }
+        allowedApps = FocusApps.allowed(this)
+        allowedAt = System.currentTimeMillis()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val nm = getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "스르륵 끝까지 보기", NotificationManager.IMPORTANCE_LOW)
-            )
-        }
+    /** 알림에 원앱 집중 타이머를 보여 줌 (초가 바뀔 때만 고침) */
+    private fun timerText(): String {
+        val t = timerSeconds
+        val time = "%d:%02d".format(t / 60, t % 60)
+        return if (timerPaused) "⏸ 스르륵을 멈춰서 타이머도 멈췄어요 · 남은 시간 $time"
+        else "남은 시간 $time · 전화·메시지는 쓸 수 있어요"
+    }
+
+    private fun buildNotification(): Notification {
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val n: Notification = NotificationCompat.Builder(this, CHANNEL)
+        return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_lock)
-            .setContentTitle("스르륵을 끝까지 보는 중이에요")
-            .setContentText("다 볼 때까지 앱 밖으로 나갈 수 없어요 · 전화와 메시지는 쓸 수 있어요")
+            .setContentTitle("「Arena」 집중 중")
+            .setContentText(timerText())
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .build()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val nm = getSystemService(NotificationManager::class.java)
+        ensureChannel(nm)
+        val n = buildNotification()
+        shownText = timerText()
         ServiceCompat.startForeground(
             this, NOTIFY_ID, n,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
@@ -153,6 +171,21 @@ class LockGuardService : Service() {
     }
 
     private fun check() {
+        // 알림의 타이머 갱신
+        val text = timerText()
+        if (text != shownText) {
+            shownText = text
+            getSystemService(NotificationManager::class.java).notify(NOTIFY_ID, buildNotification())
+        }
+        // 접근성 잠금이 켜져 있으면 그쪽이 바로 막아 주므로 여기서는 지켜보지 않음
+        if (FocusAccessibilityService.isEnabled(this)) {
+            awaySince = 0
+            return
+        }
+        if (System.currentTimeMillis() - allowedAt > 10_000) {
+            allowedApps = FocusApps.allowed(this)
+            allowedAt = System.currentTimeMillis()
+        }
         if (appInForeground) {
             awaySince = 0
             return

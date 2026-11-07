@@ -1031,6 +1031,7 @@
 
   window.__srr = {
     currentKey: function () { return key; },
+    remainingSeconds: function () { return box ? Math.ceil(Math.max(0, total - pos) / Math.max(1, speed)) : 0; },
     isDone: function () { return !!box && pos >= total; },
     autoResume: autoResume,
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,

@@ -197,19 +197,16 @@ class SrrViewSheet(
         }
         // 앱 밖으로 못 나가게 (끝까지 보기 잠금이 켜져 있을 때만)
         val strong = view.findViewById<MaterialSwitch>(R.id.strongSwitch)
-        // 더 엄하게(켜기)는 언제든, 풀기(끄기)는 다 본 뒤에만
+        // 원앱 집중 창 띄우기 (다음에 스르륵을 열 때부터 적용)
         strong.isChecked = strongOn && lockOn
-        strong.isEnabled = lockOn && (canChangeLock || !strongOn)
-        if (!canChangeLock && strongOn) view.findViewById<TextView>(R.id.strongHint).text = "다 보기 전에는 끌 수 없어요"
+        strong.isEnabled = lockOn
         strong.setOnCheckedChangeListener { _, c ->
             val actual = onStrongChanged(c)
-            if (actual != c) strong.isChecked = actual  // 권한이 없어서 못 켠 경우
-            else if (c && !canChangeLock) strong.isEnabled = false  // 읽는 중에 켰으면 다 볼 때까지 못 끔
+            if (actual != c) strong.isChecked = actual
         }
         lock.setOnCheckedChangeListener { _, c ->
             onLockChanged(c)
-            strong.isEnabled = c
-            if (!c) strong.isChecked = false
+            strong.isEnabled = c  // 끝까지 보기 잠금이 꺼지면 원앱 집중 창도 안 뜸 (설정은 그대로 둠)
         }
 
         // 빗소리 크기
