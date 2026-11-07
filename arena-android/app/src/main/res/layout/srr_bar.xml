@@ -17,6 +17,16 @@
         android:paddingEnd="14dp"
         android:paddingBottom="6dp">
 
+        <TextView
+            android:id="@+id/srrTime"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="2dp"
+            android:gravity="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?android:attr/textColorSecondary" />
+
         <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@+id/srrProgress"
             android:layout_width="match_parent"
@@ -69,31 +79,52 @@
                 android:id="@+id/srrRain"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
+                android:layout_marginEnd="4dp"
                 android:minHeight="40dp"
-                android:text="비 내리기"
+                android:contentDescription="비 내리기"
+                android:text="비"
                 android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/srrRainLevel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:contentDescription="비 강도"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/rainLow"
+                    style="@style/SrrMini"
+                    android:text="하" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/rainMid"
+                    style="@style/SrrMini"
+                    android:text="중" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/rainHigh"
+                    style="@style/SrrMini"
+                    android:text="상" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/srrSound"
                 style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:gravity="start|center_vertical"
+                android:maxLines="1"
                 android:minHeight="40dp"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 android:text="🔊 빗소리"
                 android:contentDescription="집중 소리 고르기" />
 
-            <TextView
-                android:id="@+id/srrTime"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceLabelMedium"
-                android:textColor="?android:attr/textColorSecondary" />
         </LinearLayout>
 
         <!-- 앱 밖으로 못 나가게 켜져 있을 때만 보임: 나가지 않고 쓸 수 있는 앱 -->

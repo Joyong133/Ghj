@@ -40,6 +40,7 @@ import androidx.core.content.ContextCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -147,6 +148,7 @@ class MainActivity : AppCompatActivity() {
     private var srrSpeed = 25
     private var srrRain = false
     private var srrSoundName = "rain"
+    private var srrRainLevel = 1         // 비 강도: 1 하, 2 중, 3 상
     private lateinit var srrViewSheet: SrrViewSheet
     private lateinit var srrClose: MaterialButton
     private lateinit var srrPick: View
@@ -558,6 +560,18 @@ class MainActivity : AppCompatActivity() {
                 webView.evaluateJavascript("window.__srr && __srr.setRain($checked)", null)
             }
         }
+        // 비 강도 (하·중·상)
+        srrRainLevel = prefs.getInt("srrRainLevel", 1).coerceIn(1, 3)
+        val levelIds = intArrayOf(R.id.rainLow, R.id.rainMid, R.id.rainHigh)
+        srrBar.findViewById<MaterialButtonToggleGroup>(R.id.srrRainLevel).apply {
+            check(levelIds[srrRainLevel - 1])
+            addOnButtonCheckedListener { _, id, checked ->
+                if (!checked) return@addOnButtonCheckedListener
+                srrRainLevel = levelIds.indexOf(id) + 1
+                prefs.edit().putInt("srrRainLevel", srrRainLevel).apply()
+                webView.evaluateJavascript("window.__srr && __srr.setRainLevel($srrRainLevel)", null)
+            }
+        }
         soundBtn.setOnClickListener {
             val cur = SOUND_KEYS.indexOf(srrSoundName).coerceAtLeast(0)
             MaterialAlertDialogBuilder(this)
@@ -761,7 +775,7 @@ class MainActivity : AppCompatActivity() {
     /** 스르륵을 시작하기 전에 속도·보기·비·빗소리 설정을 페이지에 알려 주는 스크립트 */
     private fun srrSetupJs() =
         "__srr.setSpeed($srrSpeed); __srr.setView(${srrViewSheet.current()}); " +
-            "__srr.setSound('$srrSoundName'); __srr.setRain($srrRain);"
+            "__srr.setRainLevel($srrRainLevel); __srr.setSound('$srrSoundName'); __srr.setRain($srrRain);"
 
     private fun showSrrStarted(result: String, auto: Boolean) {
         val resumed = Regex("resumed:(\\d+)").find(result)?.groupValues?.get(1)

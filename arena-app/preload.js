@@ -189,6 +189,7 @@ function setup() {
     .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .check.off { opacity: .45; cursor: default; } .check.off input { cursor: default; }
     .opts .time { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .seg.mini { margin-top: 0; } .seg.mini button { padding: 3px 9px; font-size: 12px; font-weight: 600; }
     select.sound { font: inherit; font-size: 13px; font-weight: 600; color: var(--fg); background: var(--soft);
       border: 0; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
     .allow { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
@@ -484,6 +485,7 @@ function setup() {
   let srrActive = false, srrPicking = false;
   let srrSpeed = store.get('srrSpeed', 25);
   let srrRain = store.get('srrRain', false);
+  let srrRainLevel = Math.min(3, Math.max(1, store.get('srrRainLevel', 1)));  // 비 강도: 1 하, 2 중, 3 상
   const SOUND_LIST = [
     ['rain', '빗소리'], ['window', '창문 빗소리 (유리에 톡톡)'], ['roof', '지붕 빗소리 (투둑투둑)'], ['waves', '파도'], ['fire', '모닥불'], ['stream', '시냇물'], ['forest', '숲 (새소리·바람)'],
     ['white', '백색소음'], ['pink', '분홍소음 (부드러운)'], ['brown', '갈색소음 (낮고 깊은)'], ['beat', '집중 비트 (이어폰)'], ['off', '소리 끔'],
@@ -663,6 +665,17 @@ function setup() {
       store.set('srrRain', srrRain);
       srr.setRain(srrRain);
     } });
+    // 비 강도 (하·중·상): 비 화면과 빗소리 모두
+    const rainLevelSeg = h('div', { class: 'seg mini', title: '비 강도 (빗소리도 같이 세져요)' });
+    ['하', '중', '상'].forEach((label, i) => rainLevelSeg.append(h('button', {
+      class: i + 1 === srrRainLevel ? 'on' : '', text: label,
+      onclick: () => {
+        srrRainLevel = i + 1;
+        store.set('srrRainLevel', srrRainLevel);
+        [...rainLevelSeg.children].forEach((b, j) => b.classList.toggle('on', j === i));
+        srr.setRainLevel(srrRainLevel);
+      },
+    })));
     // 집중 소리 고르기
     const soundSel = h('select', { class: 'sound', title: '집중 소리', onchange: () => {
       srrSoundName = soundSel.value;
@@ -682,6 +695,7 @@ function setup() {
       h('div', { class: 'speed' }, h('span', { text: '속도' }), slider, label),
       h('div', { class: 'opts' },
         h('label', { class: 'check', title: '스르륵 화면에 비가 내리게 해요' }, rainBox, h('span', { text: '비 내리기' })),
+        rainLevelSeg,
         soundSel,
         timeEl = h('span', { class: 'time' })),
       allowRow,
@@ -721,6 +735,7 @@ function setup() {
   function srrSetup() {
     srr.setSpeed(srrSpeed);
     srr.setView(srrView);
+    srr.setRainLevel(srrRainLevel);
     srr.setSound(srrSoundName);
     srr.setRain(srrRain);
   }

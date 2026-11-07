@@ -16,4 +16,17 @@
         <item name="android:paddingEnd">4dp</item>
         <item name="android:maxLines">1</item>
     </style>
+
+    <!-- 막대 안의 작은 버튼 (비 강도 하·중·상) -->
+    <style name="SrrMini" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:minWidth">38dp</item>
+        <item name="android:minHeight">36dp</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
 </resources>

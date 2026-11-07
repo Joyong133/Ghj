@@ -25,6 +25,10 @@
   var pickHandler = null;
   var key = '', lastSave = 0;
   var rainOn = false, rain = null;  // 비 내리기 효과
+  var rainLevel = 1;                 // 비 강도: 1 하, 2 중, 3 상
+  // 강도에 따른 배율 (하 = 1)
+  function rk() { return rainLevel === 3 ? 3.2 : rainLevel === 2 ? 2 : 1; }
+  function more(base) { var x = base * rk(); return Math.floor(x) + (Math.random() < x % 1 ? 1 : 0); }
   var snd = null, soundHold = false;  // 집중 소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)
 
   // ---- 보기 설정 (화면 색, 글자 크기, 줄 간격, 글꼴, 글 폭, 읽는 줄 강조, 커서, 빗소리 크기) ----
@@ -359,7 +363,7 @@
     c.height = Math.ceil(L * dpr);
     var x = c.getContext('2d');
     x.scale(dpr, dpr);
-    var a = layer.a * col.k;
+    var a = Math.min(0.85, layer.a * col.k * (1 + 0.12 * (rk() - 1)));
     var g = x.createLinearGradient(0, 0, 0, L);
     g.addColorStop(0, 'rgba(' + col.rgb + ',0)');
     g.addColorStop(0.65, 'rgba(' + col.rgb + ',' + (a * 0.55).toFixed(3) + ')');
@@ -402,7 +406,7 @@
   function newDrop(L, anywhere) {
     return {
       L: L, x: rnd(-120, rain.w + 60), y: anywhere ? rnd(-40, rain.h) : rnd(-rain.h * 0.25, -20),
-      len: rnd(L.len[0], L.len[1]), v: rnd(L.v[0], L.v[1]), o: rnd(0.65, 1),
+      len: rnd(L.len[0], L.len[1]) * (1 + 0.1 * (rk() - 1)), v: rnd(L.v[0], L.v[1]) * (1 + 0.12 * (rk() - 1)), o: rnd(0.65, 1),
       ground: rain.h * rnd(0.84, 0.99)
     };
   }
@@ -425,10 +429,10 @@
     rain.bead = beadSprite(rain.color, dpr);
     rain.drops = [];
     LAYERS.forEach(function (L) {
-      var n = Math.round(Math.min(160, Math.max(12, area / L.per)));
+      var n = Math.round(Math.min(160 * rk(), Math.max(12, area / L.per) * rk()));
       for (var i = 0; i < n; i++) rain.drops.push(newDrop(L, true));
     });
-    rain.maxBeads = Math.round(Math.min(40, Math.max(12, area / 22000)));
+    rain.maxBeads = Math.round(Math.min(40, Math.max(12, area / 22000)) * (1 + 0.5 * (rk() - 1)));
     rain.beads = [];
     for (var j = 0; j < rain.maxBeads * 0.6; j++) rain.beads.push(newBead());
     rain.fx = [];
@@ -450,12 +454,12 @@
     rain.last = t;
     rain.time += dt;
     var ctx = rain.ctx, dpr = rain.dpr, col = rain.color;
-    var wind = windAt(rain.time);
+    var wind = windAt(rain.time) * (1 + 0.25 * (rk() - 1));
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, rain.canvas.width, rain.canvas.height);
 
     // 1) 유리창 물방울 (맨 뒤)
-    if (rain.beads.length < rain.maxBeads && Math.random() < dt * 3) rain.beads.push(newBead());
+    if (rain.beads.length < rain.maxBeads && Math.random() < dt * 3 * rk()) rain.beads.push(newBead());
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     for (var b = rain.beads.length - 1; b >= 0; b--) {
       var bd = rain.beads[b];
@@ -553,7 +557,7 @@
     // 물안개: 화면 아래쪽이 옅게 뿌옇게 (CSS 배경이라 그릴 때 부담 없음)
     c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;' +
       'background:linear-gradient(to bottom, rgba(' + col.rgb + ',0) 55%, rgba(' + col.rgb + ',' +
-      (col.dark ? 0.10 : 0.07) + ') 100%)';
+      ((col.dark ? 0.10 : 0.07) * (1 + 0.6 * (rk() - 1))).toFixed(3) + ') 100%)';
     box.insertBefore(c, box.firstChild);
     rain = { canvas: c, ctx: c.getContext('2d'), drops: [], beads: [], fx: [], raf: 0, last: 0, time: rnd(0, 100), color: col };
     sizeRain();
@@ -566,6 +570,14 @@
     rain.canvas.remove();
     window.removeEventListener('resize', sizeRain);
     rain = null;
+  }
+  // 비 강도 바꾸기: 비 화면과 빗소리(빗소리·창문·지붕)를 새 강도로 다시 만듦
+  function setRainLevel(n) {
+    n = Math.min(3, Math.max(1, Math.round(+n || 1)));
+    if (n === rainLevel) return;
+    rainLevel = n;
+    if (box && rain) { stopRain(); startRain(); }
+    if (snd && /^(rain|window|roof)$/.test(snd.name)) { stopSound(); updateSound(); }
   }
   function setRain(on) {
     rainOn = !!on;
@@ -654,13 +666,13 @@
   var BUILD = {
     rain: function (ctx, out, every) {
       var bed = noiseBuffer(ctx, 3);
-      var hiss = gainNode(ctx, 0.22);
+      var hiss = gainNode(ctx, 0.22 * (1 + 0.35 * (rk() - 1)));
       loopNoise(ctx, bed).connect(filter(ctx, 'highpass', 350)).connect(filter(ctx, 'lowpass', 5200)).connect(hiss).connect(out);
       swell(ctx, hiss.gain, 0.13, 0.06);
       loopNoise(ctx, bed, 1.37).connect(filter(ctx, 'lowpass', 420)).connect(gainNode(ctx, 0.2)).connect(out);
       var drop = noiseBuffer(ctx, 0.08);
       every(40, function (now) {
-        var n = Math.random() < 0.5 ? 1 : 2;
+        var n = more(1.5);
         for (var i = 0; i < n; i++) {
           burst(ctx, out, drop, now + 0.05 + Math.random() * 0.04, 'bandpass', 1400 + Math.random() * 4200,
             1.4 + Math.random() * 2, 0.025 + Math.random() * 0.07, 0.02 + Math.random() * 0.05, Math.random() * 1.6 - 0.8);
@@ -671,12 +683,12 @@
     window: function (ctx, out, every) {
       var bed = noiseBuffer(ctx, 3);
       // 유리 너머라 높은 소리가 줄어든 바깥 빗소리
-      var outside = gainNode(ctx, 0.42);
+      var outside = gainNode(ctx, 0.42 * (1 + 0.35 * (rk() - 1)));
       loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 1300)).connect(filter(ctx, 'highpass', 120)).connect(outside).connect(out);
       swell(ctx, outside.gain, 0.09, 0.1);
       var tap = noiseBuffer(ctx, 0.05);
       every(30, function (now) {
-        var n = Math.random() < 0.55 ? 1 : 0;
+        var n = more(0.55);
         for (var i = 0; i < n; i++) {
           var at = now + Math.random() * 0.03, pan = Math.random() * 1.4 - 0.7;
           // 톡: 짧고 높은 소리
@@ -702,7 +714,7 @@
     // 지붕 빗소리: 지붕을 두드리는 둔탁한 소리 + 함석지붕처럼 가끔 '팅' + 낮게 깔리는 빗소리 + 처마 물방울
     roof: function (ctx, out, every) {
       var bed = noiseBuffer(ctx, 3, 'brown');
-      var low = gainNode(ctx, 0.4);
+      var low = gainNode(ctx, 0.4 * (1 + 0.3 * (rk() - 1)));
       loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 380)).connect(low).connect(out);
       swell(ctx, low.gain, 0.11, 0.1);
       var hiss = gainNode(ctx, 0.07);
@@ -710,13 +722,13 @@
       var hit = noiseBuffer(ctx, 0.12);
       every(25, function (now) {
         // 투둑투둑 지붕을 두드림 (빽빽하게)
-        var n = 1 + (Math.random() < 0.6 ? 1 : 0);
+        var n = more(1.6);
         for (var i = 0; i < n; i++) {
           burst(ctx, out, hit, now + Math.random() * 0.025, 'bandpass', 280 + Math.random() * 700, 1.6 + Math.random() * 2,
             0.06 + Math.random() * 0.14, 0.04 + Math.random() * 0.07, Math.random() * 1.6 - 0.8);
         }
         // 함석지붕 '팅'
-        if (Math.random() < 0.06) {
+        if (Math.random() < 0.06 * rk()) {
           burst(ctx, out, hit, now + 0.01, 'bandpass', 1500 + Math.random() * 1800, 25 + Math.random() * 15,
             0.12 + Math.random() * 0.1, 0.12 + Math.random() * 0.12, Math.random() * 1.4 - 0.7);
         }
@@ -1023,7 +1035,7 @@
     autoResume: autoResume,
     find: find, pickByTap: pickByTap, cancelPick: cancelPick, start: start,
     play: play, pause: pause, toggle: toggle, restart: restart, finish: finish,
-    setSpeed: setSpeed, setRain: setRain, setSound: setSound, holdSound: holdSound,
+    setSpeed: setSpeed, setRain: setRain, setRainLevel: setRainLevel, setSound: setSound, holdSound: holdSound,
     setView: setView, getView: function () { return JSON.stringify(view); },
     soundPlaying: function () { return !!snd; },
     close: function () { close(false); }
