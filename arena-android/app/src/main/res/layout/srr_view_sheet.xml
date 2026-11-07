@@ -239,16 +239,50 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="앱 밖으로 못 나가게"
+                    android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+                <TextView
+                    android:id="@+id/strongHint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="다 볼 때까지 다른 앱으로 가면 다시 돌아와요. 전화·문자·카카오톡은 쓸 수 있어요"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/strongSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/volumeLabel"
             style="@style/SrrLabel"
-            android:text="빗소리 크기" />
+            android:text="소리 크기" />
 
         <com.google.android.material.slider.Slider
             android:id="@+id/volumeSlider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:contentDescription="빗소리 크기"
+            android:contentDescription="소리 크기"
             android:stepSize="10"
             android:value="90"
             android:valueFrom="0"

@@ -79,6 +79,52 @@ ipcMain.on('store-set', (event, key, value) => {
 });
 ipcMain.on('copy-text', (_event, text) => clipboard.writeText(String(text)));
 
+// ---- 창에서 못 나가게 (스르륵을 끝까지 볼 때까지) ----
+// 전체 화면 + 맨 위 고정, 닫기·최소화를 막고, 다른 창으로 가면 다시 앞으로 가져옴.
+// '잠깐 다른 창 쓰기'를 누르면 1분 동안은 풀어 줌.
+const focusLock = { on: false, allowUntil: 0, timer: null };
+
+function applyFocusLock() {
+  const w = mainWindow;
+  if (!w) return;
+  const strict = focusLock.on && Date.now() >= focusLock.allowUntil;
+  w.setAlwaysOnTop(strict, 'screen-saver');
+  if (strict) {
+    if (w.isMinimized()) w.restore();
+    w.setFullScreen(true);
+    w.show();
+    w.focus();
+    w.moveTop();
+  }
+}
+
+ipcMain.on('focus-lock', (_event, on) => {
+  focusLock.on = !!on;
+  focusLock.allowUntil = 0;
+  clearTimeout(focusLock.timer);
+  if (!on && mainWindow) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setFullScreen(false);
+  }
+  applyFocusLock();
+});
+
+ipcMain.on('focus-allow', (_event, ms) => {
+  if (!focusLock.on) return;
+  focusLock.allowUntil = Date.now() + Math.min(Number(ms) || 60000, 5 * 60000);
+  if (mainWindow) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setFullScreen(false);
+    mainWindow.minimize();
+  }
+  clearTimeout(focusLock.timer);
+  focusLock.timer = setTimeout(applyFocusLock, focusLock.allowUntil - Date.now());
+});
+
+function focusLocked() {
+  return focusLock.on && Date.now() >= focusLock.allowUntil;
+}
+
 // ---- 창 크기·위치 기억 ----
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
 
@@ -238,7 +284,26 @@ function createWindow() {
     });
   });
 
-  mainWindow.on('close', () => saveWindowState(mainWindow));
+  mainWindow.on('close', (e) => {
+    if (focusLocked()) {
+      // 스르륵을 끝까지 보기 전에는 닫지 않음
+      e.preventDefault();
+      mainWindow.webContents.send('ui-action', 'locked-close');
+      return;
+    }
+    saveWindowState(mainWindow);
+  });
+  mainWindow.on('minimize', () => {
+    if (focusLocked()) setTimeout(applyFocusLock, 50);
+  });
+  mainWindow.on('blur', () => {
+    if (!focusLocked()) return;
+    clearTimeout(focusLock.timer);
+    focusLock.timer = setTimeout(() => { if (focusLocked()) applyFocusLock(); }, 1200);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    if (focusLocked()) setTimeout(applyFocusLock, 50);
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });

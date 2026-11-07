@@ -25,8 +25,12 @@ function setup() {
   window.ArenaSrr = {
     onState: (state, pct) => srrOnState(state, pct),
     onTime: (sec) => srrOnTime(sec),
-    onAutoStarted: (result) => showSrrStarted(result, true),
-    onAutoFailed: () => toast('끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요', 4000),
+    onAutoStarted: (result) => { resumePending = false; showSrrStarted(result, true); },
+    onAutoFailed: () => {
+      resumePending = false;
+      updateGuard();  // 답변을 못 찾으면 묶어 두지 않음
+      toast('끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요', 4000);
+    },
     onPicked: () => srrOnPicked(),
     onPickedUser: () => toast('내 질문은 스르륵 할 수 없어요. AI 답변을 눌러 주세요'),
     getProgress: (key) => {
@@ -185,6 +189,10 @@ function setup() {
     .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .check.off { opacity: .45; cursor: default; } .check.off input { cursor: default; }
     .opts .time { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+    select.sound { font: inherit; font-size: 13px; font-weight: 600; color: var(--fg); background: var(--soft);
+      border: 0; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+    .allow { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+    .allow .btn { padding: 4px 12px; font-size: 12px; }
     .backdrop.side { background: rgba(0,0,0,.08); justify-content: flex-end; align-items: flex-start; padding: 16px; }
     .backdrop.side .card { width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
     .swatches { display: flex; flex-wrap: wrap; gap: 10px 8px; }
@@ -476,7 +484,11 @@ function setup() {
   let srrActive = false, srrPicking = false;
   let srrSpeed = store.get('srrSpeed', 25);
   let srrRain = store.get('srrRain', false);
-  let srrRainSound = store.get('srrRainSound', true);
+  const SOUND_LIST = [
+    ['rain', '빗소리'], ['waves', '파도'], ['fire', '모닥불'], ['stream', '시냇물'], ['forest', '숲 (새소리·바람)'],
+    ['white', '백색소음'], ['pink', '분홍소음 (부드러운)'], ['brown', '갈색소음 (낮고 깊은)'], ['beat', '집중 비트 (이어폰)'], ['off', '소리 끔'],
+  ];
+  let srrSoundName = store.get('srrSoundName', null) || (store.get('srrRainSound', true) ? 'rain' : 'off');
   const VIEW_DEFAULT = { theme: 'site', scale: 1, lh: 0, font: 'site', width: 820, focus: false, caret: false, volume: 0.9 };
   let srrView = Object.assign({}, VIEW_DEFAULT, store.get('srrView', {}));
   let timeEl = null;
@@ -508,7 +520,20 @@ function setup() {
   function toastLocked() {
     toast('끝까지 보면 닫을 수 있어요' + (lastTimeText ? ` (${lastTimeText})` : ''));
   }
+  let srrStrong = store.get('srrStrong', false);  // 창에서 못 나가게 (설정)
+  let resumePending = false;
+  let allowRow = null;
+  let focusLockSent = false;
+  function updateGuard() {
+    const need = srrStrong && srrLockOn && !!store.get('srrLockKey', null) && (srrLocked() || resumePending);
+    if (need !== focusLockSent) {
+      focusLockSent = need;
+      ipcRenderer.send('focus-lock', need);
+    }
+    if (allowRow) allowRow.classList.toggle('hidden', !(need && srrActive));
+  }
   function updateLockUi() {
+    updateGuard();
     if (!closeBtn) return;
     const locked = srrLocked();
     closeBtn.replaceChildren(icon(locked ? 'lock' : 'close', 24));
@@ -517,8 +542,9 @@ function setup() {
   }
   function saveLockKey() {
     if (srrLocked()) store.set('srrLockKey', srr.currentKey());
+    updateGuard();
   }
-  function clearLockKey() { store.set('srrLockKey', null); }
+  function clearLockKey() { store.set('srrLockKey', null); updateGuard(); }
 
   function openViewSettings() {
     const seg = (labels, values, key) => {
@@ -561,13 +587,30 @@ function setup() {
         if (!srrLockOn) clearLockKey();
         updateLockUi();
       } });
+    // 더 엄하게(켜기)는 언제든, 풀기(끄기)는 다 본 뒤에만
+    const strongBox = h('input', { type: 'checkbox', class: 'switch', checked: srrStrong && srrLockOn,
+      disabled: !srrLockOn || (!canChangeLock && srrStrong), onchange: () => {
+        srrStrong = strongBox.checked;
+        store.set('srrStrong', srrStrong);
+        if (srrStrong) toast('켜 두면 다 볼 때까지 전체 화면으로 맨 위에 고정되고 닫을 수 없어요', 3500);
+        if (srrStrong && !canChangeLock) strongBox.disabled = true;  // 읽는 중에 켰으면 다 볼 때까지 못 끔
+        updateGuard();
+      } });
+    lockBox.addEventListener('change', () => {
+      strongBox.disabled = !lockBox.checked;
+      if (!lockBox.checked) strongBox.checked = false;
+    });
+    const strongRow = h('div', { class: 'srow' }, h('div', { class: 'main' },
+      h('div', { class: 't', text: '창에서 못 나가게' }),
+      h('div', { class: 'p', text: (!canChangeLock && srrStrong) ? '다 보기 전에는 끌 수 없어요'
+        : '다 볼 때까지 전체 화면·맨 위에 고정, 닫기·최소화 막기 (잠깐 다른 창 쓰기 1분 가능)' })), strongBox);
     const lockRow = h('div', { class: 'srow' }, h('div', { class: 'main' },
       h('div', { class: 't', text: '끝까지 보기 잠금' }),
       h('div', { class: 'p', text: canChangeLock ? '켜 두면 다 볼 때까지 스르륵을 닫을 수 없어요' : '다 보기 전에는 바꿀 수 없어요' })), lockBox);
 
     const volLabel = h('label', { class: 'f' });
     const showVol = () => {
-      volLabel.textContent = `빗소리 크기  ${Math.round(srrView.volume * 100)}%` + (srrRain && srrRainSound ? '' : ' (빗소리를 켜면 들려요)');
+      volLabel.textContent = `소리 크기  ${Math.round(srrView.volume * 100)}%` + (srrSoundName !== 'off' ? '' : ' (막대에서 소리를 고르면 들려요)');
     };
     const vol = h('input', { type: 'range', class: 'wide', min: '0', max: '150', step: '10', value: String(Math.round(srrView.volume * 10) * 10),
       oninput: () => { setView({ volume: parseInt(vol.value, 10) / 100 }); showVol(); } });
@@ -585,7 +628,7 @@ function setup() {
         h('label', { class: 'f', text: '줄 간격' }), lh.box,
         h('label', { class: 'f', text: '글꼴' }), font.box,
         h('label', { class: 'f', text: '글 폭' }), width.box,
-        focus.row, caret.row, lockRow,
+        focus.row, caret.row, lockRow, strongRow,
         volLabel, vol,
         h('div', { class: 'two' }, h('button', { class: 'btn', text: '모두 기본값으로', onclick: () => {
           setView(Object.assign({}, VIEW_DEFAULT));
@@ -609,28 +652,34 @@ function setup() {
         store.set('srrSpeed', srrSpeed);
       } });
     barPlay = h('button', { class: 'iconbtn play', title: '재생 / 일시정지 (스페이스)', onclick: () => srr.toggle() }, icon('pause', 28));
-    // 비 내리기 효과와 빗소리 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
-    const soundBox = h('input', { type: 'checkbox', checked: srrRainSound, disabled: !srrRain, onchange: () => {
-      srrRainSound = soundBox.checked;
-      store.set('srrRainSound', srrRainSound);
-      srr.setSound(srrRainSound);
-    } });
-    const soundLabel = h('label', { class: 'check' + (srrRain ? '' : ' off'), title: '비가 내릴 때 빗소리를 들려줘요' },
-      soundBox, h('span', { text: '빗소리' }));
+    // 비 내리기 효과 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
     const rainBox = h('input', { type: 'checkbox', checked: srrRain, onchange: () => {
       srrRain = rainBox.checked;
       store.set('srrRain', srrRain);
-      soundBox.disabled = !srrRain;  // 빗소리는 비가 내릴 때만
-      soundLabel.classList.toggle('off', !srrRain);
       srr.setRain(srrRain);
     } });
+    // 집중 소리 고르기
+    const soundSel = h('select', { class: 'sound', title: '집중 소리', onchange: () => {
+      srrSoundName = soundSel.value;
+      store.set('srrSoundName', srrSoundName);
+      srr.setSound(srrSoundName);
+    } }, SOUND_LIST.map(([k, label]) => h('option', { value: k, text: '🔊 ' + label })));
+    soundSel.value = srrSoundName;
+    // 창에서 못 나가게 켜져 있을 때: 잠깐 다른 창 쓰기 (1분)
+    allowRow = h('div', { class: 'allow hidden' },
+      h('span', { text: '메신저·전화를 봐야 하면' }),
+      h('button', { class: 'btn tonal', text: '잠깐 다른 창 쓰기 (1분)', onclick: () => {
+        ipcRenderer.send('focus-allow', 60000);
+        toast('1분 동안 다른 창을 쓸 수 있어요. 그다음엔 다시 돌아와요', 3000);
+      } }));
     bar = h('div', { class: 'bar hidden' },
       h('div', { class: 'prog' }, barProg),
       h('div', { class: 'speed' }, h('span', { text: '속도' }), slider, label),
       h('div', { class: 'opts' },
         h('label', { class: 'check', title: '스르륵 화면에 비가 내리게 해요' }, rainBox, h('span', { text: '비 내리기' })),
-        soundLabel,
+        soundSel,
         timeEl = h('span', { class: 'time' })),
+      allowRow,
       h('div', { class: 'ctl' },
         pickBtn = h('button', { class: 'iconbtn', title: '다른 답변 고르기', onclick: () => {
           if (srrLocked()) return toastLocked();
@@ -667,7 +716,7 @@ function setup() {
   function srrSetup() {
     srr.setSpeed(srrSpeed);
     srr.setView(srrView);
-    srr.setSound(srrRainSound);
+    srr.setSound(srrSoundName);
     srr.setRain(srrRain);
   }
   function beginSrr(indices) {
@@ -709,6 +758,7 @@ function setup() {
     srrActive = false;
     bar.classList.add('hidden');
     updateFabs();
+    updateGuard();
   }
   function closeSrr() {
     srr.close();
@@ -904,6 +954,7 @@ function setup() {
 
   // ---- 메뉴(도구)에서 오는 명령 ----
   ipcRenderer.on('ui-action', (_e, name) => {
+    if (name === 'locked-close') { toastLocked(); return; }  // 잠금 중 창 닫기를 눌렀을 때
     if (!root || dialogs.length) return;
     if (name === 'prompts') openPrompts();
     else if (name === 'srr') {
@@ -934,6 +985,8 @@ function setup() {
     // 끝까지 보지 않은 스르륵이 있으면 같은 답변을 찾아 자동으로 다시 켬
     const lockKey = store.get('srrLockKey', null);
     if (lockKey && srrLockOn) {
+      resumePending = true;
+      updateGuard();
       srrSetup();
       srr.autoResume(lockKey);
     }

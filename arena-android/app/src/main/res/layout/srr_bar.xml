@@ -74,13 +74,16 @@
                 android:text="비 내리기"
                 android:textAppearance="?attr/textAppearanceLabelLarge" />
 
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/srrRainSound"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/srrSound"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:minHeight="40dp"
-                android:text="빗소리"
-                android:textAppearance="?attr/textAppearanceLabelLarge" />
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="🔊 빗소리"
+                android:contentDescription="집중 소리 고르기" />
 
             <TextView
                 android:id="@+id/srrTime"
@@ -91,6 +94,48 @@
                 android:maxLines="1"
                 android:textAppearance="?attr/textAppearanceLabelMedium"
                 android:textColor="?android:attr/textColorSecondary" />
+        </LinearLayout>
+
+        <!-- 앱 밖으로 못 나가게 켜져 있을 때만 보임: 나가지 않고 쓸 수 있는 앱 -->
+        <LinearLayout
+            android:id="@+id/srrAllowRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
+                android:text="써도 돼요"
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/srrCall"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="36dp"
+                android:text="📞 전화" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/srrSms"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="36dp"
+                android:text="💬 문자" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/srrKakao"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="36dp"
+                android:text="카카오톡" />
         </LinearLayout>
 
         <LinearLayout

@@ -68,7 +68,10 @@ class SrrViewSheet(
      * @param lockOn 끝까지 보기 잠금이 켜져 있는지
      * @param canChangeLock 지금 잠금 설정을 바꿀 수 있는지 (다 보기 전에는 못 바꿈)
      */
-    fun show(rainSoundOn: Boolean, lockOn: Boolean, canChangeLock: Boolean, onLockChanged: (Boolean) -> Unit) {
+    fun show(
+        rainSoundOn: Boolean, lockOn: Boolean, canChangeLock: Boolean, onLockChanged: (Boolean) -> Unit,
+        strongOn: Boolean, onStrongChanged: (Boolean) -> Boolean,
+    ) {
         val view = LayoutInflater.from(activity).inflate(R.layout.srr_view_sheet, null)
         val sheet = BottomSheetDialog(activity)
         sheet.setContentView(view)
@@ -192,14 +195,29 @@ class SrrViewSheet(
         if (!canChangeLock) {
             view.findViewById<TextView>(R.id.lockHint).text = "다 보기 전에는 바꿀 수 없어요"
         }
-        lock.setOnCheckedChangeListener { _, c -> onLockChanged(c) }
+        // 앱 밖으로 못 나가게 (끝까지 보기 잠금이 켜져 있을 때만)
+        val strong = view.findViewById<MaterialSwitch>(R.id.strongSwitch)
+        // 더 엄하게(켜기)는 언제든, 풀기(끄기)는 다 본 뒤에만
+        strong.isChecked = strongOn && lockOn
+        strong.isEnabled = lockOn && (canChangeLock || !strongOn)
+        if (!canChangeLock && strongOn) view.findViewById<TextView>(R.id.strongHint).text = "다 보기 전에는 끌 수 없어요"
+        strong.setOnCheckedChangeListener { _, c ->
+            val actual = onStrongChanged(c)
+            if (actual != c) strong.isChecked = actual  // 권한이 없어서 못 켠 경우
+            else if (c && !canChangeLock) strong.isEnabled = false  // 읽는 중에 켰으면 다 볼 때까지 못 끔
+        }
+        lock.setOnCheckedChangeListener { _, c ->
+            onLockChanged(c)
+            strong.isEnabled = c
+            if (!c) strong.isChecked = false
+        }
 
         // 빗소리 크기
         val volume = view.findViewById<Slider>(R.id.volumeSlider)
         val volumeLabel = view.findViewById<TextView>(R.id.volumeLabel)
         fun showVolume() {
             val v = Math.round(o.optDouble("volume", 0.9) * 100)
-            volumeLabel.text = if (rainSoundOn) "빗소리 크기  ${v}%" else "빗소리 크기  ${v}% (빗소리를 켜면 들려요)"
+            volumeLabel.text = if (rainSoundOn) "소리 크기  ${v}%" else "소리 크기  ${v}% (막대의 🔊에서 소리를 고르면 들려요)"
         }
         volume.value = ((Math.round(o.optDouble("volume", 0.9) * 10) * 10).toInt()).coerceIn(0, 150).toFloat()
         showVolume()

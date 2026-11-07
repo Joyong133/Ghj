@@ -25,7 +25,7 @@
   var pickHandler = null;
   var key = '', lastSave = 0;
   var rainOn = false, rain = null;  // 비 내리기 효과
-  var soundOn = true, snd = null, soundHold = false;  // 빗소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)
+  var snd = null, soundHold = false;  // 집중 소리 (soundHold: 앱이 뒤로 갔을 때 잠시 멈춤)
 
   // ---- 보기 설정 (화면 색, 글자 크기, 줄 간격, 글꼴, 글 폭, 읽는 줄 강조, 커서, 빗소리 크기) ----
   var view = { theme: 'site', scale: 1, lh: 0, font: 'site', width: 820, focus: false, caret: false, volume: 0.9 };
@@ -575,14 +575,33 @@
     updateSound();
   }
 
-  // ---- 빗소리: 음원 파일 없이 Web Audio로 직접 만듦 ----
-  // 쏴아 하는 소리(높은 소리) + 낮게 울리는 소리 + 여기저기 떨어지는 빗방울 소리
-  function noiseBuffer(ctx, seconds) {
+  // ---- 집중 소리: 음원 파일 없이 Web Audio로 직접 만듦 ----
+  // rain 빗소리, waves 파도, fire 모닥불, stream 시냇물, forest 숲, white 백색소음,
+  // pink 분홍소음, brown 갈색소음, beat 집중 비트(이어폰), off 끔
+  var SOUNDS = ['rain', 'waves', 'fire', 'stream', 'forest', 'white', 'pink', 'brown', 'beat'];
+  var soundName = 'rain';
+
+  function noiseBuffer(ctx, seconds, color) {
     var len = Math.floor(ctx.sampleRate * seconds);
     var buf = ctx.createBuffer(2, len, ctx.sampleRate);
     for (var ch = 0; ch < 2; ch++) {
-      var d = buf.getChannelData(ch);
-      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      var d = buf.getChannelData(ch), b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, last = 0, peak = 0, i, w;
+      for (i = 0; i < len; i++) {
+        w = Math.random() * 2 - 1;
+        if (color === 'pink') {  // Paul Kellet 방식
+          b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759;
+          b2 = 0.96900 * b2 + w * 0.1538520; b3 = 0.86650 * b3 + w * 0.3104856;
+          b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
+          d[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362; b6 = w * 0.115926;
+        } else if (color === 'brown') {
+          last = (last + 0.02 * w) / 1.02;
+          d[i] = last;
+        } else {
+          d[i] = w;
+        }
+        if (Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+      }
+      if (color && peak > 0) for (i = 0; i < len; i++) d[i] = d[i] / peak * 0.9;  // 크기 맞춤
     }
     return buf;
   }
@@ -590,7 +609,7 @@
     var src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.start(0, offset);
+    src.start(0, offset || 0);
     return src;
   }
   function filter(ctx, type, freq, q) {
@@ -600,82 +619,188 @@
     if (q) f.Q.value = q;
     return f;
   }
-  function startSound() {
-    if (snd) return;
+  function gainNode(ctx, v) {
+    var g = ctx.createGain();
+    g.gain.value = v;
+    return g;
+  }
+  function panTo(ctx, node, v) {
+    if (!ctx.createStereoPanner) return node;
+    var p = ctx.createStereoPanner();
+    p.pan.value = v;
+    return node.connect(p);
+  }
+  // 천천히 오르내리는 크기 변화 (자연스럽게)
+  function swell(ctx, param, rate, depth) {
+    var lfo = ctx.createOscillator();
+    lfo.frequency.value = rate;
+    var g = gainNode(ctx, depth);
+    lfo.connect(g).connect(param);
+    lfo.start();
+  }
+  // 짧은 소리 하나 (빗방울, 장작 튀는 소리 등)
+  function burst(ctx, out, buf, at, type, freq, q, peak, decay, pan) {
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(peak, at + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+    panTo(ctx, src.connect(filter(ctx, type, freq, q)).connect(g), pan).connect(out);
+    src.start(at);
+    src.stop(at + decay + 0.02);
+  }
+
+  var BUILD = {
+    rain: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 3);
+      var hiss = gainNode(ctx, 0.22);
+      loopNoise(ctx, bed).connect(filter(ctx, 'highpass', 350)).connect(filter(ctx, 'lowpass', 5200)).connect(hiss).connect(out);
+      swell(ctx, hiss.gain, 0.13, 0.06);
+      loopNoise(ctx, bed, 1.37).connect(filter(ctx, 'lowpass', 420)).connect(gainNode(ctx, 0.2)).connect(out);
+      var drop = noiseBuffer(ctx, 0.08);
+      every(40, function (now) {
+        var n = Math.random() < 0.5 ? 1 : 2;
+        for (var i = 0; i < n; i++) {
+          burst(ctx, out, drop, now + 0.05 + Math.random() * 0.04, 'bandpass', 1400 + Math.random() * 4200,
+            1.4 + Math.random() * 2, 0.025 + Math.random() * 0.07, 0.02 + Math.random() * 0.05, Math.random() * 1.6 - 0.8);
+        }
+      });
+    },
+    waves: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 4, 'pink');
+      var body = gainNode(ctx, 0.05), foam = gainNode(ctx, 0.02);
+      loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 700)).connect(body).connect(out);
+      loopNoise(ctx, bed, 2.1).connect(filter(ctx, 'highpass', 1800)).connect(foam).connect(out);
+      var next = 0;
+      every(250, function (now) {  // 7~11초마다 파도가 밀려왔다 빠짐
+        if (now < next) return;
+        var up = 2.5 + Math.random() * 1.5, down = 3.5 + Math.random() * 2.5, top = 0.5 + Math.random() * 0.3;
+        body.gain.setTargetAtTime(top, now, up / 3);
+        body.gain.setTargetAtTime(0.06, now + up, down / 3);
+        foam.gain.setTargetAtTime(top * 0.45, now + up * 0.7, 0.4);
+        foam.gain.setTargetAtTime(0.02, now + up + 0.5, down / 2.5);
+        next = now + up + down + Math.random() * 1.5;
+      });
+    },
+    fire: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 3, 'brown');
+      var roar = gainNode(ctx, 0.45);
+      loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 500)).connect(roar).connect(out);
+      swell(ctx, roar.gain, 0.21, 0.12);
+      var click = noiseBuffer(ctx, 0.03);
+      every(30, function (now) {  // 타닥타닥 장작 튀는 소리
+        if (Math.random() < 0.35) {
+          burst(ctx, out, click, now + Math.random() * 0.03, 'highpass', 1800 + Math.random() * 3000, 0.8,
+            0.05 + Math.random() * 0.22, 0.004 + Math.random() * 0.012, Math.random() * 1.2 - 0.6);
+        }
+        if (Math.random() < 0.012) {  // 가끔 크게 '탁'
+          burst(ctx, out, click, now + 0.02, 'bandpass', 600 + Math.random() * 900, 1.2, 0.35, 0.05, Math.random() - 0.5);
+        }
+      });
+    },
+    stream: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 3);
+      var a = gainNode(ctx, 0.16), b = gainNode(ctx, 0.1);
+      loopNoise(ctx, bed).connect(filter(ctx, 'bandpass', 900, 0.8)).connect(a).connect(out);
+      loopNoise(ctx, bed, 1.1).connect(filter(ctx, 'bandpass', 2600, 1.1)).connect(b).connect(out);
+      loopNoise(ctx, noiseBuffer(ctx, 3, 'brown')).connect(filter(ctx, 'lowpass', 300)).connect(gainNode(ctx, 0.34)).connect(out);
+      every(90, function (now) {  // 졸졸 흐르며 소리가 계속 바뀜
+        a.gain.setTargetAtTime(0.1 + Math.random() * 0.24, now, 0.06);
+        b.gain.setTargetAtTime(0.04 + Math.random() * 0.18, now, 0.05);
+      });
+    },
+    forest: function (ctx, out, every) {
+      var wind = gainNode(ctx, 0.5);
+      loopNoise(ctx, noiseBuffer(ctx, 4, 'pink')).connect(filter(ctx, 'bandpass', 450, 0.6)).connect(wind).connect(out);
+      swell(ctx, wind.gain, 0.07, 0.25);
+      var next = 0;
+      function chirp(at, f0, f1, len, pan, vol) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f0, at);
+        o.frequency.exponentialRampToValueAtTime(f1, at + len);
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(vol, at + len * 0.25);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+        panTo(ctx, o.connect(g), pan).connect(out);
+        o.start(at);
+        o.stop(at + len + 0.02);
+      }
+      every(200, function (now) {  // 새가 몇 번씩 지저귐 (멀고 가까운 새, 좌우로)
+        if (now < next) return;
+        var pan = Math.random() * 1.6 - 0.8, vol = 0.07 + Math.random() * 0.13;
+        var base = 2200 + Math.random() * 2600, n = 2 + Math.floor(Math.random() * 5), t = now + 0.05;
+        for (var i = 0; i < n; i++) {
+          var len = 0.06 + Math.random() * 0.12;
+          var up = Math.random() < 0.6;
+          chirp(t, base * (up ? 0.85 : 1.2), base * (up ? 1.25 : 0.8), len, pan, vol);
+          t += len + 0.03 + Math.random() * 0.08;
+        }
+        next = t + 1.5 + Math.random() * 4.5;
+      });
+    },
+    white: function (ctx, out) {
+      loopNoise(ctx, noiseBuffer(ctx, 3)).connect(filter(ctx, 'lowpass', 9000)).connect(gainNode(ctx, 0.22)).connect(out);
+    },
+    pink: function (ctx, out) {
+      loopNoise(ctx, noiseBuffer(ctx, 4, 'pink')).connect(gainNode(ctx, 0.45)).connect(out);
+    },
+    brown: function (ctx, out) {
+      loopNoise(ctx, noiseBuffer(ctx, 4, 'brown')).connect(gainNode(ctx, 0.5)).connect(out);
+    },
+    beat: function (ctx, out) {
+      // 집중 비트: 왼쪽 200Hz, 오른쪽 214Hz → 이어폰으로 들으면 초당 14번 맥놀이(베타파)
+      var merger = ctx.createChannelMerger(2);
+      [200, 214].forEach(function (f, ch) {
+        var o = ctx.createOscillator();
+        o.frequency.value = f;
+        o.connect(gainNode(ctx, 0.14)).connect(merger, 0, ch);
+        o.start();
+      });
+      merger.connect(out);
+      loopNoise(ctx, noiseBuffer(ctx, 4, 'pink')).connect(filter(ctx, 'lowpass', 1200)).connect(gainNode(ctx, 0.05)).connect(out);
+    }
+  };
+
+  function startSound(name) {
+    if (snd && snd.name === name) return;
+    stopSound();
     var AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
+    if (!AC || !BUILD[name]) return;
     var ctx;
     try { ctx = new AC(); } catch (e) { return; }
-    var master = ctx.createGain();
-    master.gain.value = 0;
+    var master = gainNode(ctx, 0);
     master.connect(ctx.destination);
-    var bed = noiseBuffer(ctx, 3);
-
-    // 쏴아 하는 빗소리
-    var hiss = ctx.createGain();
-    hiss.gain.value = 0.22;
-    loopNoise(ctx, bed, 0).connect(filter(ctx, 'highpass', 350)).connect(filter(ctx, 'lowpass', 5200)).connect(hiss);
-    hiss.connect(master);
-    // 소리 크기가 천천히 오르내리게 (자연스럽게)
-    var lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.13;
-    var lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.06;
-    lfo.connect(lfoGain).connect(hiss.gain);
-    lfo.start();
-
-    // 낮게 울리는 소리
-    var rumble = ctx.createGain();
-    rumble.gain.value = 0.2;
-    loopNoise(ctx, bed, 1.37).connect(filter(ctx, 'lowpass', 420)).connect(rumble);
-    rumble.connect(master);
-
-    // 빗방울 소리: 짧은 소리를 무작위로, 좌우로 퍼지게
-    var drop = noiseBuffer(ctx, 0.08);
-    function plink(at) {
-      var src = ctx.createBufferSource();
-      src.buffer = drop;
-      var bp = filter(ctx, 'bandpass', 1400 + Math.random() * 4200, 1.4 + Math.random() * 2);
-      var g = ctx.createGain();
-      var peak = 0.025 + Math.random() * 0.07;
-      g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(peak, at + 0.002);
-      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.02 + Math.random() * 0.05);
-      var node = src.connect(bp).connect(g);
-      if (ctx.createStereoPanner) {
-        var pan = ctx.createStereoPanner();
-        pan.pan.value = Math.random() * 1.6 - 0.8;
-        node = node.connect(pan);
-      }
-      node.connect(master);
-      src.start(at);
-      src.stop(at + 0.09);
+    var timers = [];
+    function every(ms, fn) {
+      timers.push(setInterval(function () { if (ctx.state === 'running') fn(ctx.currentTime); }, ms));
     }
-    var timer = setInterval(function () {
-      if (ctx.state !== 'running') return;
-      var now = ctx.currentTime;
-      var n = Math.random() < 0.5 ? 1 : 2;  // 1초에 40개쯤
-      for (var i = 0; i < n; i++) plink(now + 0.05 + Math.random() * 0.04);
-    }, 40);
-
+    try { BUILD[name](ctx, master, every); } catch (e) {}
     master.gain.setTargetAtTime(view.volume, ctx.currentTime, 0.5);  // 천천히 커지며 시작
     if (ctx.state === 'suspended') ctx.resume();
-    snd = { ctx: ctx, master: master, timer: timer };
+    snd = { name: name, ctx: ctx, master: master, timers: timers };
   }
   function stopSound() {
     if (!snd) return;
     var s = snd;
     snd = null;
-    clearInterval(s.timer);
+    s.timers.forEach(clearInterval);
     try { s.master.gain.setTargetAtTime(0, s.ctx.currentTime, 0.15); } catch (e) {}
     setTimeout(function () { try { s.ctx.close(); } catch (e) {} }, 700);  // 부드럽게 줄인 뒤 끔
   }
-  // 스르륵 화면이 열려 있고, 비가 켜져 있고, 빗소리가 켜져 있을 때만 소리를 냄
+  // 스르륵 화면이 열려 있고 소리를 골랐을 때만 냄
   function updateSound() {
-    if (box && rainOn && soundOn && !soundHold && !document.hidden) startSound();
+    if (box && soundName !== 'off' && !soundHold && !document.hidden) startSound(soundName);
     else stopSound();
   }
-  function setSound(on) { soundOn = !!on; updateSound(); }
+  // setSound('waves') 처럼 이름으로, 예전처럼 true/false(빗소리 켜기/끄기)도 받음
+  function setSound(v) {
+    if (v === true) v = 'rain';
+    if (v === false || SOUNDS.indexOf(v) < 0) v = 'off';
+    soundName = v;
+    updateSound();
+  }
   function holdSound(on) { soundHold = !!on; updateSound(); }
   document.addEventListener('visibilitychange', function () { updateSound(); });
 

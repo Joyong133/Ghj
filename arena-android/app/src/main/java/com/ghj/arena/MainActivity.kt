@@ -8,7 +8,9 @@ import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.os.Message
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -57,6 +59,14 @@ class MainActivity : AppCompatActivity() {
         private const val HOME_URL = "https://arena.ai/"
         private const val OFFLINE_URL = "file:///android_asset/offline.html"
         private const val DIRECT_URL = "https://arena.ai/text/direct"
+        const val EXTRA_BROUGHT_BACK = "brought_back"
+
+        // 집중 소리 (srr.js의 SOUNDS와 같은 순서, 맨 끝은 끄기)
+        val SOUND_KEYS = listOf("rain", "waves", "fire", "stream", "forest", "white", "pink", "brown", "beat", "off")
+        val SOUND_LABELS = listOf(
+            "빗소리", "파도", "모닥불", "시냇물", "숲 (새소리·바람)",
+            "백색소음", "분홍소음 (부드러운 쏴~)", "갈색소음 (낮고 깊은)", "집중 비트 (이어폰 추천)", "소리 끔"
+        )
 
         // 앱 안에서 그대로 여는 도메인 (사이트 자체 + 로그인 화면)
         private val IN_APP_HOSTS = listOf(
@@ -136,13 +146,17 @@ class MainActivity : AppCompatActivity() {
     private var srrPicking = false
     private var srrSpeed = 25
     private var srrRain = false
-    private var srrRainSound = true
+    private var srrSoundName = "rain"
     private lateinit var srrViewSheet: SrrViewSheet
     private lateinit var srrClose: MaterialButton
     private lateinit var srrPick: View
     private var srrDone = false          // 끝까지 다 봤는지
     private var srrLockOn = true         // 끝까지 보기 잠금 (설정)
     private var srrLastTime = ""         // 남은 시간 글
+    private var srrStrong = false        // 앱 밖으로 못 나가게 (설정)
+    private var strongPending = false    // 권한 설정 화면에서 돌아오면 켜기
+    private var resumePending = false    // 잠금 중인 스르륵을 다시 여는 중
+    private lateinit var srrAllowRow: View
     private lateinit var srrTime: TextView
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
@@ -212,6 +226,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_BROUGHT_BACK, false)) {
+            toast("끝까지 보면 나갈 수 있어요" + if (srrLastTime.isNotEmpty()) " ($srrLastTime)" else "")
+        }
         linkFrom(intent)?.let {
             closePopup()
             webView.loadUrl(it)
@@ -516,26 +533,52 @@ class MainActivity : AppCompatActivity() {
 
         // 비 내리기 효과 (체크 상태 기억, 재생 중에도 바로 켜고 끔)
         srrRain = prefs.getBoolean("srrRain", false)
-        srrRainSound = prefs.getBoolean("srrRainSound", true)
-        val soundBox = srrBar.findViewById<CompoundButton>(R.id.srrRainSound)
+        // 집중 소리 (예전 빗소리 체크 설정을 이어받음)
+        srrSoundName = prefs.getString("srrSoundName", null)
+            ?: if (prefs.getBoolean("srrRainSound", true)) "rain" else "off"
+        val soundBtn = srrBar.findViewById<MaterialButton>(R.id.srrSound)
+        fun showSound() {
+            val i = SOUND_KEYS.indexOf(srrSoundName).coerceAtLeast(0)
+            soundBtn.text = "🔊 " + SOUND_LABELS[i].substringBefore(" (")
+        }
+        showSound()
         srrBar.findViewById<CompoundButton>(R.id.srrRain).apply {
             isChecked = srrRain
             setOnCheckedChangeListener { _, checked ->
                 srrRain = checked
-                soundBox.isEnabled = checked  // 빗소리는 비가 내릴 때만
                 prefs.edit().putBoolean("srrRain", checked).apply()
                 webView.evaluateJavascript("window.__srr && __srr.setRain($checked)", null)
             }
         }
-        soundBox.apply {
-            isChecked = srrRainSound
-            isEnabled = srrRain
-            setOnCheckedChangeListener { _, checked ->
-                srrRainSound = checked
-                prefs.edit().putBoolean("srrRainSound", checked).apply()
-                webView.evaluateJavascript("window.__srr && __srr.setSound($checked)", null)
-            }
+        soundBtn.setOnClickListener {
+            val cur = SOUND_KEYS.indexOf(srrSoundName).coerceAtLeast(0)
+            MaterialAlertDialogBuilder(this)
+                .setTitle("집중 소리")
+                .setSingleChoiceItems(SOUND_LABELS.map { it as CharSequence }.toTypedArray(), cur) { d, which ->
+                    srrSoundName = SOUND_KEYS[which]
+                    prefs.edit().putString("srrSoundName", srrSoundName).apply()
+                    webView.evaluateJavascript("window.__srr && __srr.setSound('$srrSoundName')", null)
+                    showSound()
+                    d.dismiss()
+                }
+                .setNegativeButton("닫기", null)
+                .show()
         }
+        // 앱 밖으로 못 나가게: 나가지 않고 쓸 수 있는 전화·문자·카카오톡
+        srrStrong = prefs.getBoolean("srrStrong", false)
+        srrAllowRow = srrBar.findViewById(R.id.srrAllowRow)
+        srrBar.findViewById<View>(R.id.srrCall).setOnClickListener { openAllowed(Intent(Intent.ACTION_DIAL)) }
+        srrBar.findViewById<View>(R.id.srrSms).setOnClickListener {
+            val sms = try { android.provider.Telephony.Sms.getDefaultSmsPackage(this) } catch (e: Exception) { null }
+            openAllowed(sms?.let { packageManager.getLaunchIntentForPackage(it) }
+                ?: Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:")))
+        }
+        val kakao = packageManager.getLaunchIntentForPackage("com.kakao.talk")
+        srrBar.findViewById<View>(R.id.srrKakao).apply {
+            visibility = if (kakao != null) View.VISIBLE else View.GONE
+            setOnClickListener { kakao?.let { openAllowed(it) } }
+        }
+
         srrPick = srrBar.findViewById(R.id.srrPick)
         srrClose = srrBar.findViewById(R.id.srrClose)
         srrLockOn = prefs.getBoolean("srrLock", true)
@@ -554,12 +597,12 @@ class MainActivity : AppCompatActivity() {
             webView.evaluateJavascript("window.__srr && __srr.setView($json)", null)
         }
         srrBar.findViewById<View>(R.id.srrView).setOnClickListener {
-            srrViewSheet.show(srrRain && srrRainSound, srrLockOn, !srrLocked()) { on ->
+            srrViewSheet.show(srrSoundName != "off", srrLockOn, !srrLocked(), { on ->
                 srrLockOn = on
                 prefs.edit().putBoolean("srrLock", on).apply()
                 if (!on) clearLockKey()
                 updateLockUi()
-            }
+            }, srrStrong) { on -> setStrong(on) }
         }
 
         webView.addJavascriptInterface(SrrBridge(), "ArenaSrr")
@@ -595,12 +638,19 @@ class MainActivity : AppCompatActivity() {
         /** 잠금 중 새로 열린 페이지에서 같은 답변을 찾아 자동으로 다시 켰을 때 */
         @JavascriptInterface
         fun onAutoStarted(result: String) {
-            runOnUiThread { showSrrStarted(result, auto = true) }
+            runOnUiThread {
+                resumePending = false
+                showSrrStarted(result, auto = true)
+            }
         }
 
         @JavascriptInterface
         fun onAutoFailed() {
-            runOnUiThread { toast("끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요") }
+            runOnUiThread {
+                resumePending = false
+                updateGuard()  // 답변을 못 찾으면 묶어 두지 않음
+                toast("끝까지 보지 않은 스르륵이 있어요. 그 대화를 다시 열면 이어서 보여 줘요")
+            }
         }
 
         // ---- 어디까지 봤는지 저장 (답변마다, 휴대폰 안에) ----
@@ -703,7 +753,7 @@ class MainActivity : AppCompatActivity() {
     /** 스르륵을 시작하기 전에 속도·보기·비·빗소리 설정을 페이지에 알려 주는 스크립트 */
     private fun srrSetupJs() =
         "__srr.setSpeed($srrSpeed); __srr.setView(${srrViewSheet.current()}); " +
-            "__srr.setSound($srrRainSound); __srr.setRain($srrRain);"
+            "__srr.setSound('$srrSoundName'); __srr.setRain($srrRain);"
 
     private fun showSrrStarted(result: String, auto: Boolean) {
         val resumed = Regex("resumed:(\\d+)").find(result)?.groupValues?.get(1)
@@ -733,7 +783,71 @@ class MainActivity : AppCompatActivity() {
         toast("끝까지 보면 닫을 수 있어요" + if (srrLastTime.isNotEmpty()) " ($srrLastTime)" else "")
     }
 
+    // ---- 앱 밖으로 못 나가게 ----
+
+    /** 켜려면 '다른 앱 위에 표시' 권한이 필요. 바뀐 결과(켜졌는지)를 돌려줌 */
+    private fun setStrong(on: Boolean): Boolean {
+        if (on && !LockGuardService.canDrawOverlays(this)) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("권한이 하나 필요해요")
+                .setMessage("다른 앱으로 나갔을 때 이 앱을 다시 불러오려면 '다른 앱 위에 표시' 권한이 필요해요.\n\n" +
+                    "다음 화면에서 Arena를 허용한 뒤 돌아오면 바로 켜져요.")
+                .setNegativeButton("취소", null)
+                .setPositiveButton("설정 열기") { _, _ ->
+                    strongPending = true
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                    } catch (e: Exception) {
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                    }
+                }
+                .show()
+            return false
+        }
+        srrStrong = on
+        getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("srrStrong", on).apply()
+        if (on) {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 11)
+            if (!LockGuardService.hasUsageAccess(this)) askUsageAccess()
+            else toast("앱 밖으로 못 나가게를 켰어요. 전화·문자·카카오톡은 쓸 수 있어요")
+        }
+        updateLockUi()
+        return on
+    }
+
+    private fun askUsageAccess() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("문자·카카오톡도 쓰려면")
+            .setMessage("'사용 정보 접근'을 허용하면, 알림을 눌러 문자나 카카오톡으로 가도 이 앱으로 끌려오지 않아요.\n\n" +
+                "허용하지 않으면 스르륵 막대의 📞·💬·카카오톡 버튼으로 연 뒤 5분 동안만 쓸 수 있어요.")
+            .setNegativeButton("나중에", null)
+            .setPositiveButton("설정 열기") { _, _ ->
+                try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) { }
+            }
+            .show()
+    }
+
+    /** 전화·문자·카카오톡 열기 (5분 동안은 앱으로 다시 불러오지 않음) */
+    private fun openAllowed(intent: Intent) {
+        LockGuardService.allowUntil = System.currentTimeMillis() + 5 * 60 * 1000
+        try {
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            toast("열 수 있는 앱이 없어요")
+        }
+    }
+
+    /** 감시가 필요하면 켜고, 아니면 끔 */
+    private fun updateGuard() {
+        val key = getSharedPreferences("ui", MODE_PRIVATE).getString("srrLockKey", null)
+        val need = srrStrong && srrLockOn && key != null && (srrLocked() || resumePending)
+        if (need && !LockGuardService.guardActive) LockGuardService.start(this)
+        else if (!need && LockGuardService.guardActive) LockGuardService.stop(this)
+        srrAllowRow.visibility = if (need && srrActive) View.VISIBLE else View.GONE
+    }
+
     private fun updateLockUi() {
+        updateGuard()
         val locked = srrLocked()
         srrClose.setIconResource(if (locked) R.drawable.ic_lock else R.drawable.ic_close)
         srrClose.contentDescription = if (locked) "끝까지 보면 닫을 수 있어요" else "스르륵 닫기"
@@ -747,12 +861,14 @@ class MainActivity : AppCompatActivity() {
             val k = try { JSONTokener(r ?: "null").nextValue() as? String } catch (e: Exception) { null }
             if (!k.isNullOrEmpty() && srrLocked()) {
                 getSharedPreferences("ui", MODE_PRIVATE).edit().putString("srrLockKey", k).apply()
+                updateGuard()
             }
         }
     }
 
     private fun clearLockKey() {
         getSharedPreferences("ui", MODE_PRIVATE).edit().remove("srrLockKey").apply()
+        updateGuard()
     }
 
     private fun closeSrr() {
@@ -764,6 +880,7 @@ class MainActivity : AppCompatActivity() {
         srrActive = false
         srrBar.visibility = View.GONE
         updateFabVisibility()
+        updateGuard()
     }
 
     private fun startPick(message: String) {
@@ -813,6 +930,8 @@ class MainActivity : AppCompatActivity() {
         // 끝까지 보지 않은 스르륵이 있으면 같은 답변을 찾아 자동으로 다시 켬
         val lockKey = getSharedPreferences("ui", MODE_PRIVATE).getString("srrLockKey", null)
         if (lockKey != null && srrLockOn && !srrActive) {
+            resumePending = true
+            updateGuard()
             webView.evaluateJavascript(srrScript) {
                 webView.evaluateJavascript("${srrSetupJs()} __srr.autoResume(${JSONObject.quote(lockKey)})", null)
             }
@@ -1022,6 +1141,16 @@ class MainActivity : AppCompatActivity() {
         webView.saveState(outState)
     }
 
+    override fun onStart() {
+        super.onStart()
+        LockGuardService.appInForeground = true
+    }
+
+    override fun onStop() {
+        LockGuardService.appInForeground = false
+        super.onStop()
+    }
+
     override fun onPause() {
         super.onPause()
         // 앱을 나가면 스르륵을 멈추고 본 위치를 저장
@@ -1032,6 +1161,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 권한 설정 화면에서 돌아왔을 때
+        if (strongPending) {
+            strongPending = false
+            if (LockGuardService.canDrawOverlays(this)) setStrong(true)
+            else toast("권한이 없어서 '앱 밖으로 못 나가게'를 켜지 못했어요")
+        }
         if (srrActive) webView.evaluateJavascript("window.__srr && __srr.holdSound(false)", null)
         webView.onResume()
     }
