@@ -234,7 +234,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.getBooleanExtra(EXTRA_BROUGHT_BACK, false)) {
+        if (intent.getBooleanExtra(EXTRA_BROUGHT_BACK, false) && !FocusAccessibilityService.isEnabled(this)) {
             toast("끝까지 보면 나갈 수 있어요" + if (srrLastTime.isNotEmpty()) " ($srrLastTime)" else "")
         }
         linkFrom(intent)?.let {
