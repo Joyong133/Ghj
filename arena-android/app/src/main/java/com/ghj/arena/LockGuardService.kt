@@ -191,7 +191,11 @@ class LockGuardService : Service() {
             return
         }
         val now = System.currentTimeMillis()
-        if (screenOffOrLocked() || inCall() || now < allowUntil || inAllowedApp()) {
+        // '사용 정보 접근'이 있으면 앞에 뜬 앱을 하나하나 확인 (홈·최근 앱은 막힘).
+        // 없을 때만 📞·💬 버튼으로 연 뒤 잠깐 허용 (어떤 앱인지 알 수 없으므로)
+        val usage = hasUsageAccess(this)
+        val allowWindow = !usage && now < allowUntil
+        if (screenOffOrLocked() || inCall() || allowWindow || (usage && inAllowedApp())) {
             awaySince = 0
             return
         }
@@ -234,7 +238,8 @@ class LockGuardService : Service() {
     }
 
     private fun bringBack() {
-        if (!canDrawOverlays(this)) return  // 권한이 없으면 안드로이드가 막음
+        // 뒤에서 화면을 띄우려면 '다른 앱 위에 표시' 권한 또는 켜져 있는 접근성 잠금이 필요 (없으면 안드로이드가 막음)
+        if (!canDrawOverlays(this) && !FocusAccessibilityService.isEnabled(this)) return
         try {
             startActivity(
                 Intent(this, MainActivity::class.java)

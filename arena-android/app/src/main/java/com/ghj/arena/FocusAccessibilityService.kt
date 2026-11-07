@@ -42,7 +42,9 @@ class FocusAccessibilityService : AccessibilityService() {
             allowed = FocusApps.allowed(this)
             allowedAt = now
         }
-        if (pkg in allowed || now < LockGuardService.allowUntil) return
+        // 앱마다 확인: 전화·메시지·허용한 앱만 통과. (📞·💬 버튼의 '잠깐 허용'은 여기서는 쓰지 않음 —
+        // 쓰면 그 사이에 홈·최근 앱으로 빠져나갈 수 있음)
+        if (pkg in allowed) return
         if (now - lastBounce < 400) return
         lastBounce = now
         try {

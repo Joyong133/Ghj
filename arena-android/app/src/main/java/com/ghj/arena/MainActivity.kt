@@ -852,7 +852,10 @@ class MainActivity : AppCompatActivity() {
 
     /** 전화·문자·카카오톡 열기 (5분 동안은 앱으로 다시 불러오지 않음) */
     private fun openAllowed(intent: Intent) {
-        LockGuardService.allowUntil = System.currentTimeMillis() + 5 * 60 * 1000
+        // 접근성 잠금(또는 사용 정보 접근)이 있으면 앱마다 확인하므로 통째로 허용하지 않음
+        val canCheckApps = FocusAccessibilityService.isEnabled(this) || LockGuardService.hasUsageAccess(this)
+        LockGuardService.allowUntil = if (canCheckApps) 0L else System.currentTimeMillis() + 2 * 60 * 1000
+        if (!canCheckApps) toast("2분 동안만 다른 앱을 쓸 수 있어요. 접근성 잠금을 켜면 전화·문자만 정확히 허용돼요")
         try {
             startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
