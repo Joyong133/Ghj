@@ -485,7 +485,7 @@ function setup() {
   let srrSpeed = store.get('srrSpeed', 25);
   let srrRain = store.get('srrRain', false);
   const SOUND_LIST = [
-    ['rain', '빗소리'], ['waves', '파도'], ['fire', '모닥불'], ['stream', '시냇물'], ['forest', '숲 (새소리·바람)'],
+    ['rain', '빗소리'], ['window', '창문 빗소리 (유리에 톡톡)'], ['roof', '지붕 빗소리 (투둑투둑)'], ['waves', '파도'], ['fire', '모닥불'], ['stream', '시냇물'], ['forest', '숲 (새소리·바람)'],
     ['white', '백색소음'], ['pink', '분홍소음 (부드러운)'], ['brown', '갈색소음 (낮고 깊은)'], ['beat', '집중 비트 (이어폰)'], ['off', '소리 끔'],
   ];
   let srrSoundName = store.get('srrSoundName', null) || (store.get('srrRainSound', true) ? 'rain' : 'off');
@@ -515,7 +515,7 @@ function setup() {
   // ---- 끝까지 보기 잠금 ----
   let srrLockOn = store.get('srrLock', true);
   let srrDone = false;
-  let closeBtn = null, pickBtn = null;
+  let closeBtn = null, pickBtn = null, speedSlider = null, speedLabel = null;
   const srrLocked = () => srrLockOn && srrActive && !srrDone;
   function toastLocked() {
     toast('끝까지 보면 닫을 수 있어요' + (lastTimeText ? ` (${lastTimeText})` : ''));
@@ -539,6 +539,10 @@ function setup() {
     closeBtn.replaceChildren(icon(locked ? 'lock' : 'close', 24));
     closeBtn.title = locked ? '끝까지 보면 닫을 수 있어요' : '스르륵 닫기 (Esc)';
     pickBtn.style.opacity = locked ? '0.35' : '1';
+    // 잠금 중에는 글자 속도를 바꿀 수 없음 (시작할 때 속도로 끝까지)
+    speedSlider.disabled = locked;
+    speedSlider.title = locked ? '끝까지 보기 잠금 중에는 속도를 바꿀 수 없어요' : '스르륵 속도';
+    speedLabel.textContent = (locked ? '🔒 ' : '') + `${srrSpeed}자/초`;
   }
   function saveLockKey() {
     if (srrLocked()) store.set('srrLockKey', srr.currentKey());
@@ -642,10 +646,11 @@ function setup() {
 
   function buildBar() {
     barProg = h('i');
-    const label = h('span', { text: `${srrSpeed}자/초` });
-    const slider = h('input', { type: 'range', min: '5', max: '150', step: '5', value: String(srrSpeed),
+    const label = speedLabel = h('span', { text: `${srrSpeed}자/초` });
+    const slider = speedSlider = h('input', { type: 'range', min: '5', max: '150', step: '5', value: String(srrSpeed),
       title: '스르륵 속도',
       oninput: () => {
+        if (srrLocked()) { slider.value = String(srrSpeed); return; }  // 잠금 중에는 속도 고정
         srrSpeed = parseInt(slider.value, 10);
         label.textContent = `${srrSpeed}자/초`;
         srr.setSpeed(srrSpeed);

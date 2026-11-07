@@ -576,9 +576,9 @@
   }
 
   // ---- 집중 소리: 음원 파일 없이 Web Audio로 직접 만듦 ----
-  // rain 빗소리, waves 파도, fire 모닥불, stream 시냇물, forest 숲, white 백색소음,
+  // rain 빗소리, window 창문 빗소리, roof 지붕 빗소리, waves 파도, fire 모닥불, stream 시냇물, forest 숲, white 백색소음,
   // pink 분홍소음, brown 갈색소음, beat 집중 비트(이어폰), off 끔
-  var SOUNDS = ['rain', 'waves', 'fire', 'stream', 'forest', 'white', 'pink', 'brown', 'beat'];
+  var SOUNDS = ['rain', 'window', 'roof', 'waves', 'fire', 'stream', 'forest', 'white', 'pink', 'brown', 'beat'];
   var soundName = 'rain';
 
   function noiseBuffer(ctx, seconds, color) {
@@ -665,6 +665,69 @@
           burst(ctx, out, drop, now + 0.05 + Math.random() * 0.04, 'bandpass', 1400 + Math.random() * 4200,
             1.4 + Math.random() * 2, 0.025 + Math.random() * 0.07, 0.02 + Math.random() * 0.05, Math.random() * 1.6 - 0.8);
         }
+      });
+    },
+    // 창문 빗소리: 유리에 톡톡 맞는 맑은 소리 + 유리 너머 먹먹한 빗소리 + 가끔 흘러내리는 물
+    window: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 3);
+      // 유리 너머라 높은 소리가 줄어든 바깥 빗소리
+      var outside = gainNode(ctx, 0.42);
+      loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 1300)).connect(filter(ctx, 'highpass', 120)).connect(outside).connect(out);
+      swell(ctx, outside.gain, 0.09, 0.1);
+      var tap = noiseBuffer(ctx, 0.05);
+      every(30, function (now) {
+        var n = Math.random() < 0.55 ? 1 : 0;
+        for (var i = 0; i < n; i++) {
+          var at = now + Math.random() * 0.03, pan = Math.random() * 1.4 - 0.7;
+          // 톡: 짧고 높은 소리
+          burst(ctx, out, tap, at, 'highpass', 3000 + Math.random() * 2500, 0.7, 0.07 + Math.random() * 0.16, 0.006 + Math.random() * 0.01, pan);
+          // 유리가 살짝 울리는 소리
+          if (Math.random() < 0.5) {
+            burst(ctx, out, tap, at, 'bandpass', 2200 + Math.random() * 2800, 14 + Math.random() * 10,
+              0.12 + Math.random() * 0.14, 0.04 + Math.random() * 0.05, pan);
+          }
+        }
+      });
+      // 창을 타고 흘러내리는 물소리 (가끔)
+      var trickle = gainNode(ctx, 0);
+      loopNoise(ctx, bed, 1.7).connect(filter(ctx, 'bandpass', 1800, 2.5)).connect(trickle).connect(out);
+      var next = 0;
+      every(300, function (now) {
+        if (now < next) return;
+        trickle.gain.setTargetAtTime(0.09 + Math.random() * 0.08, now, 0.3);
+        trickle.gain.setTargetAtTime(0, now + 1.5 + Math.random() * 2, 0.6);
+        next = now + 6 + Math.random() * 8;
+      });
+    },
+    // 지붕 빗소리: 지붕을 두드리는 둔탁한 소리 + 함석지붕처럼 가끔 '팅' + 낮게 깔리는 빗소리 + 처마 물방울
+    roof: function (ctx, out, every) {
+      var bed = noiseBuffer(ctx, 3, 'brown');
+      var low = gainNode(ctx, 0.4);
+      loopNoise(ctx, bed).connect(filter(ctx, 'lowpass', 380)).connect(low).connect(out);
+      swell(ctx, low.gain, 0.11, 0.1);
+      var hiss = gainNode(ctx, 0.07);
+      loopNoise(ctx, noiseBuffer(ctx, 3), 0.9).connect(filter(ctx, 'bandpass', 2500, 0.5)).connect(hiss).connect(out);
+      var hit = noiseBuffer(ctx, 0.12);
+      every(25, function (now) {
+        // 투둑투둑 지붕을 두드림 (빽빽하게)
+        var n = 1 + (Math.random() < 0.6 ? 1 : 0);
+        for (var i = 0; i < n; i++) {
+          burst(ctx, out, hit, now + Math.random() * 0.025, 'bandpass', 280 + Math.random() * 700, 1.6 + Math.random() * 2,
+            0.06 + Math.random() * 0.14, 0.04 + Math.random() * 0.07, Math.random() * 1.6 - 0.8);
+        }
+        // 함석지붕 '팅'
+        if (Math.random() < 0.06) {
+          burst(ctx, out, hit, now + 0.01, 'bandpass', 1500 + Math.random() * 1800, 25 + Math.random() * 15,
+            0.12 + Math.random() * 0.1, 0.12 + Math.random() * 0.12, Math.random() * 1.4 - 0.7);
+        }
+      });
+      // 처마에서 똑... 똑... 떨어지는 물방울
+      var drip = noiseBuffer(ctx, 0.06);
+      var nextDrip = 0;
+      every(120, function (now) {
+        if (now < nextDrip) return;
+        burst(ctx, out, drip, now + 0.02, 'bandpass', 900 + Math.random() * 500, 9, 0.18, 0.09, 0.5);
+        nextDrip = now + 0.6 + Math.random() * 1.2;
       });
     },
     waves: function (ctx, out, every) {

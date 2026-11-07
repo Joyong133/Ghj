@@ -62,9 +62,9 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_BROUGHT_BACK = "brought_back"
 
         // 집중 소리 (srr.js의 SOUNDS와 같은 순서, 맨 끝은 끄기)
-        val SOUND_KEYS = listOf("rain", "waves", "fire", "stream", "forest", "white", "pink", "brown", "beat", "off")
+        val SOUND_KEYS = listOf("rain", "window", "roof", "waves", "fire", "stream", "forest", "white", "pink", "brown", "beat", "off")
         val SOUND_LABELS = listOf(
-            "빗소리", "파도", "모닥불", "시냇물", "숲 (새소리·바람)",
+            "빗소리", "창문 빗소리 (유리에 톡톡)", "지붕 빗소리 (투둑투둑)", "파도", "모닥불", "시냇물", "숲 (새소리·바람)",
             "백색소음", "분홍소음 (부드러운 쏴~)", "갈색소음 (낮고 깊은)", "집중 비트 (이어폰 추천)", "소리 끔"
         )
 
@@ -157,6 +157,8 @@ class MainActivity : AppCompatActivity() {
     private var strongPending = false    // 권한 설정 화면에서 돌아오면 켜기
     private var resumePending = false    // 잠금 중인 스르륵을 다시 여는 중
     private lateinit var srrAllowRow: View
+    private lateinit var srrSpeedSlider: Slider
+    private lateinit var srrSpeedLabel: TextView
     private lateinit var srrTime: TextView
     private var pickSnackbar: Snackbar? = null
     private lateinit var pinButton: FloatingActionButton
@@ -516,11 +518,17 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("ui", MODE_PRIVATE)
         val slider = srrBar.findViewById<Slider>(R.id.srrSpeed)
         val label = srrBar.findViewById<TextView>(R.id.srrSpeedLabel)
+        srrSpeedSlider = slider
+        srrSpeedLabel = label
         // 저장된 속도를 슬라이더 눈금(5 단위)에 맞춤
         srrSpeed = ((prefs.getInt("srrSpeed", 25) / 5) * 5).coerceIn(5, 150)
         slider.value = srrSpeed.toFloat()
         label.text = "${srrSpeed}자/초"
         slider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser && srrLocked()) {  // 잠금 중에는 속도 고정
+                slider.value = srrSpeed.toFloat()
+                return@addOnChangeListener
+            }
             srrSpeed = value.toInt()
             label.text = "${srrSpeed}자/초"
             if (fromUser) {
@@ -852,6 +860,9 @@ class MainActivity : AppCompatActivity() {
         srrClose.setIconResource(if (locked) R.drawable.ic_lock else R.drawable.ic_close)
         srrClose.contentDescription = if (locked) "끝까지 보면 닫을 수 있어요" else "스르륵 닫기"
         srrPick.alpha = if (locked) 0.35f else 1f
+        // 잠금 중에는 글자 속도를 바꿀 수 없음 (시작할 때 속도로 끝까지)
+        srrSpeedSlider.isEnabled = !locked
+        srrSpeedLabel.text = (if (locked) "🔒 " else "") + "${srrSpeed}자/초"
     }
 
     /** 잠금 중인 답변의 이름표를 저장 (앱을 껐다 켜도 다시 열어 주려고) */
