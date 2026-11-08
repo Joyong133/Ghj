@@ -1,0 +1,47 @@
+name: VR 검은 화면 앱 빌드
+
+on:
+  push:
+    paths:
+      - 'vr-app/**'
+      - '.github/workflows/vr-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK 빌드
+        working-directory: vr-app
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../vr-black-screen.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vr-black-screen-apk
+          path: vr-black-screen.apk
+
+      - name: 릴리스에 APK 올리기 (휴대폰에서 바로 받기용)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: vr-app-latest
+          name: VR 검은 화면 앱 (최신 빌드)
+          prerelease: true
+          files: vr-black-screen.apk
+          body: |
+            휴대폰에서 아래 vr-black-screen.apk 를 눌러 받은 뒤 설치하세요.
+            (처음 설치할 때 '출처를 알 수 없는 앱 설치'를 허용해야 할 수 있습니다.)

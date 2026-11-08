@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VR 검은 화면</string>
+    <string name="tile_label">검은 화면</string>
+
+    <string name="title">VR 검은 화면</string>
+    <string name="subtitle">화면만 까맣게 가리고, 유튜브·음악 소리는 그대로 나옵니다.</string>
+
+    <string name="perm_needed">① 먼저 \'다른 앱 위에 표시\' 권한을 허용해 주세요.</string>
+    <string name="perm_ok">✓ 다른 앱 위에 표시 권한이 허용되어 있습니다.</string>
+    <string name="perm_button">권한 허용하러 가기</string>
+
+    <string name="how_title">사용 방법</string>
+    <string name="how_body">1. 유튜브에서 영상을 재생합니다.\n2. 화면 위에서 알림창을 내리고 \'검은 화면\' 타일을 누릅니다.\n3. 화면이 까맣게 되고 소리는 계속 나옵니다.\n4. 끄려면 검은 화면을 두 번 톡톡 누르거나, 알림창의 \'끄기\'를 누릅니다.\n\n타일이 안 보이면 아래 버튼으로 추가하거나, 알림창의 연필(편집) 아이콘에서 \'검은 화면\'을 끌어다 놓으세요.</string>
+    <string name="add_tile">빠른 설정에 타일 추가</string>
+
+    <string name="start_now">지금 바로 검은 화면 켜기</string>
+    <string name="start_delayed">10초 후에 켜기 (그동안 유튜브를 여세요)</string>
+    <string name="delayed_toast">10초 뒤에 화면이 까맣게 됩니다. 지금 유튜브를 여세요.</string>
+
+    <string name="channel_name">검은 화면</string>
+    <string name="notif_on">검은 화면이 켜져 있습니다</string>
+    <string name="notif_waiting">잠시 후 검은 화면이 켜집니다</string>
+    <string name="notif_text">화면을 두 번 누르거나 \'끄기\'를 누르면 꺼집니다.</string>
+    <string name="notif_stop">끄기</string>
+    <string name="overlay_hint">두 번 누르면 꺼집니다</string>
+    <string name="need_permission_toast">\'다른 앱 위에 표시\' 권한이 필요합니다.</string>
+</resources>
