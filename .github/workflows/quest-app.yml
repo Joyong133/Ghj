@@ -1,0 +1,47 @@
+name: 퀘스트 검은 화면 앱 빌드
+
+on:
+  push:
+    paths:
+      - 'quest-app/**'
+      - '.github/workflows/quest-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK 빌드
+        working-directory: quest-app
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../quest-black-screen.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quest-black-screen-apk
+          path: quest-black-screen.apk
+
+      - name: 릴리스에 APK 올리기
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: quest-app-latest
+          name: 퀘스트 검은 화면 앱 (최신 빌드)
+          prerelease: true
+          files: quest-black-screen.apk
+          body: |
+            메타 퀘스트용 앱입니다. 개발자 모드를 켠 퀘스트에 SideQuest 또는 Meta Quest Developer Hub로 설치하세요.
+            설치 후 앱 목록의 '출처를 알 수 없음'에서 실행합니다.
