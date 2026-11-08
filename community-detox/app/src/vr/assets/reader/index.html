@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모아읽기</title>
+<link rel="stylesheet" href="reader.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <button id="backBtn" class="icon-btn" type="button" hidden aria-label="목록으로">←</button>
+    <div>
+      <h1>📖 모아읽기</h1>
+      <p class="sub">브라우저에서는 막히고, 이 앱 안에서만 읽어요</p>
+    </div>
+  </div>
+  <nav id="boards" class="boards" aria-label="게시판"></nav>
+</header>
+
+<main>
+  <section id="listView">
+    <div id="listStatus" class="status" hidden></div>
+    <div id="rows" class="rows"></div>
+    <div class="pager">
+      <button id="prev" type="button">이전</button>
+      <span id="pageLabel">1 페이지</span>
+      <button id="next" type="button">다음</button>
+      <button id="refresh" type="button" class="ghost">새로고침</button>
+    </div>
+  </section>
+
+  <section id="postView" hidden>
+    <article class="post">
+      <h2 id="postTitle"></h2>
+      <p id="postMeta" class="meta"></p>
+      <div id="postBody" class="body"></div>
+    </article>
+    <section class="comments">
+      <h3>댓글 <span id="cTotal" class="count"></span></h3>
+      <p id="cStatus" class="meta"></p>
+      <div id="comments"></div>
+      <div id="cPager" class="pager" hidden>
+        <button id="cPrev" type="button">이전 댓글</button>
+        <span id="cPageLabel"></span>
+        <button id="cNext" type="button">다음 댓글</button>
+      </div>
+      <button id="toList" type="button" class="ghost wide">← 목록으로</button>
+    </section>
+  </section>
+</main>
+<script src="sources.js"></script>
+<script src="reader.js"></script>
+</body>
+</html>

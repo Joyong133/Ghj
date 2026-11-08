@@ -65,6 +65,10 @@ VR 앱은 **VPN(DNS) 방식**으로 막습니다. 휴대폰 앱과는 다른 별
    adb shell dpm set-active-admin com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAdminReceiver
    ```
 
+**📖 모아읽기 (VR 앱에 합침)**: 예전 모아읽기 앱의 읽기 기능을 VR 앱 안에 넣었습니다. 펨코 해외축구·롤 인기글, 디시 특갤 개념글, 아카 나무 실검을 **이 앱 안에서만** 댓글까지 읽습니다. 브라우저에서는 이 앱의 VPN이 계속 막으므로 VPN 앱은 하나면 됩니다 (예전 모아읽기 앱은 지워도 됩니다).
+- 페이지는 앱 안의 숨은 브라우저 화면이 열고, 글 내용은 안전한 태그만 남겨 다시 그립니다 (스크립트·외부 링크·외부 미디어 차단, 이미지는 앱을 거쳐 표시).
+- 글/댓글 분석기는 모아읽기 1.2.4의 `sources.js` 를 그대로 사용합니다.
+
 집중 디톡스, 일시정지, 직접 추가, 기록 등 나머지 기능은 휴대폰 버전과 같습니다.
 
 ## 설치하기
@@ -114,6 +118,8 @@ app/src/main/java/com/joyong/communitydetox/
 ├── MainActivity.java               # 메인 화면 (차단 켜기, 집중 디톡스, 보호)
 ├── BlockListActivity.java          # 차단 목록 메뉴 (검색, 켜기/끄기, 직접 추가)
 ├── StoreSearch.java                # 스토어의 커뮤니티 앱 설치 화면 알아보기
+├── ReaderActivity.java / ReaderBackend.java  # 모아읽기 (VR): 화면 + 숨은 페이지 불러오기
+(app/src/vr/assets/reader/)         # 모아읽기 화면 (index.html, reader.js, reader.css, sources.js)
 ├── BlockedActivity.java            # "디톡스 중이에요" 안내 화면
 └── Ui.java                         # 코드로 만든 작은 UI 도구 (라이트/다크)
 ```

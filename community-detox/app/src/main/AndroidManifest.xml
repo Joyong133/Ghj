@@ -56,6 +56,14 @@
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 모아읽기 reader (shown in the VR app) -->
+        <activity
+            android:name=".ReaderActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:label="모아읽기"
+            android:parentActivityName=".MainActivity" />
+
         <activity
             android:name=".BlockedActivity"
             android:excludeFromRecents="true"
