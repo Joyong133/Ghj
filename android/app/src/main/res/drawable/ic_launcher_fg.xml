@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- shackle -->
+    <path android:strokeColor="#EEF1FF" android:strokeWidth="5"
+        android:fillColor="#00000000" android:strokeLineCap="round"
+        android:pathData="M42,52 L42,44 A12,12 0 0 1 66,44 L66,52" />
+    <!-- body -->
+    <path android:fillColor="#FF5E7E"
+        android:pathData="M36,52 L72,52 A4,4 0 0 1 76,56 L76,76 A4,4 0 0 1 72,80 L36,80 A4,4 0 0 1 32,76 L32,56 A4,4 0 0 1 36,52 Z" />
+    <!-- "あ"-like keyhole mark: simple dot + stem -->
+    <path android:fillColor="#0B1021"
+        android:pathData="M54,60 A4,4 0 1 1 53.99,60 Z M52,64 L56,64 L56,72 L52,72 Z" />
+</vector>

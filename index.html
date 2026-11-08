@@ -2,203 +2,280 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1021">
 <title>日本語ロック — 일본어 잠금화면</title>
 <style>
   :root{
-    --bg:#0b1021;
-    --bg2:#141a35;
-    --card:rgba(255,255,255,.06);
-    --card-border:rgba(255,255,255,.12);
-    --text:#eef1ff;
-    --muted:#9aa3c7;
-    --accent:#ff5e7e;
-    --accent2:#5b7cff;
-    --good:#3ddc97;
-    --bad:#ff5a5a;
-    --warn:#ffcc4d;
+    --bg:#0b1021; --bg2:#141a35;
+    --card:rgba(255,255,255,.06); --card-border:rgba(255,255,255,.12);
+    --text:#eef1ff; --muted:#9aa3c7;
+    --accent:#ff5e7e; --accent2:#5b7cff;
+    --good:#3ddc97; --bad:#ff5a5a; --warn:#ffcc4d;
     --shadow:0 20px 60px rgba(0,0,0,.45);
+    --safe-top:max(18px, env(safe-area-inset-top));
+    --safe-bot:max(18px, env(safe-area-inset-bottom));
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0}
   body{
-    font-family:"Hiragino Sans","Noto Sans JP","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    font-family:"Hiragino Sans","Noto Sans JP","Noto Sans CJK JP","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
     color:var(--text);
     background:
       radial-gradient(1200px 800px at 20% -10%, #27306a 0%, transparent 55%),
       radial-gradient(1000px 700px at 110% 20%, #4a1f52 0%, transparent 50%),
       linear-gradient(160deg,var(--bg),var(--bg2));
+    background-attachment:fixed;
     overflow:hidden;
     -webkit-user-select:none;user-select:none;
+    word-break:keep-all;
   }
+  button{font-family:inherit}
+  .screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;overflow-y:auto;
+    padding:var(--safe-top) 16px var(--safe-bot)}
+  .screen.show{display:flex;animation:fade .3s ease}
+  @keyframes fade{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
 
-  /* ===== LOCK SCREEN ===== */
-  #lock{
-    position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:24px;text-align:center;z-index:50;
-    transition:opacity .5s ease, transform .5s ease;
-  }
-  .clock{font-size:clamp(48px,16vw,96px);font-weight:200;letter-spacing:2px;line-height:1;text-shadow:0 2px 30px rgba(0,0,0,.4)}
-  .date{color:var(--muted);margin-top:6px;font-size:clamp(14px,4vw,18px)}
-  .brand{margin-top:18px;font-size:13px;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
+  /* ===== web-only clock lock screen ===== */
+  #lockscreen{justify-content:center;text-align:center;cursor:pointer}
   .sakura{font-size:34px;margin-bottom:4px;filter:drop-shadow(0 4px 10px rgba(255,94,126,.4))}
-  .hint{
-    margin-top:40px;color:var(--muted);font-size:14px;
-    animation:bob 2s ease-in-out infinite;
-  }
+  .clock{font-size:clamp(56px,18vw,104px);font-weight:200;letter-spacing:2px;line-height:1;font-variant-numeric:tabular-nums}
+  .date{color:var(--muted);margin-top:6px;font-size:clamp(14px,4vw,18px)}
+  .brand{margin-top:18px;font-size:12px;letter-spacing:3px;color:var(--muted)}
+  .pill{margin-top:14px;display:inline-flex;align-items:center;gap:8px;background:var(--card);
+    border:1px solid var(--card-border);border-radius:999px;padding:8px 16px;font-size:13px}
+  .hint{margin-top:40px;color:var(--muted);font-size:14px;animation:bob 2s ease-in-out infinite}
   @keyframes bob{0%,100%{transform:translateY(0);opacity:.6}50%{transform:translateY(-6px);opacity:1}}
-  .locked-pill{
-    margin-top:14px;display:inline-flex;align-items:center;gap:8px;
-    background:var(--card);border:1px solid var(--card-border);border-radius:999px;
-    padding:8px 16px;font-size:13px;color:var(--text)
-  }
 
-  /* ===== STUDY GATE ===== */
-  #gate{
-    position:fixed;inset:0;z-index:60;display:none;flex-direction:column;
-    align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;
-  }
-  #gate.show{display:flex;animation:fade .35s ease}
-  @keyframes fade{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
-
-  .topbar{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;margin-top:6px}
-  .lockmark{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--warn);font-weight:600}
-  .streakbox{display:flex;gap:5px}
-  .dot{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.14);transition:.25s}
+  /* ===== quiz gate ===== */
+  .wrap{width:100%;max-width:520px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
+  .lockmark{font-size:13px;color:var(--warn);font-weight:700;display:flex;align-items:center;gap:6px}
+  .miniclock{font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .streakbox{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+  .dot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.14);transition:.25s}
   .dot.on{background:var(--good);box-shadow:0 0 12px var(--good)}
+  .progress{height:7px;border-radius:999px;background:rgba(255,255,255,.1);margin:12px 0 0;overflow:hidden}
+  .progress>i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+  .counter{text-align:center;color:var(--muted);font-size:13px;margin-top:8px}
+  .counter b{color:var(--text)}
 
-  .progress{width:100%;max-width:520px;height:7px;border-radius:999px;background:rgba(255,255,255,.1);margin:16px 0 4px;overflow:hidden}
-  .progress > i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+  .card{margin-top:16px;background:var(--card);border:1px solid var(--card-border);border-radius:24px;
+    padding:22px 18px;box-shadow:var(--shadow);backdrop-filter:blur(14px);position:relative}
+  .qhead{display:flex;justify-content:space-between;align-items:center}
+  .qtype{font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .speak{border:1px solid var(--card-border);background:rgba(255,255,255,.05);color:var(--text);
+    border-radius:12px;padding:6px 10px;font-size:16px;cursor:pointer;opacity:.35;transition:.2s}
+  .speak.ready{opacity:1}
+  .prompt{font-size:clamp(60px,22vw,116px);line-height:1.1;font-weight:500;text-align:center;margin:12px 0 2px;word-break:keep-all}
+  .prompt.mid{font-size:clamp(40px,13vw,72px)}
+  .prompt.small{font-size:clamp(28px,8.5vw,44px);font-weight:600}
+  .prompt.latin{font-family:system-ui,sans-serif;font-weight:300}
+  .sub{text-align:center;color:var(--muted);font-size:15px;min-height:22px}
+  .reading{text-align:center;color:#c9d0f5;font-size:18px;min-height:0;margin-top:-2px}
 
-  .card{
-    width:100%;max-width:520px;margin-top:22px;background:var(--card);
-    border:1px solid var(--card-border);border-radius:24px;padding:28px 22px;
-    box-shadow:var(--shadow);backdrop-filter:blur(14px)
-  }
-  .qtype{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;text-align:center}
-  .prompt{font-size:clamp(56px,20vw,110px);line-height:1.05;font-weight:500;text-align:center;margin:10px 0 4px}
-  .prompt.small{font-size:clamp(34px,11vw,64px)}
-  .sub{text-align:center;color:var(--muted);font-size:15px;min-height:20px}
-
-  .choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}
-  .choice{
-    border:1px solid var(--card-border);background:rgba(255,255,255,.04);color:var(--text);
-    border-radius:16px;padding:16px 10px;font-size:20px;font-weight:600;cursor:pointer;
-    transition:.15s;min-height:62px
-  }
-  .choice:hover{background:rgba(255,255,255,.1);transform:translateY(-2px)}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+  .choice{border:1px solid var(--card-border);background:rgba(255,255,255,.04);color:var(--text);
+    border-radius:16px;padding:14px 8px;font-size:19px;font-weight:600;cursor:pointer;transition:.15s;min-height:60px;word-break:keep-all}
+  .choice.kana{font-size:30px;font-weight:500}
   .choice:active{transform:scale(.97)}
+  @media (hover:hover){.choice:not([disabled]):hover{background:rgba(255,255,255,.1)}}
   .choice.correct{background:rgba(61,220,151,.22);border-color:var(--good);color:#dfffe9}
   .choice.wrong{background:rgba(255,90,90,.2);border-color:var(--bad);color:#ffdada}
-  .choice[disabled]{cursor:default;opacity:.95}
+  .choice[disabled]{cursor:default}
 
-  .feedback{text-align:center;margin-top:16px;min-height:24px;font-size:15px;font-weight:600}
-  .feedback.good{color:var(--good)}
-  .feedback.bad{color:var(--bad)}
+  .typebox{display:flex;gap:8px;margin-top:18px}
+  .typebox input{flex:1;min-width:0;background:rgba(255,255,255,.06);border:1px solid var(--card-border);color:var(--text);
+    border-radius:14px;padding:14px 16px;font-size:22px;outline:none;-webkit-user-select:text;user-select:text;font-family:system-ui,sans-serif}
+  .typebox input:focus{border-color:var(--accent2)}
+  .typebox input.correct{border-color:var(--good)} .typebox input.wrong{border-color:var(--bad)}
 
-  .penalty{
-    margin-top:12px;text-align:center;font-size:13px;color:var(--warn);
-    background:rgba(255,204,77,.1);border:1px solid rgba(255,204,77,.3);border-radius:12px;padding:8px 12px
-  }
+  .feedback{text-align:center;margin-top:14px;min-height:24px;font-size:15px;font-weight:700}
+  .feedback.good{color:var(--good)} .feedback.bad{color:var(--bad)}
+  .penalty{margin-top:12px;text-align:center;font-size:13px;color:var(--warn);background:rgba(255,204,77,.1);
+    border:1px solid rgba(255,204,77,.3);border-radius:12px;padding:8px 12px;display:none}
+  .gatehint{font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.5}
 
-  /* ===== UNLOCKED / HOME ===== */
-  #home{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
-  #home.show{display:flex}
-  .home-emoji{font-size:64px}
-  h1.home-title{font-weight:300;font-size:clamp(26px,7vw,38px);margin:10px 0 4px}
-  .home-sub{color:var(--muted);max-width:440px;line-height:1.6}
-  .stats{display:flex;gap:14px;margin:26px 0;flex-wrap:wrap;justify-content:center}
-  .stat{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:16px 22px;min-width:110px}
-  .stat b{display:block;font-size:30px;font-weight:600}
-  .stat span{color:var(--muted);font-size:12px;letter-spacing:1px}
+  .emergency{margin:22px auto 0;display:block;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.14);
+    background:transparent;color:var(--muted);border-radius:999px;padding:9px 18px;font-size:12px;cursor:pointer;touch-action:none}
+  .emergency i{position:absolute;inset:0;width:0;background:rgba(255,90,90,.35);transition:none}
+  .emergency span{position:relative}
 
-  .btnrow{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:6px}
-  .btn{
-    border:none;border-radius:14px;padding:14px 22px;font-size:15px;font-weight:600;cursor:pointer;
-    background:linear-gradient(135deg,var(--accent2),#8a5bff);color:#fff;transition:.15s;box-shadow:0 8px 24px rgba(91,124,255,.35)
-  }
+  .success{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(11,16,33,.88);border-radius:24px;text-align:center}
+  .success.show{display:flex;animation:fade .3s ease}
+  .success div{font-size:56px} .success p{margin:8px 0 0;font-size:20px;font-weight:600}
+
+  /* ===== home ===== */
+  #home{padding-top:max(26px, env(safe-area-inset-top))}
+  .hero{text-align:center;margin:6px 0 4px}
+  .hero h1{font-weight:300;font-size:clamp(24px,7vw,32px);margin:4px 0 2px}
+  .hero p{color:var(--muted);margin:0;font-size:14px}
+  .section{margin-top:18px;background:var(--card);border:1px solid var(--card-border);border-radius:20px;padding:16px}
+  .section h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted);letter-spacing:1px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .stat{text-align:center;background:rgba(255,255,255,.04);border-radius:14px;padding:12px 4px}
+  .stat b{display:block;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--muted);font-size:11px}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:110px;padding-top:8px}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px}
+  .bar i{display:block;width:100%;max-width:30px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg,var(--accent2),#8a5bff);min-height:3px;transition:height .5s}
+  .bar.today i{background:linear-gradient(180deg,var(--accent),#ff8a5b)}
+  .bar small{font-size:11px;color:var(--muted)} .bar em{font-style:normal;font-size:11px;color:var(--text)}
+  .weak{display:flex;flex-direction:column;gap:6px}
+  .weakrow{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border-radius:12px;padding:8px 12px}
+  .weakrow .wq{font-size:24px;min-width:56px} .weakrow .wa{flex:1;color:var(--muted);font-size:14px}
+  .weakrow .wn{font-size:12px;color:var(--bad)}
+  .empty{color:var(--muted);font-size:13px;text-align:center;padding:8px 0}
+
+  .svc{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .svc b{font-size:17px} .svc small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+  .switch{position:relative;width:56px;height:32px;flex:none}
+  .switch input{opacity:0;width:0;height:0}
+  .switch span{position:absolute;inset:0;background:rgba(255,255,255,.16);border-radius:999px;transition:.2s;cursor:pointer}
+  .switch span::before{content:"";position:absolute;width:24px;height:24px;left:4px;top:4px;background:#fff;border-radius:50%;transition:.2s}
+  .switch input:checked+span{background:var(--good)}
+  .switch input:checked+span::before{transform:translateX(24px)}
+  .perm{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.07);font-size:14px}
+  .perm small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .perm .ok{color:var(--good);font-weight:700;font-size:13px;white-space:nowrap}
+  .sbtn{border:1px solid var(--card-border);background:rgba(255,255,255,.06);color:var(--text);border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:18px}
+  .btn{border:none;border-radius:14px;padding:14px 20px;font-size:15px;font-weight:600;cursor:pointer;
+    background:linear-gradient(135deg,var(--accent2),#8a5bff);color:#fff;box-shadow:0 8px 24px rgba(91,124,255,.35)}
   .btn:active{transform:scale(.96)}
   .btn.ghost{background:transparent;border:1px solid var(--card-border);color:var(--text);box-shadow:none}
   .btn.danger{background:linear-gradient(135deg,var(--accent),#ff8a5b);box-shadow:0 8px 24px rgba(255,94,126,.3)}
+  .foot{font-size:11px;color:var(--muted);margin:22px 0 8px;text-align:center;line-height:1.6}
 
-  /* settings */
-  #settings{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(5,8,20,.72);backdrop-filter:blur(6px)}
+  /* ===== settings ===== */
+  #settings{position:fixed;inset:0;z-index:70;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;
+    padding:var(--safe-top) 16px var(--safe-bot);background:rgba(5,8,20,.75);backdrop-filter:blur(6px)}
   #settings.show{display:flex}
-  .panel{width:100%;max-width:460px;background:var(--bg2);border:1px solid var(--card-border);border-radius:22px;padding:24px;box-shadow:var(--shadow)}
+  .panel{width:100%;max-width:480px;background:var(--bg2);border:1px solid var(--card-border);border-radius:22px;padding:20px;box-shadow:var(--shadow);margin:auto 0}
   .panel h2{margin:0 0 4px;font-weight:500}
-  .panel p.muted{color:var(--muted);font-size:13px;margin:0 0 18px}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid rgba(255,255,255,.07)}
-  .row:first-of-type{border-top:none}
-  .row label{font-size:15px}
-  .row small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-  select,input[type=number]{
-    background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--card-border);
-    border-radius:10px;padding:9px 12px;font-size:15px;min-width:92px
-  }
+  .panel p.muted{color:var(--muted);font-size:13px;margin:0 0 10px}
+  .grp{font-size:12px;color:var(--accent);letter-spacing:1px;margin:16px 0 2px;font-weight:700}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .row label{font-size:15px} .row small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  select,.panel input[type=number]{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--card-border);
+    border-radius:10px;padding:9px 10px;font-size:14px;min-width:96px;max-width:52vw}
+  select option{background:var(--bg2)}
   .deckgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-  .deckchip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--card-border);border-radius:12px;padding:10px 12px;cursor:pointer;font-size:14px}
-  .deckchip input{accent-color:var(--accent)}
+  .deckchip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--card-border);border-radius:12px;padding:10px;cursor:pointer;font-size:13px}
+  .deckchip input{accent-color:var(--accent);width:18px;height:18px;flex:none}
+  .deckchip small{display:block;color:var(--muted);font-size:11px}
 
-  .toast{
-    position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
-    background:#1c2347;border:1px solid var(--card-border);color:var(--text);
-    padding:12px 18px;border-radius:14px;font-size:14px;opacity:0;pointer-events:none;transition:.3s;z-index:90;box-shadow:var(--shadow)
-  }
+  .toast{position:fixed;left:50%;bottom:calc(var(--safe-bot) + 12px);transform:translateX(-50%) translateY(20px);
+    background:#1c2347;border:1px solid var(--card-border);color:var(--text);padding:12px 18px;border-radius:14px;
+    font-size:14px;opacity:0;pointer-events:none;transition:.3s;z-index:90;box-shadow:var(--shadow);max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-  .tiny{font-size:11px;color:var(--muted);margin-top:28px;max-width:460px;line-height:1.5}
-  .link{color:var(--accent2);cursor:pointer;text-decoration:underline}
+  .hide{display:none!important}
 </style>
 </head>
 <body>
 
-<!-- ============ LOCK SCREEN ============ -->
-<div id="lock">
+<!-- ============ WEB-ONLY CLOCK LOCK SCREEN ============ -->
+<div id="lockscreen" class="screen">
   <div class="sakura">🌸</div>
   <div class="clock" id="clock">00:00</div>
   <div class="date" id="date">—</div>
-  <div class="brand">日本語 ロック · 일본어 잠금</div>
-
-  <div class="locked-pill">🔒 <span id="lockStatus">학습을 완료해야 잠금이 풀립니다</span></div>
-  <div class="hint">⬆️ 화면을 밀거나 눌러서 학습 시작</div>
+  <div class="brand">日本語ロック · 일본어 잠금</div>
+  <div class="pill">🔒 <span id="lockStatus">학습을 완료해야 잠금이 풀립니다</span></div>
+  <div class="hint">⬆️ 위로 밀거나 눌러서 학습 시작</div>
 </div>
 
-<!-- ============ STUDY GATE ============ -->
-<div id="gate">
-  <div class="topbar">
-    <div class="lockmark">🔒 강제 학습 모드</div>
+<!-- ============ QUIZ GATE ============ -->
+<div id="gate" class="screen">
+  <div class="wrap">
+    <div class="topbar">
+      <div class="lockmark">🔒 일본어 잠금</div>
+      <div class="miniclock" id="miniclock">00:00</div>
+    </div>
     <div class="streakbox" id="streakbox"></div>
-  </div>
-  <div class="progress"><i id="progbar"></i></div>
+    <div class="progress"><i id="progbar"></i></div>
+    <div class="counter" id="counter"></div>
 
-  <div class="card">
-    <div class="qtype" id="qtype">HIRAGANA</div>
-    <div class="prompt" id="prompt">あ</div>
-    <div class="sub" id="qsub">아래에서 올바른 발음을 고르세요</div>
-    <div class="choices" id="choices"></div>
-    <div class="feedback" id="feedback"></div>
+    <div class="card">
+      <div class="qhead">
+        <div class="qtype" id="qtype">HIRAGANA</div>
+        <button class="speak" id="speakBtn" aria-label="발음 듣기">🔊</button>
+      </div>
+      <div class="prompt" id="prompt">あ</div>
+      <div class="reading" id="reading"></div>
+      <div class="sub" id="qsub"></div>
+      <div class="choices" id="choices"></div>
+      <div class="typebox hide" id="typebox">
+        <input id="typein" type="text" inputmode="latin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="romaji">
+        <button class="btn" id="typego">확인</button>
+      </div>
+      <div class="feedback" id="feedback"></div>
+      <div class="success" id="success"><div>🎉</div><p>잠금 해제!</p></div>
+    </div>
+    <div class="penalty" id="penalty"></div>
+    <div class="gatehint" id="gateHint"></div>
+    <button class="emergency" id="emergency"><i id="emFill"></i><span id="emText">🚨 긴급 해제 (길게 누르기)</span></button>
   </div>
-  <div class="penalty" id="penalty" style="display:none"></div>
-  <div class="tiny" id="gateHint"></div>
 </div>
 
-<!-- ============ HOME (UNLOCKED) ============ -->
-<div id="home">
-  <div class="home-emoji">🎉</div>
-  <h1 class="home-title">잠금 해제 완료!</h1>
-  <p class="home-sub">오늘도 일본어 학습으로 하루를 시작했어요.<br>잠시 후 다음 세션이 다시 잠깁니다.</p>
-  <div class="stats">
-    <div class="stat"><b id="stTotal">0</b><span>누적 정답</span></div>
-    <div class="stat"><b id="stStreak">0</b><span>연속 통과일</span></div>
-    <div class="stat"><b id="stToday">0</b><span>오늘 해제 횟수</span></div>
-  </div>
-  <div class="btnrow">
-    <button class="btn danger" onclick="App.lockNow()">🔒 지금 다시 잠그기</button>
-    <button class="btn ghost" onclick="App.openSettings()">⚙️ 설정</button>
-  </div>
-  <div class="tiny">
-    다음 자동 잠금까지: <b id="nextLock">—</b><br>
-    <span class="link" onclick="App.fullscreen()">전체화면으로 보기(강제력 강화)</span>
+<!-- ============ HOME ============ -->
+<div id="home" class="screen">
+  <div class="wrap">
+    <div class="hero">
+      <div class="sakura">🌸</div>
+      <h1 id="homeTitle">日本語ロック</h1>
+      <p id="homeSub">오늘도 한 걸음씩</p>
+    </div>
+
+    <!-- native: lock service + permissions -->
+    <div class="section native-only">
+      <div class="svc">
+        <div><b id="svcTitle">잠금 사용</b><small id="svcSub">화면을 켤 때마다 학습 잠금이 나타납니다</small></div>
+        <label class="switch"><input type="checkbox" id="svcToggle"><span></span></label>
+      </div>
+      <div class="perm" style="margin-top:10px">
+        <div>다른 앱 위에 표시 <small>필수 · 화면을 켜면 바로 잠금을 띄우는 데 필요</small></div>
+        <span id="pOverlay"></span>
+      </div>
+      <div class="perm">
+        <div>알림 <small>작동 중 표시 · 권한이 없을 때의 대체 수단</small></div>
+        <span id="pNotif"></span>
+      </div>
+      <div class="perm">
+        <div>배터리 최적화 제외 <small>권장 · 일부 기기에서 서비스가 꺼지는 것을 방지</small></div>
+        <button class="sbtn" onclick="N.openBatterySettings()">설정 열기</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>📊 학습 통계</h3>
+      <div class="stats">
+        <div class="stat"><b id="stCorrect">0</b><span>누적 정답</span></div>
+        <div class="stat"><b id="stAcc">–</b><span>정답률</span></div>
+        <div class="stat"><b id="stDays">0</b><span>연속 학습일</span></div>
+        <div class="stat"><b id="stToday">0</b><span>오늘 해제</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>📅 최근 7일 정답 수</h3>
+      <div class="bars" id="bars"></div>
+    </div>
+
+    <div class="section">
+      <h3>🧠 자주 틀리는 항목</h3>
+      <div class="weak" id="weak"></div>
+    </div>
+
+    <div class="btnrow">
+      <button class="btn danger" id="lockNowBtn">🔒 지금 잠그기</button>
+      <button class="btn ghost" onclick="App.openSettings()">⚙️ 설정</button>
+    </div>
+    <div class="foot">
+      <span class="web-only">다음 자동 잠금: <b id="nextLock">—</b> · <span style="text-decoration:underline;cursor:pointer" onclick="App.fullscreen()">전체화면</span><br></span>
+      <span id="ver">日本語ロック v2.0</span>
+    </div>
   </div>
 </div>
 
@@ -206,51 +283,80 @@
 <div id="settings">
   <div class="panel">
     <h2>⚙️ 설정</h2>
-    <p class="muted">강제력의 강도와 학습 범위를 조절하세요.</p>
+    <p class="muted">강제력의 세기와 학습 범위를 조절하세요.</p>
 
+    <div class="grp">강제력</div>
     <div class="row">
-      <div><label>통과 조건 (연속 정답)</label><small>이 횟수만큼 연속으로 맞혀야 해제됩니다</small></div>
+      <div><label>통과 조건</label><small>이 횟수만큼 연속으로 맞혀야 해제</small></div>
       <input type="number" id="setGoal" min="1" max="30" value="5">
     </div>
     <div class="row">
       <div><label>오답 패널티</label><small>틀리면 연속 정답이 얼마나 깎이나요</small></div>
       <select id="setPenalty">
         <option value="reset">전부 초기화 (가장 강함)</option>
-        <option value="2" selected>2개 차감</option>
+        <option value="2">2개 차감</option>
         <option value="1">1개 차감</option>
         <option value="0">차감 없음 (약함)</option>
       </select>
     </div>
     <div class="row">
-      <div><label>자동 재잠금</label><small>해제 후 이 시간이 지나면 다시 잠깁니다</small></div>
+      <div><label>사용 중 재잠금</label><small>해제 후 이 시간이 지나면 다시 잠김</small></div>
       <select id="setRelock">
         <option value="0">사용 안 함</option>
-        <option value="60">1분</option>
-        <option value="300" selected>5분</option>
+        <option value="300">5분</option>
         <option value="900">15분</option>
         <option value="1800">30분</option>
         <option value="3600">1시간</option>
+        <option value="7200">2시간</option>
       </select>
     </div>
     <div class="row">
-      <div><label>탈출 방지</label><small>탭을 벗어나거나 닫으려 하면 경고/재잠금</small></div>
+      <div><label>탈출 방지</label><small>풀지 않고 홈으로 나가면 어떻게 할까요</small></div>
       <select id="setGuard">
-        <option value="strict" selected>강함 (벗어나면 즉시 재잠금)</option>
+        <option value="strict">강함 (즉시 다시 잠김)</option>
         <option value="warn">보통 (경고만)</option>
         <option value="off">끔</option>
       </select>
     </div>
-
-    <div style="margin-top:16px">
-      <label style="font-size:15px">학습 범위</label>
-      <small style="color:var(--muted);display:block;margin-top:2px">하나 이상 선택</small>
-      <div class="deckgrid" id="deckgrid"></div>
+    <div class="row">
+      <div><label>긴급 해제 누르는 시간</label><small>통화 등 급할 때 쓰는 비상구</small></div>
+      <select id="setHold">
+        <option value="3">3초</option>
+        <option value="5">5초</option>
+        <option value="10">10초</option>
+      </select>
     </div>
 
-    <div class="btnrow" style="margin-top:22px">
+    <div class="grp">문제</div>
+    <div class="row">
+      <div><label>보기 개수</label></div>
+      <select id="setChoices"><option value="4">4개</option><option value="6">6개 (어려움)</option></select>
+    </div>
+    <div class="row">
+      <div><label>역방향 문제</label><small>뜻→일본어, 발음→글자 문제도 출제</small></div>
+      <label class="switch"><input type="checkbox" id="setReverse"><span></span></label>
+    </div>
+    <div class="row">
+      <div><label>직접 입력 문제</label><small>가나를 보고 로마자를 직접 입력 (찍기 불가)</small></div>
+      <label class="switch"><input type="checkbox" id="setTyping"><span></span></label>
+    </div>
+    <div class="row">
+      <div><label>정답 후 발음 듣기</label><small>문제를 풀면 일본어로 읽어줍니다</small></div>
+      <label class="switch"><input type="checkbox" id="setSpeak"><span></span></label>
+    </div>
+    <div class="row">
+      <div><label>오답 진동</label></div>
+      <label class="switch"><input type="checkbox" id="setVibrate"><span></span></label>
+    </div>
+
+    <div class="grp">학습 범위</div>
+    <div class="deckgrid" id="deckgrid"></div>
+
+    <div class="btnrow">
       <button class="btn" onclick="App.saveSettings()">저장</button>
       <button class="btn ghost" onclick="App.closeSettings()">닫기</button>
     </div>
+    <div class="foot"><span style="text-decoration:underline;cursor:pointer" onclick="App.resetProgress()">학습 기록 초기화</span></div>
   </div>
 </div>
 
@@ -258,367 +364,532 @@
 
 <script>
 /* =========================================================
-   일본어 강제 학습 잠금화면  (Japanese Study-Lock)
-   순수 클라이언트 웹앱. 데이터는 브라우저에만 저장됩니다.
+   日本語ロック v2 — 일본어 강제 학습 잠금화면
+   - APK(WebView)에서는 window.JLock 네이티브 브리지를 사용
+   - 브라우저에서는 단독 웹앱으로 동작
    ========================================================= */
+const MODE = (location.hash || "").replace("#", "");   // "lock" | "home" | ""(web)
+const N = window.JLock || null;
+const NATIVE = !!N;
 
 /* ---------- 학습 데이터 ---------- */
+function kanaList(s){
+  return s.trim().split(/\s+/).map(t=>{ const [k,r]=t.split(":"); const alts=r.split("/"); return {q:k,a:alts[0],alts,say:k}; });
+}
+function wordList(s){
+  return s.split(";").map(t=>t.trim()).filter(Boolean).map(t=>{
+    const [w,y,m]=t.split("|"); return {q:w,y,a:m,alts:[m],say:y.replace(/[()]/g,"")};
+  });
+}
 const DECKS = {
-  hiragana: { label:"히라가나", type:"HIRAGANA", items:[
-    ["あ","a"],["い","i"],["う","u"],["え","e"],["お","o"],
-    ["か","ka"],["き","ki"],["く","ku"],["け","ke"],["こ","ko"],
-    ["さ","sa"],["し","shi"],["す","su"],["せ","se"],["そ","so"],
-    ["た","ta"],["ち","chi"],["つ","tsu"],["て","te"],["と","to"],
-    ["な","na"],["に","ni"],["ぬ","nu"],["ね","ne"],["の","no"],
-    ["は","ha"],["ひ","hi"],["ふ","fu"],["へ","he"],["ほ","ho"],
-    ["ま","ma"],["み","mi"],["む","mu"],["め","me"],["も","mo"],
-    ["や","ya"],["ゆ","yu"],["よ","yo"],
-    ["ら","ra"],["り","ri"],["る","ru"],["れ","re"],["ろ","ro"],
-    ["わ","wa"],["を","wo"],["ん","n"]
-  ]},
-  katakana: { label:"가타카나", type:"KATAKANA", items:[
-    ["ア","a"],["イ","i"],["ウ","u"],["エ","e"],["オ","o"],
-    ["カ","ka"],["キ","ki"],["ク","ku"],["ケ","ke"],["コ","ko"],
-    ["サ","sa"],["シ","shi"],["ス","su"],["セ","se"],["ソ","so"],
-    ["タ","ta"],["チ","chi"],["ツ","tsu"],["テ","te"],["ト","to"],
-    ["ナ","na"],["ニ","ni"],["ヌ","nu"],["ネ","ne"],["ノ","no"],
-    ["ハ","ha"],["ヒ","hi"],["フ","fu"],["ヘ","he"],["ホ","ho"],
-    ["マ","ma"],["ミ","mi"],["ム","mu"],["メ","me"],["モ","mo"],
-    ["ヤ","ya"],["ユ","yu"],["ヨ","yo"],
-    ["ラ","ra"],["リ","ri"],["ル","ru"],["レ","re"],["ロ","ro"],
-    ["ワ","wa"],["ヲ","wo"],["ン","n"]
-  ]},
-  n5: { label:"N5 단어", type:"VOCAB · 뜻", small:true, items:[
-    ["水 (みず)","물"],["火 (ひ)","불"],["学校 (がっこう)","학교"],["先生 (せんせい)","선생님"],
-    ["友達 (ともだち)","친구"],["時間 (じかん)","시간"],["電車 (でんしゃ)","전철"],["食べる (たべる)","먹다"],
-    ["飲む (のむ)","마시다"],["行く (いく)","가다"],["見る (みる)","보다"],["本 (ほん)","책"],
-    ["名前 (なまえ)","이름"],["今日 (きょう)","오늘"],["明日 (あした)","내일"],["家 (いえ)","집"],
-    ["車 (くるま)","자동차"],["大きい (おおきい)","크다"],["小さい (ちいさい)","작다"],["新しい (あたらしい)","새롭다"],
-    ["高い (たかい)","비싸다/높다"],["安い (やすい)","싸다"],["好き (すき)","좋아함"],["天気 (てんき)","날씨"],
-    ["お金 (おかね)","돈"],["仕事 (しごと)","일/직업"],["休み (やすみ)","휴일"],["駅 (えき)","역"],
-    ["道 (みち)","길"],["手 (て)","손"]
-  ]},
-  greet: { label:"인사 표현", type:"PHRASE · 뜻", small:true, items:[
-    ["おはよう","좋은 아침"],["こんにちは","안녕하세요(낮)"],["こんばんは","안녕하세요(밤)"],
-    ["ありがとう","고맙습니다"],["すみません","죄송/실례합니다"],["さようなら","안녕히 가세요"],
-    ["はじめまして","처음 뵙겠습니다"],["おやすみ","잘 자요"],["いただきます","잘 먹겠습니다"],
-    ["ごちそうさま","잘 먹었습니다"],["いってきます","다녀오겠습니다"],["ただいま","다녀왔습니다"],
-    ["おめでとう","축하합니다"],["がんばって","힘내세요"],["だいじょうぶ","괜찮아요"]
-  ]}
+  hiragana:{label:"히라가나",note:"기본 46자",kind:"kana",type:"HIRAGANA",items:kanaList(`
+    あ:a い:i う:u え:e お:o か:ka き:ki く:ku け:ke こ:ko さ:sa し:shi/si す:su せ:se そ:so
+    た:ta ち:chi/ti つ:tsu/tu て:te と:to な:na に:ni ぬ:nu ね:ne の:no は:ha ひ:hi ふ:fu/hu へ:he ほ:ho
+    ま:ma み:mi む:mu め:me も:mo や:ya ゆ:yu よ:yo ら:ra り:ri る:ru れ:re ろ:ro わ:wa を:wo/o ん:n/nn`)},
+  katakana:{label:"가타카나",note:"기본 46자",kind:"kana",type:"KATAKANA",items:kanaList(`
+    ア:a イ:i ウ:u エ:e オ:o カ:ka キ:ki ク:ku ケ:ke コ:ko サ:sa シ:shi/si ス:su セ:se ソ:so
+    タ:ta チ:chi/ti ツ:tsu/tu テ:te ト:to ナ:na ニ:ni ヌ:nu ネ:ne ノ:no ハ:ha ヒ:hi フ:fu/hu ヘ:he ホ:ho
+    マ:ma ミ:mi ム:mu メ:me モ:mo ヤ:ya ユ:yu ヨ:yo ラ:ra リ:ri ル:ru レ:re ロ:ro ワ:wa ヲ:wo/o ン:n/nn`)},
+  dakuten:{label:"탁음·반탁음",note:"が ぱ 등 25자",kind:"kana",type:"DAKUTEN",items:kanaList(`
+    が:ga ぎ:gi ぐ:gu げ:ge ご:go ざ:za じ:ji/zi ず:zu ぜ:ze ぞ:zo だ:da で:de ど:do
+    ば:ba び:bi ぶ:bu べ:be ぼ:bo ぱ:pa ぴ:pi ぷ:pu ぺ:pe ぽ:po`)},
+  yoon:{label:"요음",note:"きゃ しゅ 등 33자",kind:"kana",type:"YŌON",items:kanaList(`
+    きゃ:kya きゅ:kyu きょ:kyo しゃ:sha/sya しゅ:shu/syu しょ:sho/syo ちゃ:cha/tya/cya ちゅ:chu/tyu/cyu ちょ:cho/tyo/cyo
+    にゃ:nya にゅ:nyu にょ:nyo ひゃ:hya ひゅ:hyu ひょ:hyo みゃ:mya みゅ:myu みょ:myo りゃ:rya りゅ:ryu りょ:ryo
+    ぎゃ:gya ぎゅ:gyu ぎょ:gyo じゃ:ja/zya/jya じゅ:ju/zyu/jyu じょ:jo/zyo/jyo びゃ:bya びゅ:byu びょ:byo ぴゃ:pya ぴゅ:pyu ぴょ:pyo`)},
+  n5:{label:"N5 단어",note:"기초 단어 66개",kind:"vocab",type:"N5 VOCAB",items:wordList(`
+    水|みず|물; 学校|がっこう|학교; 先生|せんせい|선생님; 学生|がくせい|학생; 友達|ともだち|친구; 時間|じかん|시간;
+    電車|でんしゃ|전철; 電話|でんわ|전화; 食べる|たべる|먹다; 飲む|のむ|마시다; 行く|いく|가다; 来る|くる|오다;
+    見る|みる|보다; 聞く|きく|듣다; 話す|はなす|이야기하다; 読む|よむ|읽다; 書く|かく|쓰다; 買う|かう|사다;
+    待つ|まつ|기다리다; 寝る|ねる|자다; 起きる|おきる|일어나다; 帰る|かえる|돌아가다; 分かる|わかる|알다·이해하다; 本|ほん|책;
+    名前|なまえ|이름; 今日|きょう|오늘; 明日|あした|내일; 昨日|きのう|어제; 毎日|まいにち|매일; 朝|あさ|아침;
+    夜|よる|밤; 家|いえ|집; 部屋|へや|방; 車|くるま|자동차; 駅|えき|역; 道|みち|길;
+    店|みせ|가게; 病院|びょういん|병원; 会社|かいしゃ|회사; 仕事|しごと|일·직업; 休み|やすみ|휴일; お金|おかね|돈;
+    天気|てんき|날씨; 雨|あめ|비; 犬|いぬ|개; 猫|ねこ|고양이; 魚|さかな|생선; 肉|にく|고기;
+    野菜|やさい|채소; 卵|たまご|달걀; 大きい|おおきい|크다; 小さい|ちいさい|작다; 新しい|あたらしい|새롭다; 古い|ふるい|오래되다;
+    高い|たかい|비싸다·높다; 安い|やすい|싸다; 暑い|あつい|덥다; 寒い|さむい|춥다; 楽しい|たのしい|즐겁다; 好き|すき|좋아함;
+    嫌い|きらい|싫어함; 元気|げんき|건강함; 静か|しずか|조용함; 有名|ゆうめい|유명함; 忙しい|いそがしい|바쁘다; 難しい|むずかしい|어렵다`)},
+  kanji:{label:"N5 한자",note:"읽기·뜻 60자",kind:"kanji",type:"N5 KANJI",items:wordList(`
+    一|いち|하나(1); 二|に|둘(2); 三|さん|셋(3); 四|よん|넷(4); 五|ご|다섯(5); 六|ろく|여섯(6); 七|なな|일곱(7); 八|はち|여덟(8);
+    九|きゅう|아홉(9); 十|じゅう|열(10); 百|ひゃく|백; 千|せん|천; 万|まん|만; 円|えん|엔(화폐);
+    日|ひ|해·날; 月|つき|달; 火|ひ|불; 水|みず|물; 木|き|나무; 金|かね|돈·금; 土|つち|흙;
+    山|やま|산; 川|かわ|강; 人|ひと|사람; 口|くち|입; 目|め|눈; 耳|みみ|귀; 手|て|손; 足|あし|발·다리;
+    上|うえ|위; 下|した|아래; 中|なか|가운데·안; 右|みぎ|오른쪽; 左|ひだり|왼쪽; 雨|あめ|비; 天|てん|하늘;
+    年|とし|해·나이; 時|とき|때; 分|ふん|분(시간); 半|はん|반; 今|いま|지금; 男|おとこ|남자; 女|おんな|여자;
+    子|こ|아이; 父|ちち|아버지; 母|はは|어머니; 友|とも|벗; 名|な|이름; 白|しろ|흰색; 東|ひがし|동쪽;
+    西|にし|서쪽; 南|みなみ|남쪽; 北|きた|북쪽; 食|た(べる)|먹다; 飲|の(む)|마시다; 見|み(る)|보다;
+    行|い(く)|가다; 来|く(る)|오다; 休|やす(む)|쉬다; 言|い(う)|말하다`)},
+  phrase:{label:"인사 표현",note:"일상 회화 21개",kind:"vocab",type:"PHRASE",items:wordList(`
+    おはよう|おはよう|좋은 아침; こんにちは|こんにちは|안녕하세요(낮); こんばんは|こんばんは|안녕하세요(밤);
+    ありがとう|ありがとう|고맙습니다; すみません|すみません|실례합니다; さようなら|さようなら|안녕히 가세요;
+    はじめまして|はじめまして|처음 뵙겠습니다; おやすみ|おやすみ|잘 자요; いただきます|いただきます|잘 먹겠습니다;
+    ごちそうさま|ごちそうさま|잘 먹었습니다; いってきます|いってきます|다녀오겠습니다; ただいま|ただいま|다녀왔습니다;
+    おめでとう|おめでとう|축하합니다; がんばって|がんばって|힘내세요; だいじょうぶ|だいじょうぶ|괜찮아요;
+    いらっしゃいませ|いらっしゃいませ|어서 오세요; よろしくおねがいします|よろしくおねがいします|잘 부탁드립니다;
+    おつかれさま|おつかれさま|수고하셨습니다; ごめんなさい|ごめんなさい|미안해요; どういたしまして|どういたしまして|천만에요;
+    おげんきですか|おげんきですか|잘 지내세요?`)},
+  time:{label:"요일·의문사",note:"시간 표현 19개",kind:"vocab",type:"TIME · WH",items:wordList(`
+    月曜日|げつようび|월요일; 火曜日|かようび|화요일; 水曜日|すいようび|수요일; 木曜日|もくようび|목요일;
+    金曜日|きんようび|금요일; 土曜日|どようび|토요일; 日曜日|にちようび|일요일; 午前|ごぜん|오전; 午後|ごご|오후;
+    何|なに|무엇; 誰|だれ|누구; どこ|どこ|어디; いつ|いつ|언제; いくら|いくら|얼마; 何時|なんじ|몇 시;
+    一つ|ひとつ|한 개; 二つ|ふたつ|두 개; 三つ|みっつ|세 개; 今|いま|지금`)}
 };
+Object.entries(DECKS).forEach(([k,d])=>d.items.forEach(it=>{ it.key=k+":"+it.q; it.deck=k; }));
+const ITEM_BY_KEY = {};
+Object.values(DECKS).forEach(d=>d.items.forEach(it=>ITEM_BY_KEY[it.key]=it));
 
-/* ---------- 상태 ---------- */
-const DEFAULTS = { goal:5, penalty:"2", relock:300, guard:"strict", decks:["hiragana"] };
+/* ---------- 저장소 ---------- */
 const LS = {
-  get:(k,d)=>{ try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;} },
-  set:(k,v)=>{ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
+  get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
+const DEFAULTS = { goal:5, penalty:"2", relock:0, guard:"strict", hold:5, nChoices:4,
+  reverse:true, typing:false, autoSpeak:true, vibrate:true, decks:["hiragana"] };
 
+function loadCfg(){
+  let c = null;
+  if(NATIVE){ try{ const s=N.getConfig(); if(s) c=JSON.parse(s); }catch(e){} }
+  if(!c) c = LS.get("jlock.cfg", {});
+  c = Object.assign({}, DEFAULTS, c);
+  c.decks = (c.decks||[]).filter(k=>DECKS[k]);
+  if(!c.decks.length) c.decks=["hiragana"];
+  return c;
+}
+function saveCfg(c){
+  LS.set("jlock.cfg", c);
+  if(NATIVE){ try{ N.saveConfig(JSON.stringify(c)); }catch(e){} }
+}
+
+function dayKey(d){ d=d||new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function loadStats(){
+  let s = LS.get("jlock.stats", null);
+  if(!s){
+    s = {correct:0, wrong:0, unlocks:0, emergencies:0, streakDays:0, lastDay:null, days:{}};
+    const old = LS.get("jlock.totalCorrect", 0);   // v1 기록 이전
+    if(old){ s.correct = old; s.streakDays = LS.get("jlock.streakDays",0); s.lastDay = null; }
+  }
+  return s;
+}
+
+/* ---------- 앱 ---------- */
 const App = (()=>{
-  let cfg = Object.assign({}, DEFAULTS, LS.get("jlock.cfg",{}));
-  let streak = 0;            // 현재 연속 정답
-  let answering = false;
-  let current = null;        // {q, ans, type, small}
-  let relockTimer = null;
-  let relockDeadline = 0;
-  let countdownTimer = null;
+  const $ = id => document.getElementById(id);
+  let cfg = loadCfg();
+  let stats = loadStats();
+  let srs = LS.get("jlock.srs", {});      // key -> {b: box 0..4, w: wrong count}
+  let streak = 0, busy = false, current = null, lastKey = null;
+  let relockTimer = null, relockAt = 0;
 
-  const el = id => document.getElementById(id);
-
-  /* ----- 통계 ----- */
-  function todayKey(){ const d=new Date(); return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
-  function bumpUnlockStats(){
-    let total = LS.get("jlock.totalCorrect",0);
-    LS.set("jlock.totalCorrect", total);
-    let today = LS.get("jlock.todayUnlocks",{day:todayKey(),n:0});
-    if(today.day!==todayKey()) today={day:todayKey(),n:0};
-    today.n++; LS.set("jlock.todayUnlocks",today);
-    // 연속 통과일
-    let last = LS.get("jlock.lastUnlockDay",null);
-    let streakDays = LS.get("jlock.streakDays",0);
-    if(last!==todayKey()){
-      const y=new Date(); y.setDate(y.getDate()-1);
-      const yk=y.getFullYear()+"-"+(y.getMonth()+1)+"-"+y.getDate();
-      streakDays = (last===yk)? streakDays+1 : 1;
-      LS.set("jlock.streakDays",streakDays);
-      LS.set("jlock.lastUnlockDay",todayKey());
+  /* ----- 공통 ----- */
+  let toastT=null;
+  function toast(msg){
+    const t=$("toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2300);
+  }
+  function show(id){
+    ["lockscreen","gate","home"].forEach(s=>$(s).classList.toggle("show", s===id));
+  }
+  function vibrate(ms){
+    if(!cfg.vibrate) return;
+    if(NATIVE){ try{ N.vibrate(ms); }catch(e){} } else if(navigator.vibrate){ navigator.vibrate(ms); }
+  }
+  function speak(text){
+    if(!text) return;
+    if(NATIVE){ try{ if(N.ttsReady()){ N.speak(text); return; } }catch(e){} }
+    if(window.speechSynthesis){
+      try{
+        speechSynthesis.cancel();
+        const u=new SpeechSynthesisUtterance(text); u.lang="ja-JP"; u.rate=.9;
+        const v=speechSynthesis.getVoices().find(v=>/^ja/i.test(v.lang)); if(v) u.voice=v;
+        speechSynthesis.speak(u);
+      }catch(e){}
     }
   }
-  function addCorrect(){ let t=LS.get("jlock.totalCorrect",0)+1; LS.set("jlock.totalCorrect",t); }
+  function saveStats(){ LS.set("jlock.stats", stats); }
+  function saveSrs(){ LS.set("jlock.srs", srs); }
+  function today(){ const k=dayKey(); return stats.days[k] || (stats.days[k]={c:0,w:0,u:0}); }
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
 
-  /* ----- 시계 ----- */
   function tickClock(){
     const d=new Date();
-    const hh=String(d.getHours()).padStart(2,"0");
-    const mm=String(d.getMinutes()).padStart(2,"0");
-    el("clock").textContent = hh+":"+mm;
+    const t=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+    $("clock").textContent=t; $("miniclock").textContent=t;
     const days=["일","월","화","수","목","금","토"];
-    el("date").textContent = `${d.getMonth()+1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+    $("date").textContent=`${d.getMonth()+1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
   }
 
-  /* ----- 문제 생성 ----- */
-  function activeItems(){
-    let pool=[];
-    (cfg.decks.length?cfg.decks:["hiragana"]).forEach(k=>{
-      if(DECKS[k]) DECKS[k].items.forEach(it=>pool.push({it,deck:k}));
-    });
-    return pool;
+  /* ----- 문제 출제 (간격 반복 가중치) ----- */
+  const BOX_WEIGHT=[8,5,3,2,1];
+  function weightOf(key){ const r=srs[key]; return r ? BOX_WEIGHT[Math.min(r.b,4)] : 4; }
+
+  function pickItem(){
+    const pool=[]; cfg.decks.forEach(k=>DECKS[k].items.forEach(it=>pool.push(it)));
+    const cands = pool.length>1 ? pool.filter(it=>it.key!==lastKey) : pool;
+    let total=0; const ws=cands.map(it=>{ const w=weightOf(it.key); total+=w; return w; });
+    let r=Math.random()*total;
+    for(let i=0;i<cands.length;i++){ r-=ws[i]; if(r<=0) return cands[i]; }
+    return cands[cands.length-1];
   }
-  function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function modesFor(kind){
+    if(kind==="kana"){ const m=["k2r"]; if(cfg.reverse) m.push("r2k"); if(cfg.typing) m.push("type","type"); return m; }
+    if(kind==="vocab"){ return cfg.reverse ? ["w2m","w2m","m2w"] : ["w2m"]; }
+    return cfg.reverse ? ["k2m","k2y","k2y"] : ["k2m","k2y"];
+  }
+
+  // 같은 덱에서 정답과 겹치지 않는 보기를 고른다
+  function distractors(it, label, conflicts){
+    const out=[], seen=new Set([label(it)]);
+    for(const o of shuffle(DECKS[it.deck].items.slice())){
+      if(out.length>=cfg.nChoices-1) break;
+      if(o===it || conflicts(o)) continue;
+      const l=label(o); if(seen.has(l)) continue;
+      seen.add(l); out.push(l);
+    }
+    return out;
+  }
+  const altsOverlap = (a,b) => a.alts.some(x=>b.alts.includes(x));
 
   function newQuestion(){
-    const pool=activeItems();
-    const chosen=pick(pool);
-    const deck=DECKS[chosen.deck];
-    const [q,ans]=chosen.it;
-    // 오답 보기: 같은 덱에서 answer가 다른 것들
-    const others=deck.items.filter(x=>x[1]!==ans);
-    const distract=[];
-    const used=new Set([ans]);
-    while(distract.length<3 && others.length){
-      const c=pick(others);
-      if(!used.has(c[1])){ used.add(c[1]); distract.push(c[1]); }
-      if(used.size> others.length+1) break;
+    const it=pickItem(); lastKey=it.key;
+    const deck=DECKS[it.deck];
+    const mode=pick(modesFor(deck.kind));
+    const q={it, mode, type:deck.type, say:it.say, prompt:"", promptCls:"", reading:"", sub:"", choices:null, kanaChoices:false, answer:""};
+
+    if(mode==="k2r"){
+      q.prompt=it.q; q.promptCls=it.q.length>1?"mid":""; q.sub="알맞은 발음을 고르세요"; q.answer=it.a;
+      q.choices=[it.a, ...distractors(it, o=>o.a, o=>altsOverlap(o,it))];
+    }else if(mode==="r2k"){
+      q.prompt=it.a; q.promptCls="latin"+(it.a.length>2?" mid":""); q.sub="이 발음의 글자는?"; q.answer=it.q; q.kanaChoices=true;
+      q.choices=[it.q, ...distractors(it, o=>o.q, o=>altsOverlap(o,it))];
+    }else if(mode==="type"){
+      q.prompt=it.q; q.promptCls=it.q.length>1?"mid":""; q.sub="로마자로 입력하세요"; q.answer=it.a;
+    }else if(mode==="w2m"){
+      q.prompt=it.q; q.promptCls=it.q.length>4?"small":(it.q.length>2?"mid":"");
+      q.reading = it.y!==it.q ? it.y : ""; q.sub="알맞은 뜻을 고르세요"; q.answer=it.a;
+      q.choices=[it.a, ...distractors(it, o=>o.a, o=>o.a===it.a)];
+    }else if(mode==="m2w"){
+      q.prompt=it.a; q.promptCls="small"; q.sub="일본어로는?"; q.answer=it.q; q.kanaChoices=true;
+      q.choices=[it.q, ...distractors(it, o=>o.q, o=>o.a===it.a)];
+    }else if(mode==="k2m"){
+      q.prompt=it.q; q.sub="뜻을 고르세요"; q.answer=it.a;
+      q.choices=[it.a, ...distractors(it, o=>o.a, o=>o.a===it.a)];
+    }else{ // k2y
+      q.prompt=it.q; q.sub="읽는 법을 고르세요"; q.answer=it.y; q.kanaChoices=true;
+      q.choices=[it.y, ...distractors(it, o=>o.y, o=>o.y===it.y)];
     }
-    while(distract.length<3) distract.push("?"+distract.length);
-    const choices=[ans,...distract].sort(()=>Math.random()-0.5);
-    current={q,ans,type:deck.type,small:!!deck.small,choices};
-    renderQuestion();
+    if(q.choices) shuffle(q.choices);
+    current=q; render();
   }
 
-  function renderQuestion(){
-    el("qtype").textContent=current.type;
-    const p=el("prompt");
-    p.textContent=current.q;
-    p.className="prompt"+(current.small?" small":"");
-    el("qsub").textContent = current.small? "올바른 뜻을 고르세요" : "올바른 발음(로마자)을 고르세요";
-    el("feedback").textContent=""; el("feedback").className="feedback";
-    const box=el("choices"); box.innerHTML="";
-    current.choices.forEach(c=>{
-      const b=document.createElement("button");
-      b.className="choice"; b.textContent=c;
-      b.onclick=()=>answer(b,c);
-      box.appendChild(b);
-    });
-    updateStreakUI();
-  }
-
-  function updateStreakUI(){
-    const goal=cfg.goal;
-    const box=el("streakbox"); box.innerHTML="";
-    for(let i=0;i<goal;i++){
-      const d=document.createElement("div");
-      d.className="dot"+(i<streak?" on":"");
-      box.appendChild(d);
-    }
-    el("progbar").style.width=(Math.min(streak,goal)/goal*100)+"%";
-    el("gateHint").innerHTML=`연속 정답 <b>${streak} / ${goal}</b> · 틀리면 패널티가 적용됩니다. 건너뛰기·닫기로는 해제되지 않습니다.`;
-  }
-
-  function answer(btn,choice){
-    if(answering) return; answering=true;
-    const all=[...document.querySelectorAll(".choice")];
-    all.forEach(b=>b.disabled=true);
-    const fb=el("feedback");
-    if(choice===current.ans){
-      btn.classList.add("correct");
-      streak++; addCorrect();
-      fb.textContent="정답! 🎯"; fb.className="feedback good";
-      el("penalty").style.display="none";
-      updateStreakUI();
-      setTimeout(()=>{
-        answering=false;
-        if(streak>=cfg.goal){ unlock(); }
-        else newQuestion();
-      },480);
+  function render(){
+    const q=current;
+    $("qtype").textContent=q.type;
+    const p=$("prompt"); p.textContent=q.prompt; p.className="prompt "+q.promptCls;
+    $("reading").textContent=q.reading;
+    $("qsub").textContent=q.sub;
+    $("feedback").textContent=""; $("feedback").className="feedback";
+    $("speakBtn").classList.remove("ready");
+    const box=$("choices"), tb=$("typebox"), inp=$("typein");
+    box.innerHTML="";
+    if(q.choices){
+      box.classList.remove("hide"); tb.classList.add("hide");
+      q.choices.forEach(c=>{
+        const b=document.createElement("button");
+        const longKana = q.kanaChoices && c.length>4;
+        b.className="choice"+(q.kanaChoices && !longKana ? " kana":""); b.textContent=c;
+        b.onclick=()=>answer(c, b);
+        box.appendChild(b);
+      });
     }else{
-      btn.classList.add("wrong");
-      all.forEach(b=>{ if(b.textContent===current.ans) b.classList.add("correct"); });
-      // 패널티
+      box.classList.add("hide"); tb.classList.remove("hide");
+      inp.value=""; inp.className=""; inp.disabled=false;
+      setTimeout(()=>inp.focus(), 60);
+    }
+    updateProgress();
+  }
+
+  function updateProgress(){
+    const goal=cfg.goal, box=$("streakbox"); box.innerHTML="";
+    if(goal<=15) for(let i=0;i<goal;i++){ const d=document.createElement("div"); d.className="dot"+(i<streak?" on":""); box.appendChild(d); }
+    $("progbar").style.width=(Math.min(streak,goal)/goal*100)+"%";
+    $("counter").innerHTML=`연속 정답 <b>${streak} / ${goal}</b>`;
+  }
+
+  function normRomaji(s){ return s.toLowerCase().replace(/\s+/g,"").replace(/[^a-z]/g,""); }
+
+  function submitTyping(){
+    if(busy || !current || current.choices) return;
+    const inp=$("typein"); const v=normRomaji(inp.value);
+    if(!v) return;
+    const ok=current.it.alts.includes(v);
+    inp.disabled=true; inp.classList.add(ok?"correct":"wrong");
+    judge(ok);
+  }
+
+  function answer(choice, btn){
+    if(busy) return;
+    const ok = choice===current.answer;
+    document.querySelectorAll(".choice").forEach(b=>{
+      b.disabled=true;
+      if(b.textContent===current.answer) b.classList.add("correct");
+    });
+    if(!ok) btn.classList.add("wrong");
+    judge(ok);
+  }
+
+  function judge(ok){
+    busy=true;
+    const key=current.it.key, r=srs[key]||(srs[key]={b:0,w:0}), t=today(), fb=$("feedback"), pen=$("penalty");
+    $("speakBtn").classList.add("ready");
+    if(cfg.autoSpeak) speak(current.say);
+    if(ok){
+      r.b=Math.min(r.b+1,4); stats.correct++; t.c++; streak++;
+      fb.textContent=pick(["정답! 🎯","すごい! ✨","正解! 👏","좋아요! 💮"]); fb.className="feedback good";
+      pen.style.display="none";
+    }else{
+      r.b=0; r.w++; stats.wrong++; t.w++;
       let lost=0;
       if(cfg.penalty==="reset"){ lost=streak; streak=0; }
-      else { const n=parseInt(cfg.penalty,10)||0; lost=Math.min(n,streak); streak-=lost; }
-      fb.textContent="오답! 정답은 "+current.ans; fb.className="feedback bad";
-      const pen=el("penalty");
+      else { lost=Math.min(parseInt(cfg.penalty,10)||0, streak); streak-=lost; }
+      fb.textContent="오답! 정답: "+answerText(); fb.className="feedback bad";
       pen.style.display="block";
-      pen.textContent = lost>0 ? `⚠️ 패널티: 연속 정답 -${lost} (현재 ${streak})` : `⚠️ 다시 도전! (현재 ${streak})`;
-      updateStreakUI();
-      setTimeout(()=>{ answering=false; newQuestion(); },1100);
+      pen.textContent = lost>0 ? `⚠️ 패널티: 연속 정답 -${lost}` : "⚠️ 다시 도전!";
+      vibrate(250);
     }
+    saveSrs(); saveStats(); updateProgress();
+    setTimeout(()=>{
+      busy=false;
+      if(streak>=cfg.goal) passed(); else newQuestion();
+    }, ok?650:1700);
+  }
+  function answerText(){
+    const it=current.it;
+    if(current.mode==="type") return it.a + (it.alts.length>1?` (${it.alts.slice(1).join(", ")})`:"");
+    if(current.mode==="k2y"||current.mode==="w2m"||current.mode==="k2m") return current.answer + (it.y && it.y!==it.q && current.mode!=="k2y" ? ` · ${it.y}`:"");
+    return current.answer;
   }
 
-  /* ----- 잠금 / 해제 전환 ----- */
-  function showLock(){
-    el("home").classList.remove("show");
-    el("gate").classList.remove("show");
-    el("lock").style.display="flex";
-    el("lock").style.opacity="1";
-    el("lock").style.transform="none";
-    clearRelock();
+  /* ----- 통과 / 잠금 ----- */
+  function recordUnlock(){
+    stats.unlocks++; today().u++;
+    const k=dayKey();
+    if(stats.lastDay!==k){
+      const y=new Date(); y.setDate(y.getDate()-1);
+      stats.streakDays = stats.lastDay===dayKey(y) ? stats.streakDays+1 : 1;
+      stats.lastDay=k;
+    }
+    // 오래된 일별 기록 정리 (60일 보관)
+    const keys=Object.keys(stats.days).sort(); while(keys.length>60) delete stats.days[keys.shift()];
+    saveStats();
+  }
+  function passed(){
+    recordUnlock();
+    $("success").classList.add("show");
+    vibrate(60);
+    setTimeout(()=>{
+      $("success").classList.remove("show");
+      if(MODE==="lock"){ N.unlocked(); }
+      else { showHome(); scheduleRelock(); toast("🔓 잠금 해제! 오늘도 한 걸음 더."); }
+    }, 900);
   }
   function startGate(){
-    streak=0; answering=false;
-    el("lock").style.opacity="0";
-    el("lock").style.transform="translateY(-40px)";
-    setTimeout(()=>{
-      el("lock").style.display="none";
-      el("gate").classList.add("show");
-      newQuestion();
-    },280);
+    streak=0; busy=false; lastKey=null;
+    $("penalty").style.display="none";
+    $("gateHint").textContent = `틀리면 ${penaltyText()} · 건너뛰기나 뒤로 가기로는 풀리지 않습니다`;
+    $("emText").textContent=`🚨 긴급 해제 (${cfg.hold}초 길게 누르기)`;
+    show("gate"); newQuestion();
   }
-  function unlock(){
-    bumpUnlockStats();
-    el("gate").classList.remove("show");
-    el("home").classList.add("show");
-    refreshHome();
-    scheduleRelock();
-    toast("🔓 잠금 해제! 오늘도 한 걸음 더.");
+  function penaltyText(){
+    return cfg.penalty==="reset" ? "연속 정답이 0으로 초기화" : (cfg.penalty==="0" ? "다시 도전" : `연속 정답 -${cfg.penalty}`);
   }
-  function lockNow(){ showLock(); }
-
-  function refreshHome(){
-    el("stTotal").textContent=LS.get("jlock.totalCorrect",0);
-    el("stStreak").textContent=LS.get("jlock.streakDays",0);
-    el("stToday").textContent=(LS.get("jlock.todayUnlocks",{n:0}).n)||0;
+  function lockNow(){
+    if(NATIVE && MODE==="home"){ N.lockNow(); return; }
+    clearRelock(); show("lockscreen");
   }
 
-  /* ----- 자동 재잠금 ----- */
-  function clearRelock(){
-    if(relockTimer){clearTimeout(relockTimer);relockTimer=null;}
-    if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}
-    relockDeadline=0;
-    el("nextLock").textContent="—";
+  /* ----- 긴급 해제 (길게 누르기) ----- */
+  function initEmergency(){
+    const b=$("emergency"), fill=$("emFill"); let t0=0, raf=0;
+    const stop=()=>{ cancelAnimationFrame(raf); t0=0; fill.style.width="0"; };
+    const step=()=>{
+      const p=Math.min(1,(performance.now()-t0)/(cfg.hold*1000));
+      fill.style.width=(p*100)+"%";
+      if(p>=1){ stop(); emergencyExit(); return; }
+      raf=requestAnimationFrame(step);
+    };
+    b.addEventListener("pointerdown",e=>{ e.preventDefault(); if(busy) return; t0=performance.now(); raf=requestAnimationFrame(step); });
+    ["pointerup","pointerleave","pointercancel"].forEach(ev=>b.addEventListener(ev,stop));
+    b.addEventListener("click",()=>{ if(!t0) toast(`버튼을 ${cfg.hold}초 동안 꾹 누르고 계세요`); });
   }
+  function emergencyExit(){
+    stats.emergencies=(stats.emergencies||0)+1; saveStats();
+    if(MODE==="lock"){ N.emergencyExit(); }
+    else { showHome(); toast("🚨 긴급 해제됨 (통계에 기록됩니다)"); }
+  }
+
+  /* ----- 홈 ----- */
+  function showHome(){ renderHome(); show("home"); }
+  function renderHome(){
+    const total=stats.correct+stats.wrong;
+    $("stCorrect").textContent=stats.correct;
+    $("stAcc").textContent= total? Math.round(stats.correct/total*100)+"%" : "–";
+    $("stDays").textContent=stats.streakDays||0;
+    $("stToday").textContent=(stats.days[dayKey()]||{}).u||0;
+    const h=new Date().getHours();
+    $("homeSub").textContent = h<11?"おはよう! 좋은 아침이에요": h<18?"こんにちは! 오늘도 한 걸음씩":"こんばんは! 오늘 하루도 수고했어요";
+
+    // 7일 막대
+    const bars=$("bars"); bars.innerHTML="";
+    const dn=["일","월","화","수","목","금","토"], arr=[];
+    for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push({d, v:(stats.days[dayKey(d)]||{}).c||0}); }
+    const max=Math.max(5,...arr.map(a=>a.v));
+    arr.forEach((a,i)=>{
+      const el=document.createElement("div"); el.className="bar"+(i===6?" today":"");
+      el.innerHTML=`<em>${a.v||""}</em><i style="height:${a.v/max*78}%"></i><small>${dn[a.d.getDay()]}</small>`;
+      bars.appendChild(el);
+    });
+
+    // 약점
+    const weak=$("weak"); weak.innerHTML="";
+    const list=Object.entries(srs).filter(([k,r])=>r.w>0 && ITEM_BY_KEY[k]).sort((a,b)=>(b[1].w-a[1].w)||(a[1].b-b[1].b)).slice(0,5);
+    if(!list.length){ weak.innerHTML=`<div class="empty">아직 틀린 항목이 없어요 👍</div>`; }
+    list.forEach(([k,r])=>{
+      const it=ITEM_BY_KEY[k];
+      const row=document.createElement("div"); row.className="weakrow";
+      const ans = it.y && it.y!==it.q ? `${it.y} · ${it.a}` : it.a;
+      row.innerHTML=`<div class="wq"></div><div class="wa"></div><div class="wn">✕${r.w}</div><button class="sbtn">🔊</button>`;
+      row.querySelector(".wq").textContent=it.q; row.querySelector(".wa").textContent=ans;
+      row.querySelector("button").onclick=()=>speak(it.say);
+      weak.appendChild(row);
+    });
+    if(NATIVE) renderNative();
+  }
+  function renderNative(){
+    let on=false, ov=false, nt=false;
+    try{ on=N.isEnabled(); ov=N.hasOverlay(); nt=N.hasNotif(); }catch(e){}
+    $("svcToggle").checked=on;
+    $("svcTitle").textContent= on ? "🔒 잠금 작동 중" : "잠금 꺼짐";
+    $("svcSub").textContent= on ? (ov ? "화면을 켤 때마다 학습 잠금이 나타납니다" : "⚠️ '다른 앱 위에 표시'를 허용해야 바로 잠깁니다") : "켜면 화면을 켤 때마다 학습 잠금이 나타납니다";
+    $("pOverlay").innerHTML = ov ? `<span class="ok">✓ 허용됨</span>` : `<button class="sbtn" onclick="N.openOverlaySettings()">허용하기</button>`;
+    $("pNotif").innerHTML = nt ? `<span class="ok">✓ 허용됨</span>` : `<button class="sbtn" onclick="N.requestNotif()">허용하기</button>`;
+  }
+
+  /* ----- 웹 버전: 자동 재잠금 / 탈출 방지 ----- */
+  function clearRelock(){ clearTimeout(relockTimer); relockTimer=null; relockAt=0; $("nextLock").textContent="—"; }
   function scheduleRelock(){
+    if(NATIVE) return;   // APK에서는 네이티브 서비스가 담당
     clearRelock();
     const secs=parseInt(cfg.relock,10)||0;
-    if(secs<=0){ el("nextLock").textContent="사용 안 함"; return; }
-    relockDeadline=Date.now()+secs*1000;
-    relockTimer=setTimeout(()=>{ toast("⏰ 학습 시간입니다. 다시 잠깁니다."); showLock(); }, secs*1000);
-    countdownTimer=setInterval(()=>{
-      const left=Math.max(0,Math.round((relockDeadline-Date.now())/1000));
-      const m=String(Math.floor(left/60)).padStart(2,"0");
-      const s=String(left%60).padStart(2,"0");
-      el("nextLock").textContent=m+":"+s;
-      if(left<=0) clearInterval(countdownTimer);
-    },1000);
+    if(!secs){ $("nextLock").textContent="사용 안 함"; return; }
+    relockAt=Date.now()+secs*1000;
+    relockTimer=setTimeout(()=>{ toast("⏰ 학습 시간입니다. 다시 잠깁니다."); lockNow(); }, secs*1000);
   }
+  setInterval(()=>{
+    if(!relockAt) return;
+    const left=Math.max(0,Math.round((relockAt-Date.now())/1000));
+    $("nextLock").textContent=String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
+  },1000);
 
-  /* ----- 탈출 방지(강제력) ----- */
-  function isLockedState(){
-    return el("lock").style.display!=="none" || el("gate").classList.contains("show");
-  }
-  function installGuards(){
-    // 탭 이탈
+  const isLocked = () => $("lockscreen").classList.contains("show") || $("gate").classList.contains("show");
+  function installWebGuards(){
     document.addEventListener("visibilitychange",()=>{
-      if(document.hidden) return;
-      if(cfg.guard==="strict" && !isLockedState() && el("home").classList.contains("show")){
-        // 홈에서 벗어났다 돌아오면 강함 설정 시 재잠금
-        showLock();
-        toast("🔒 자리를 비워 다시 잠겼습니다.");
+      if(!document.hidden && cfg.guard==="strict" && $("home").classList.contains("show") && relockAt){
+        lockNow(); toast("🔒 자리를 비워 다시 잠겼습니다.");
       }
     });
-    // 창 닫기/새로고침 경고 (잠금 상태일 때)
-    window.addEventListener("beforeunload",(e)=>{
-      if(cfg.guard!=="off" && isLockedState()){
-        e.preventDefault(); e.returnValue="학습이 끝나지 않았습니다. 정말 나가시겠어요?";
-        return e.returnValue;
-      }
+    window.addEventListener("beforeunload",e=>{
+      if(cfg.guard!=="off" && isLocked()){ e.preventDefault(); e.returnValue=""; }
     });
-    // 뒤로가기 흡수
     try{ history.pushState({j:1},""); }catch(e){}
     window.addEventListener("popstate",()=>{
-      if(cfg.guard!=="off" && isLockedState()){
-        try{ history.pushState({j:1},""); }catch(e){}
-        toast("🔒 학습을 완료해야 나갈 수 있어요.");
-      }
+      if(cfg.guard!=="off" && isLocked()){ try{ history.pushState({j:1},""); }catch(e){} toast("🔒 학습을 완료해야 나갈 수 있어요."); }
     });
-    // 우클릭 메뉴 차단(잠금 중)
-    document.addEventListener("contextmenu",e=>{ if(isLockedState()) e.preventDefault(); });
-    // ESC/F5 등 일부 단축키 흡수(잠금 중) — 브라우저 보안상 완전 차단은 불가
+    document.addEventListener("keydown",e=>{ if(isLocked() && e.key==="Escape") e.preventDefault(); });
+    // 잠금화면 시작 제스처
+    const ls=$("lockscreen"); let y0=null;
+    ls.addEventListener("click",startGate);
+    ls.addEventListener("touchstart",e=>{ y0=e.touches[0].clientY; },{passive:true});
+    ls.addEventListener("touchend",e=>{ if(y0!==null && y0-e.changedTouches[0].clientY>40) startGate(); y0=null; });
     document.addEventListener("keydown",e=>{
-      if(!isLockedState()) return;
-      if(["Escape"].includes(e.key)){ e.preventDefault(); }
+      if($("lockscreen").classList.contains("show") && ["ArrowUp"," ","Enter"].includes(e.key)){ e.preventDefault(); startGate(); }
     });
   }
-
-  /* ----- 전체화면 ----- */
   function fullscreen(){
     const d=document.documentElement;
-    if(d.requestFullscreen) d.requestFullscreen().catch(()=>{});
-    else if(d.webkitRequestFullscreen) d.webkitRequestFullscreen();
+    (d.requestFullscreen||d.webkitRequestFullscreen||function(){}).call(d)?.catch?.(()=>{});
   }
 
   /* ----- 설정 ----- */
-  function buildDeckGrid(){
-    const g=el("deckgrid"); g.innerHTML="";
-    Object.keys(DECKS).forEach(k=>{
-      const chip=document.createElement("label");
-      chip.className="deckchip";
-      chip.innerHTML=`<input type="checkbox" value="${k}" ${cfg.decks.includes(k)?"checked":""}> ${DECKS[k].label}`;
-      g.appendChild(chip);
-    });
-  }
   function openSettings(){
-    el("setGoal").value=cfg.goal;
-    el("setPenalty").value=cfg.penalty;
-    el("setRelock").value=cfg.relock;
-    el("setGuard").value=cfg.guard;
-    buildDeckGrid();
-    el("settings").classList.add("show");
+    $("setGoal").value=cfg.goal; $("setPenalty").value=cfg.penalty; $("setRelock").value=String(cfg.relock);
+    $("setGuard").value=cfg.guard; $("setHold").value=String(cfg.hold); $("setChoices").value=String(cfg.nChoices);
+    $("setReverse").checked=cfg.reverse; $("setTyping").checked=cfg.typing;
+    $("setSpeak").checked=cfg.autoSpeak; $("setVibrate").checked=cfg.vibrate;
+    const g=$("deckgrid"); g.innerHTML="";
+    Object.entries(DECKS).forEach(([k,d])=>{
+      const l=document.createElement("label"); l.className="deckchip";
+      l.innerHTML=`<input type="checkbox" value="${k}" ${cfg.decks.includes(k)?"checked":""}><div>${d.label}<small>${d.note}</small></div>`;
+      g.appendChild(l);
+    });
+    $("settings").classList.add("show");
   }
-  function closeSettings(){ el("settings").classList.remove("show"); }
+  function closeSettings(){ $("settings").classList.remove("show"); }
   function saveSettings(){
     const decks=[...document.querySelectorAll("#deckgrid input:checked")].map(i=>i.value);
-    cfg.goal=Math.max(1,Math.min(30,parseInt(el("setGoal").value,10)||5));
-    cfg.penalty=el("setPenalty").value;
-    cfg.relock=parseInt(el("setRelock").value,10);
-    cfg.guard=el("setGuard").value;
+    cfg.goal=Math.max(1,Math.min(30,parseInt($("setGoal").value,10)||5));
+    cfg.penalty=$("setPenalty").value;
+    cfg.relock=parseInt($("setRelock").value,10)||0;
+    cfg.guard=$("setGuard").value;
+    cfg.hold=parseInt($("setHold").value,10)||5;
+    cfg.nChoices=parseInt($("setChoices").value,10)||4;
+    cfg.reverse=$("setReverse").checked; cfg.typing=$("setTyping").checked;
+    cfg.autoSpeak=$("setSpeak").checked; cfg.vibrate=$("setVibrate").checked;
     cfg.decks=decks.length?decks:["hiragana"];
-    LS.set("jlock.cfg",cfg);
-    closeSettings();
-    toast("✅ 설정이 저장되었습니다.");
-    if(el("home").classList.contains("show")) scheduleRelock();
+    saveCfg(cfg); closeSettings(); toast("✅ 설정이 저장되었습니다.");
+    $("lockStatus").textContent=`${cfg.goal}연속 정답 시 해제`;
+    if($("home").classList.contains("show")) scheduleRelock();
   }
-
-  /* ----- 토스트 ----- */
-  let toastTimer=null;
-  function toast(msg){
-    const t=el("toast"); t.textContent=msg; t.classList.add("show");
-    if(toastTimer)clearTimeout(toastTimer);
-    toastTimer=setTimeout(()=>t.classList.remove("show"),2200);
-  }
-
-  /* ----- 잠금화면 상호작용(위로 밀기/탭) ----- */
-  function initLockGestures(){
-    const lock=el("lock");
-    let startY=null;
-    const begin=()=>startGate();
-    lock.addEventListener("click",begin);
-    lock.addEventListener("touchstart",e=>{startY=e.touches[0].clientY;},{passive:true});
-    lock.addEventListener("touchend",e=>{
-      if(startY===null) return;
-      const dy=startY-(e.changedTouches[0].clientY);
-      if(dy>40) begin(); // 위로 스와이프
-      startY=null;
-    });
-    document.addEventListener("keydown",e=>{
-      if(el("lock").style.display!=="none" && (e.key==="ArrowUp"||e.key===" "||e.key==="Enter")){
-        e.preventDefault(); begin();
-      }
-    });
+  function resetProgress(){
+    if(!confirm("학습 기록(통계·약점)을 모두 지울까요?")) return;
+    stats={correct:0,wrong:0,unlocks:0,emergencies:0,streakDays:0,lastDay:null,days:{}}; srs={};
+    saveStats(); saveSrs(); LS.del("jlock.totalCorrect"); closeSettings(); renderHome(); toast("기록을 초기화했습니다.");
   }
 
   /* ----- 초기화 ----- */
   function init(){
+    document.body.classList.add(NATIVE?"is-native":"is-web");
+    document.querySelectorAll(NATIVE?".web-only":".native-only").forEach(e=>e.classList.add("hide"));
     tickClock(); setInterval(tickClock,1000);
-    initLockGestures();
-    installGuards();
-    el("lockStatus").textContent = `${cfg.goal}연속 정답 시 해제`;
-    showLock();
-  }
+    initEmergency();
+    $("typego").onclick=submitTyping;
+    $("typein").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); submitTyping(); } });
+    $("speakBtn").onclick=()=>{ if($("speakBtn").classList.contains("ready")) speak(current&&current.say); };
+    $("lockNowBtn").onclick=lockNow;
+    document.addEventListener("contextmenu",e=>{ if(isLocked()) e.preventDefault(); });
+    $("lockStatus").textContent=`${cfg.goal}연속 정답 시 해제`;
+    if(NATIVE){ try{ $("ver").textContent="日本語ロック v"+N.version(); }catch(e){} }
 
-  return { init, lockNow, openSettings, closeSettings, saveSettings, fullscreen };
+    if(NATIVE){
+      $("svcToggle").addEventListener("change",e=>{
+        const on=e.target.checked;
+        N.setEnabled(on);
+        if(on && !N.hasNotif()) N.requestNotif();
+        if(on && !N.hasOverlay()) toast("'다른 앱 위에 표시'를 허용해 주세요");
+        else toast(on?"🔒 잠금을 켰습니다":"잠금을 껐습니다");
+        renderNative();
+      });
+      window.onNativeResume=()=>{ if(MODE==="home"){ cfg=loadCfg(); stats=loadStats(); srs=LS.get("jlock.srs",{}); renderHome(); } };
+      if(MODE==="lock") startGate(); else showHome();
+    }else{
+      installWebGuards();
+      show("lockscreen");
+    }
+  }
+  window.nativeToast=toast;
+  return { init, openSettings, closeSettings, saveSettings, resetProgress, fullscreen };
 })();
 
 window.addEventListener("DOMContentLoaded", App.init);
