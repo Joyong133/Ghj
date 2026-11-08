@@ -79,6 +79,27 @@
     color: #444; font-size: 16px; transition: opacity 0.8s 2.5s; text-align: center; padding: 16px;
   }
   #blackout.on { display: block; }
+  #blackout .cap {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(90vw, 900px); text-align: center; white-space: pre-line;
+    color: #e8e8e8; font-weight: 600; line-height: 1.4; font-size: var(--cap-size, 34px);
+  }
+  textarea {
+    font: inherit; font-size: 15px; color: var(--text); width: 100%; min-height: 90px;
+    background: #0f0f16; border: 1px solid var(--line); border-radius: 12px; padding: 12px; outline: none; resize: vertical;
+  }
+  textarea:focus { border-color: var(--accent-2); }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .opts .label { color: var(--muted); font-size: 15px; margin-right: 4px; }
+  .chip {
+    font-size: 15px; font-weight: 600; padding: 9px 14px; width: auto; border-radius: 999px;
+    background: #2b2b3a; color: var(--text);
+  }
+  .chip:hover { background: #363648; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .file { margin: 6px 0 10px; color: var(--muted); font-size: 15px; }
+  .file input { color: var(--muted); max-width: 100%; }
+  #offsetVal { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
   #blackout.on .hint { opacity: 0; }
 </style>
 </head>
@@ -100,8 +121,34 @@
   </section>
 
   <section>
-    <h2><span class="step">2</span>완전 검은 화면 켜기</h2>
-    <p>버튼을 누르면 VR 모드로 들어가면서 눈앞이 전부 까맣게 됩니다. 소리는 그대로 나옵니다.</p>
+    <h2><span class="step">2</span>자막 (선택)</h2>
+    <p>자막 파일을 불러오면 검은 화면 <b>정중앙</b>에 영상과 맞춰 자막이 나옵니다.
+      <br>유튜브는 자막을 바로 가져오지 못하게 막아 두어서, 자막 다운로드 사이트(예: DownSub)에 유튜브 주소를 넣고 받은 <b>SRT</b> 파일을 쓰세요.
+      <br>자막은 <b>이 페이지에서 재생한 영상</b>에만 맞춰집니다.</p>
+    <div class="file"><input id="subFile" type="file" accept=".srt,.vtt,.txt,text/plain,text/vtt"></div>
+    <textarea id="subText" placeholder="또는 SRT/VTT 자막 내용을 여기에 붙여 넣기&#10;&#10;1&#10;00:00:01,000 --> 00:00:03,500&#10;안녕하세요"></textarea>
+    <div class="opts">
+      <button id="subApply" class="chip" type="button">붙여 넣은 자막 적용</button>
+      <button id="subClear" class="chip" type="button">자막 지우기</button>
+    </div>
+    <div class="opts">
+      <span class="label">글자 크기</span>
+      <button class="chip size" data-size="s" type="button" aria-pressed="false">작게</button>
+      <button class="chip size" data-size="m" type="button" aria-pressed="true">보통</button>
+      <button class="chip size" data-size="l" type="button" aria-pressed="false">크게</button>
+    </div>
+    <div class="opts">
+      <span class="label">싱크 조절</span>
+      <button id="offMinus" class="chip" type="button">−0.5초</button>
+      <span id="offsetVal">0.0초</span>
+      <button id="offPlus" class="chip" type="button">+0.5초</button>
+    </div>
+    <div id="subStatus" class="status"></div>
+  </section>
+
+  <section>
+    <h2><span class="step">3</span>완전 검은 화면 켜기</h2>
+    <p>버튼을 누르면 VR 모드로 들어가면서 눈앞이 전부 까맣게 됩니다. 소리는 그대로 나오고, 자막을 불러왔다면 정중앙에 자막이 나옵니다.</p>
     <button id="go" type="button">완전 검은 화면 시작</button>
     <div id="vrStatus" class="status"></div>
   </section>
@@ -125,7 +172,7 @@
   </section>
 </main>
 
-<div id="blackout" aria-hidden="true"><div class="hint">두 번 누르면 꺼집니다</div></div>
+<div id="blackout" aria-hidden="true"><div class="hint">두 번 누르면 꺼집니다</div><div class="cap" id="fallbackCap"></div></div>
 
 <script>
 (() => {
@@ -133,8 +180,11 @@
   const goBtn = $('go');
   const vrStatus = $('vrStatus');
   const playStatus = $('playStatus');
+  const subStatus = $('subStatus');
 
-  // ---------- 유튜브 ----------
+  // =========================================================
+  // 유튜브 (공식 플레이어 API로 재생 시간을 읽어 자막을 맞춥니다)
+  // =========================================================
   function parseYouTube(text) {
     const s = text.trim();
     if (!s) return null;
@@ -158,37 +208,188 @@
     return { id, list };
   }
 
-  $('play').addEventListener('click', () => {
+  let ytPlayer = null;
+  let ytApi = null;
+  function loadYouTubeApi() {
+    if (ytApi) return ytApi;
+    ytApi = new Promise((resolve, reject) => {
+      if (window.YT && window.YT.Player) { resolve(window.YT); return; }
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(window.YT); };
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.onerror = () => { ytApi = null; reject(new Error('load')); };
+      document.head.appendChild(tag);
+    });
+    return ytApi;
+  }
+
+  $('play').addEventListener('click', async () => {
     const info = parseYouTube($('url').value);
     if (!info) {
       playStatus.textContent = '유튜브 주소를 알아보지 못했습니다. 주소를 다시 확인해 주세요.';
       playStatus.className = 'status warn';
       return;
     }
-    const params = new URLSearchParams({ autoplay: '1', playsinline: '1', rel: '0' });
-    let src;
-    if (info.id) {
-      src = 'https://www.youtube.com/embed/' + info.id;
-      if (info.list) params.set('list', info.list);
-    } else {
-      src = 'https://www.youtube.com/embed/videoseries';
-      params.set('list', info.list);
-    }
     const player = $('player');
-    player.innerHTML = '';
-    const frame = document.createElement('iframe');
-    frame.src = src + '?' + params.toString();
-    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-    frame.allowFullscreen = true;
-    frame.referrerPolicy = 'strict-origin-when-cross-origin';
-    player.appendChild(frame);
     player.style.display = 'block';
-    playStatus.textContent = '소리가 나오는지 확인한 뒤 아래 "완전 검은 화면 시작"을 누르세요.';
     playStatus.className = 'status';
+    playStatus.textContent = '불러오는 중…';
+    let YT;
+    try {
+      YT = await loadYouTubeApi();
+    } catch (e) {
+      playStatus.className = 'status warn';
+      playStatus.textContent = '유튜브 플레이어를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.';
+      return;
+    }
+    if (ytPlayer) { try { ytPlayer.destroy(); } catch (e) { /* 무시 */ } ytPlayer = null; }
+    player.innerHTML = '<div id="ytplayer"></div>';
+    const vars = { autoplay: 1, playsinline: 1, rel: 0 };
+    if (info.list) { vars.list = info.list; vars.listType = 'playlist'; }
+    ytPlayer = new YT.Player('ytplayer', {
+      width: '100%',
+      height: '100%',
+      videoId: info.id || undefined,
+      playerVars: vars,
+      events: {
+        onReady: (e) => {
+          try { e.target.playVideo(); } catch (err) { /* 무시 */ }
+          playStatus.textContent = '소리가 나오는지 확인한 뒤 아래 "완전 검은 화면 시작"을 누르세요.';
+        },
+        onError: () => {
+          playStatus.className = 'status warn';
+          playStatus.textContent = '이 영상은 이 페이지에서 재생할 수 없습니다(퍼가기 막힘 등). 다른 탭에서 유튜브를 틀어 주세요.';
+        },
+      },
+    });
+    const frame = player.querySelector('iframe');
+    if (frame) frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
   });
   $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('play').click(); });
 
-  // ---------- 두 번 누르기 감지 ----------
+  // 플레이어가 알려 주는 시간은 띄엄띄엄 오므로, 재생 중에는 그 사이를 이어서 계산합니다.
+  let lastT = -1;
+  let lastWall = 0;
+  function mediaTime() {
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return null;
+    let t;
+    try { t = ytPlayer.getCurrentTime(); } catch (e) { return null; }
+    if (typeof t !== 'number' || isNaN(t)) return null;
+    const now = performance.now();
+    if (t !== lastT) { lastT = t; lastWall = now; }
+    let playing = false;
+    let rate = 1;
+    try {
+      playing = ytPlayer.getPlayerState() === 1;
+      rate = ytPlayer.getPlaybackRate() || 1;
+    } catch (e) { /* 무시 */ }
+    return playing ? lastT + Math.min((now - lastWall) / 1000, 1) * rate : lastT;
+  }
+
+  // =========================================================
+  // 자막 (SRT / VTT)
+  // =========================================================
+  let cues = [];
+  let offset = 0;
+
+  function toSeconds(ts) {
+    const m = ts.trim().replace(',', '.').match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/);
+    if (!m) return null;
+    const ms = m[4] ? parseInt(m[4].padEnd(3, '0'), 10) : 0;
+    return (parseInt(m[1] || '0', 10) * 3600) + parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + ms / 1000;
+  }
+
+  function parseSubtitles(text) {
+    const lines = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*([\d:.,]+)\s*-->\s*([\d:.,]+)/);
+      if (!m) continue;
+      const start = toSeconds(m[1]);
+      const end = toSeconds(m[2]);
+      if (start === null || end === null) continue;
+      const body = [];
+      while (i + 1 < lines.length && lines[i + 1].trim() !== '' && !/-->/.test(lines[i + 1])) {
+        body.push(lines[++i]);
+      }
+      const clean = body.join('\n')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\{\\[^}]*\}/g, '')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .trim();
+      if (clean) out.push({ start, end, text: clean });
+    }
+    out.sort((a, b) => a.start - b.start);
+    return out;
+  }
+
+  function setCues(list, from) {
+    cues = list;
+    if (cues.length) {
+      subStatus.className = 'status';
+      subStatus.textContent = from + ': 자막 ' + cues.length + '줄을 불러왔습니다.';
+    } else {
+      subStatus.className = 'status warn';
+      subStatus.textContent = '자막을 읽지 못했습니다. SRT 또는 VTT 형식인지 확인해 주세요.';
+    }
+  }
+
+  $('subFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setCues(parseSubtitles(String(reader.result)), f.name);
+    reader.readAsText(f);
+  });
+  $('subApply').addEventListener('click', () => setCues(parseSubtitles($('subText').value), '붙여 넣은 자막'));
+  $('subClear').addEventListener('click', () => {
+    cues = [];
+    $('subText').value = '';
+    $('subFile').value = '';
+    subStatus.className = 'status';
+    subStatus.textContent = '자막을 지웠습니다.';
+  });
+
+  function showOffset() { $('offsetVal').textContent = (offset > 0 ? '+' : '') + offset.toFixed(1) + '초'; }
+  $('offMinus').addEventListener('click', () => { offset = Math.round((offset - 0.5) * 10) / 10; showOffset(); });
+  $('offPlus').addEventListener('click', () => { offset = Math.round((offset + 0.5) * 10) / 10; showOffset(); });
+
+  // 글자 크기: VR에서의 자막 판 너비(미터, 2미터 앞 기준)와 화면용 글자 크기
+  const SIZES = { s: { vr: 1.2, px: 26 }, m: { vr: 1.6, px: 34 }, l: { vr: 2.1, px: 46 } };
+  let size = 'm';
+  try { const saved = localStorage.getItem('capSize'); if (SIZES[saved]) size = saved; } catch (e) { /* 무시 */ }
+  function applySize() {
+    document.querySelectorAll('.size').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.size === size)));
+    document.documentElement.style.setProperty('--cap-size', SIZES[size].px + 'px');
+  }
+  document.querySelectorAll('.size').forEach((b) => b.addEventListener('click', () => {
+    size = b.dataset.size;
+    try { localStorage.setItem('capSize', size); } catch (e) { /* 무시 */ }
+    applySize();
+  }));
+  applySize();
+
+  // 지금 보여 줄 자막 글자 (없으면 빈 문자열)
+  let cueIdx = 0;
+  function currentCaption() {
+    if (!cues.length) return '';
+    const t0 = mediaTime();
+    if (t0 === null) return '';
+    const t = t0 - offset;
+    if (cueIdx >= cues.length || cues[cueIdx].start > t) cueIdx = 0;
+    while (cueIdx + 1 < cues.length && cues[cueIdx + 1].start <= t) cueIdx++;
+    // 겹치는 자막도 함께 보여 줍니다.
+    const shown = [];
+    for (let i = Math.max(0, cueIdx - 3); i <= cueIdx; i++) {
+      if (cues[i].start <= t && t < cues[i].end) shown.push(cues[i].text);
+    }
+    return shown.join('\n');
+  }
+
+  // =========================================================
+  // 두 번 누르기 감지
+  // =========================================================
   function doubleTap(onDouble) {
     let last = 0;
     return () => {
@@ -197,7 +398,125 @@
     };
   }
 
-  // ---------- VR 검은 화면 (WebXR) ----------
+  // =========================================================
+  // VR 자막 그리기: 글자를 캔버스에 그려 텍스처로 쓰고,
+  // 눈앞 2미터에 머리를 따라다니는 판으로 정중앙에 띄웁니다.
+  // =========================================================
+  const CAP_W = 1024;
+  const CAP_H = 384;
+  const CAP_DIST = 2;
+  const capCanvas = document.createElement('canvas');
+  capCanvas.width = CAP_W;
+  capCanvas.height = CAP_H;
+  const capCtx = capCanvas.getContext('2d');
+
+  function drawCaptionCanvas(text) {
+    capCtx.clearRect(0, 0, CAP_W, CAP_H);
+    if (!text) return;
+    const fontPx = 60;
+    capCtx.font = '600 ' + fontPx + 'px system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
+    capCtx.textAlign = 'center';
+    capCtx.textBaseline = 'middle';
+    capCtx.fillStyle = '#e8e8e8';
+    const maxW = CAP_W - 60;
+    const lines = [];
+    for (const para of text.split('\n')) {
+      let line = '';
+      // 띄어쓰기 기준으로 줄바꿈하고, 한 단어가 너무 길면 글자 단위로 자릅니다.
+      for (const word of para.split(/(\s+)/)) {
+        const test = line + word;
+        if (capCtx.measureText(test).width <= maxW || !line.trim()) {
+          line = test;
+          while (capCtx.measureText(line).width > maxW && line.length > 1) {
+            let cut = line.length - 1;
+            while (cut > 1 && capCtx.measureText(line.slice(0, cut)).width > maxW) cut--;
+            lines.push(line.slice(0, cut));
+            line = line.slice(cut);
+          }
+        } else {
+          lines.push(line.trim());
+          line = word.trimStart();
+        }
+      }
+      if (line.trim()) lines.push(line.trim());
+    }
+    const lh = fontPx * 1.35;
+    const shown = lines.slice(0, Math.floor(CAP_H / lh));
+    const top = CAP_H / 2 - ((shown.length - 1) * lh) / 2;
+    shown.forEach((l, i) => capCtx.fillText(l, CAP_W / 2, top + i * lh));
+  }
+
+  function mat4Mul(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) {
+      for (let r = 0; r < 4; r++) {
+        o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+      }
+    }
+    return o;
+  }
+
+  function createCaptionRenderer(gl) {
+    const vs = 'attribute vec2 p; uniform mat4 m; varying vec2 uv;' +
+      'void main(){ uv = vec2(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5); gl_Position = m * vec4(p, 0.0, 1.0); }';
+    const fs = 'precision mediump float; uniform sampler2D t; varying vec2 uv;' +
+      'void main(){ gl_FragColor = texture2D(t, uv); }';
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const locP = gl.getAttribLocation(prog, 'p');
+    const locM = gl.getUniformLocation(prog, 'm');
+    const locT = gl.getUniformLocation(prog, 't');
+    let shownText = null;
+
+    return {
+      // 바뀐 자막만 다시 그려 텍스처에 올립니다. 보여 줄 글자가 있으면 true.
+      update(text) {
+        if (text !== shownText) {
+          shownText = text;
+          drawCaptionCanvas(text);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, capCanvas);
+        }
+        return !!text;
+      },
+      draw(view, headMatrix) {
+        const w = SIZES[size].vr / 2;
+        const h = w * (CAP_H / CAP_W);
+        // 머리 위치·방향 기준으로 정면 2미터에 놓고, 판 크기만큼 늘립니다.
+        const local = new Float32Array([w, 0, 0, 0, 0, h, 0, 0, 0, 0, 1, 0, 0, 0, -CAP_DIST, 1]);
+        const model = mat4Mul(headMatrix, local);
+        const mvp = mat4Mul(view.projectionMatrix, mat4Mul(view.transform.inverse.matrix, model));
+        gl.useProgram(prog);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.enableVertexAttribArray(locP);
+        gl.vertexAttribPointer(locP, 2, gl.FLOAT, false, 0, 0);
+        gl.uniformMatrix4fv(locM, false, mvp);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.uniform1i(locT, 0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      },
+    };
+  }
+
+  // =========================================================
+  // VR 검은 화면 (WebXR)
+  // =========================================================
   let xrSupported = false;
   let session = null;
 
@@ -225,13 +544,16 @@
       return;
     }
 
+    const withCaptions = cues.length > 0;
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl', { xrCompatible: true, antialias: false, alpha: false, depth: false });
+    try { if (gl.makeXRCompatible) await gl.makeXRCompatible(); } catch (e) { /* 이미 호환되면 무시 */ }
     try {
-      if (gl.makeXRCompatible) await gl.makeXRCompatible();
-      // 검은색만 그리므로 해상도를 낮춰 배터리와 발열을 줄입니다.
+      // 검은색만 그릴 때는 해상도를 크게 낮춰 배터리를 아끼고, 자막이 있으면 글자가 선명하도록 높입니다.
       session.updateRenderState({
-        baseLayer: new XRWebGLLayer(session, gl, { antialias: false, depth: false, framebufferScaleFactor: 0.25 }),
+        baseLayer: new XRWebGLLayer(session, gl, {
+          antialias: false, depth: false, framebufferScaleFactor: withCaptions ? 1.0 : 0.25,
+        }),
       });
     } catch (e) {
       session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
@@ -246,13 +568,26 @@
     let refSpace = null;
     session.requestReferenceSpace('local').then((r) => { refSpace = r; }).catch(() => {});
 
+    let captions = null;
+    try { captions = createCaptionRenderer(gl); } catch (e) { captions = null; }
+
     const onFrame = (time, frame) => {
-      session.requestAnimationFrame(onFrame);
-      if (refSpace) frame.getViewerPose(refSpace);
-      const layer = session.renderState.baseLayer;
+      const s = frame.session;
+      s.requestAnimationFrame(onFrame);
+      const layer = s.renderState.baseLayer;
       gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
+
+      if (!captions || !refSpace || !cues.length) return;
+      const pose = frame.getViewerPose(refSpace);
+      if (!pose) return;
+      if (!captions.update(currentCaption())) return;
+      for (const view of pose.views) {
+        const vp = layer.getViewport(view);
+        gl.viewport(vp.x, vp.y, vp.width, vp.height);
+        captions.draw(view, pose.transform.matrix);
+      }
     };
     session.requestAnimationFrame(onFrame);
 
@@ -266,10 +601,21 @@
     vrStatus.textContent = '';
   }
 
-  // ---------- VR이 안 되는 기기: 전체 화면 검은색 ----------
+  // =========================================================
+  // VR이 안 되는 기기: 전체 화면 검은색 (자막도 정중앙에)
+  // =========================================================
   const blackout = $('blackout');
+  const fallbackCap = $('fallbackCap');
+  function fallbackLoop() {
+    if (!blackout.classList.contains('on')) return;
+    const text = currentCaption();
+    if (fallbackCap.textContent !== text) fallbackCap.textContent = text;
+    requestAnimationFrame(fallbackLoop);
+  }
   function startFallback() {
     blackout.classList.add('on');
+    fallbackCap.textContent = '';
+    requestAnimationFrame(fallbackLoop);
     const el = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
@@ -284,9 +630,16 @@
   });
 
   goBtn.addEventListener('click', () => {
+    if (cues.length && !ytPlayer) {
+      subStatus.className = 'status warn';
+      subStatus.textContent = '자막은 이 페이지에서 재생한 영상에만 맞춰집니다. 1번에서 영상을 먼저 재생해 주세요.';
+    }
     if (xrSupported) startVR();
     else startFallback();
   });
+
+  // 테스트용으로 내부 함수 몇 개를 열어 둡니다.
+  window.__questBlack = { parseSubtitles, drawCaptionCanvas, capCanvas, setPlayerForTest: (p) => { ytPlayer = p; }, setCues };
 
   detect();
 })();
