@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>퀘스트 검은 화면</title>
+<meta name="description" content="메타 퀘스트에서 시야 전체를 완전히 까맣게 하고, 유튜브 소리는 계속 듣는 페이지">
+<style>
+  :root {
+    --bg: #0b0b10;
+    --panel: #16161f;
+    --line: #2a2a38;
+    --text: #ececf2;
+    --muted: #9a9aab;
+    --accent: #7c4dff;
+    --accent-2: #a98bff;
+    --warn: #ffb74d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    line-height: 1.6;
+    padding: 24px 16px 48px;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 8px 0 4px; letter-spacing: -0.02em; }
+  h2 { font-size: 19px; margin: 0 0 10px; }
+  p { margin: 0 0 10px; }
+  .lead { color: var(--muted); font-size: 17px; margin-bottom: 24px; }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .step {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 15px;
+    margin-right: 8px; vertical-align: 2px;
+  }
+  button {
+    font: inherit; font-size: 20px; font-weight: 700;
+    border: 0; border-radius: 14px; cursor: pointer;
+    padding: 18px 22px; width: 100%;
+    background: var(--accent); color: #fff;
+  }
+  button:hover { background: #6a3df0; }
+  button:disabled { background: #3a3a4a; color: #8a8a99; cursor: not-allowed; }
+  button.secondary { background: #2b2b3a; font-size: 17px; padding: 14px 18px; }
+  button.secondary:hover { background: #363648; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row input { flex: 1 1 260px; min-width: 0; }
+  .row button { flex: 0 0 auto; width: auto; }
+  input[type=text] {
+    font: inherit; font-size: 17px; color: var(--text);
+    background: #0f0f16; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent-2); }
+  .player {
+    margin-top: 14px; aspect-ratio: 16 / 9; width: 100%;
+    background: #000; border-radius: 12px; overflow: hidden; display: none;
+  }
+  .player iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .status { margin-top: 12px; font-size: 15px; color: var(--muted); min-height: 1.6em; }
+  .status.warn { color: var(--warn); }
+  ul { margin: 0; padding-left: 20px; color: var(--muted); }
+  li { margin-bottom: 6px; }
+  b { color: var(--text); }
+  #blackout {
+    position: fixed; inset: 0; background: #000; z-index: 10;
+    display: none; cursor: none;
+  }
+  #blackout .hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #444; font-size: 16px; transition: opacity 0.8s 2.5s; text-align: center; padding: 16px;
+  }
+  #blackout.on { display: block; }
+  #blackout.on .hint { opacity: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>퀘스트 검은 화면</h1>
+  <p class="lead">메타 퀘스트에서 시야 전체를 완전히 까맣게 만들고, 유튜브 소리는 계속 들을 수 있습니다.</p>
+
+  <section>
+    <h2><span class="step">1</span>유튜브 틀기</h2>
+    <p>아래 칸에 유튜브 주소를 붙여 넣고 <b>재생</b>을 누르세요.
+      <br>또는 브라우저의 <b>다른 탭</b>에서 유튜브를 재생해 둬도 됩니다.</p>
+    <div class="row">
+      <input id="url" type="text" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=...">
+      <button id="play" class="secondary" type="button">재생</button>
+    </div>
+    <div id="player" class="player"></div>
+    <div id="playStatus" class="status"></div>
+  </section>
+
+  <section>
+    <h2><span class="step">2</span>완전 검은 화면 켜기</h2>
+    <p>버튼을 누르면 VR 모드로 들어가면서 눈앞이 전부 까맣게 됩니다. 소리는 그대로 나옵니다.</p>
+    <button id="go" type="button">완전 검은 화면 시작</button>
+    <div id="vrStatus" class="status"></div>
+  </section>
+
+  <section>
+    <h2>끄는 방법</h2>
+    <ul>
+      <li>컨트롤러 <b>트리거를 빠르게 두 번</b> 누르기 (손 추적이면 엄지·검지를 두 번 집기)</li>
+      <li>또는 오른쪽 컨트롤러의 <b>메타(∞) 버튼</b>을 누르기</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>잘 안 될 때</h2>
+    <ul>
+      <li>퍼가기를 막아 둔 영상(일부 뮤직비디오 등)은 이 페이지에서 재생되지 않습니다. 그럴 때는 다른 탭에서 유튜브를 틀어 두세요.</li>
+      <li>소리가 끊기면 이 페이지 안에서 재생하는 방법이 가장 확실합니다.</li>
+      <li>경계(가디언) 가까이 가면 경계선은 보일 수 있습니다. 안전을 위해 퀘스트가 항상 보여 주는 것입니다.</li>
+      <li>VR을 지원하지 않는 기기(휴대폰·PC)에서는 버튼을 누르면 전체 화면 검은색이 됩니다. 두 번 누르면 꺼집니다.</li>
+    </ul>
+  </section>
+</main>
+
+<div id="blackout" aria-hidden="true"><div class="hint">두 번 누르면 꺼집니다</div></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const goBtn = $('go');
+  const vrStatus = $('vrStatus');
+  const playStatus = $('playStatus');
+
+  // ---------- 유튜브 ----------
+  function parseYouTube(text) {
+    const s = text.trim();
+    if (!s) return null;
+    if (/^[\w-]{11}$/.test(s)) return { id: s };
+    let u;
+    try { u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); } catch (e) { return null; }
+    const host = u.hostname.replace(/^(www\.|m\.|music\.)/, '');
+    const list = u.searchParams.get('list');
+    let id = null;
+    if (host === 'youtu.be') {
+      id = u.pathname.slice(1).split('/')[0];
+    } else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (u.searchParams.get('v')) id = u.searchParams.get('v');
+      else if (['shorts', 'live', 'embed', 'v'].includes(parts[0])) id = parts[1];
+    } else {
+      return null;
+    }
+    if (id && !/^[\w-]{11}$/.test(id)) id = null;
+    if (!id && !list) return null;
+    return { id, list };
+  }
+
+  $('play').addEventListener('click', () => {
+    const info = parseYouTube($('url').value);
+    if (!info) {
+      playStatus.textContent = '유튜브 주소를 알아보지 못했습니다. 주소를 다시 확인해 주세요.';
+      playStatus.className = 'status warn';
+      return;
+    }
+    const params = new URLSearchParams({ autoplay: '1', playsinline: '1', rel: '0' });
+    let src;
+    if (info.id) {
+      src = 'https://www.youtube.com/embed/' + info.id;
+      if (info.list) params.set('list', info.list);
+    } else {
+      src = 'https://www.youtube.com/embed/videoseries';
+      params.set('list', info.list);
+    }
+    const player = $('player');
+    player.innerHTML = '';
+    const frame = document.createElement('iframe');
+    frame.src = src + '?' + params.toString();
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    frame.allowFullscreen = true;
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    player.appendChild(frame);
+    player.style.display = 'block';
+    playStatus.textContent = '소리가 나오는지 확인한 뒤 아래 "완전 검은 화면 시작"을 누르세요.';
+    playStatus.className = 'status';
+  });
+  $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('play').click(); });
+
+  // ---------- 두 번 누르기 감지 ----------
+  function doubleTap(onDouble) {
+    let last = 0;
+    return () => {
+      const now = performance.now();
+      if (now - last < 600) { last = 0; onDouble(); } else { last = now; }
+    };
+  }
+
+  // ---------- VR 검은 화면 (WebXR) ----------
+  let xrSupported = false;
+  let session = null;
+
+  async function detect() {
+    if (navigator.xr && navigator.xr.isSessionSupported) {
+      try { xrSupported = await navigator.xr.isSessionSupported('immersive-vr'); } catch (e) { xrSupported = false; }
+    }
+    if (!xrSupported) {
+      vrStatus.textContent = window.isSecureContext
+        ? '이 기기에서는 VR 모드를 쓸 수 없어 전체 화면 검은색으로 대신합니다. 퀘스트 브라우저에서 열면 시야 전체가 까매집니다.'
+        : 'VR 모드는 https 주소에서만 됩니다. 이 페이지를 https 주소로 열어 주세요.';
+    }
+  }
+
+  async function startVR() {
+    goBtn.disabled = true;
+    vrStatus.className = 'status';
+    vrStatus.textContent = 'VR 모드로 들어가는 중…';
+    try {
+      session = await navigator.xr.requestSession('immersive-vr');
+    } catch (e) {
+      goBtn.disabled = false;
+      vrStatus.className = 'status warn';
+      vrStatus.textContent = 'VR 모드를 시작하지 못했습니다: ' + (e && e.message ? e.message : e);
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl', { xrCompatible: true, antialias: false, alpha: false, depth: false });
+    try {
+      if (gl.makeXRCompatible) await gl.makeXRCompatible();
+      // 검은색만 그리므로 해상도를 낮춰 배터리와 발열을 줄입니다.
+      session.updateRenderState({
+        baseLayer: new XRWebGLLayer(session, gl, { antialias: false, depth: false, framebufferScaleFactor: 0.25 }),
+      });
+    } catch (e) {
+      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+    }
+
+    // 가능한 가장 낮은 화면 주사율로 (배터리 절약)
+    if (session.supportedFrameRates && session.updateTargetFrameRate) {
+      const rates = Array.from(session.supportedFrameRates);
+      if (rates.length) session.updateTargetFrameRate(Math.min(...rates)).catch(() => {});
+    }
+
+    let refSpace = null;
+    session.requestReferenceSpace('local').then((r) => { refSpace = r; }).catch(() => {});
+
+    const onFrame = (time, frame) => {
+      session.requestAnimationFrame(onFrame);
+      if (refSpace) frame.getViewerPose(refSpace);
+      const layer = session.renderState.baseLayer;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    };
+    session.requestAnimationFrame(onFrame);
+
+    session.addEventListener('select', doubleTap(() => session && session.end()));
+    session.addEventListener('end', () => {
+      session = null;
+      goBtn.disabled = false;
+      vrStatus.className = 'status';
+      vrStatus.textContent = '검은 화면이 꺼졌습니다. 다시 켜려면 버튼을 누르세요.';
+    });
+    vrStatus.textContent = '';
+  }
+
+  // ---------- VR이 안 되는 기기: 전체 화면 검은색 ----------
+  const blackout = $('blackout');
+  function startFallback() {
+    blackout.classList.add('on');
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  }
+  function stopFallback() {
+    blackout.classList.remove('on');
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  }
+  blackout.addEventListener('pointerdown', doubleTap(stopFallback));
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) blackout.classList.remove('on');
+  });
+
+  goBtn.addEventListener('click', () => {
+    if (xrSupported) startVR();
+    else startFallback();
+  });
+
+  detect();
+})();
+</script>
+</body>
+</html>
