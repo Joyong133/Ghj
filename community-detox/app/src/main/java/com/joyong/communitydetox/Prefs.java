@@ -130,17 +130,17 @@ final class Prefs {
         return sp(c).getBoolean(K_VPN, BuildConfig.IS_VR);
     }
 
-    // ---- VPN also blocks this app (모아읽기) — free to change at any time ----
+    // ---- guard this app's VPN in system settings — free to change at any time ----
 
-    private static final String K_SELF_BLOCK = "vpn_blocks_self";
+    private static final String K_VPN_GUARD = "vpn_settings_guard";
 
-    /** When on, the VPN doesn't exempt this app, so 모아읽기 can't reach the blocked sites either. */
-    static boolean isSelfBlocked(Context c) {
-        return sp(c).getBoolean(K_SELF_BLOCK, false);
+    /** When on, this app's VPN page in Settings (disconnect / delete) and the VPN disconnect popup are closed. */
+    static boolean isVpnGuardOn(Context c) {
+        return sp(c).getBoolean(K_VPN_GUARD, true);
     }
 
-    static void setSelfBlocked(Context c, boolean on) {
-        sp(c).edit().putBoolean(K_SELF_BLOCK, on).commit();
+    static void setVpnGuardOn(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_VPN_GUARD, on).apply();
     }
 
     // ---- community app installs ----

@@ -113,6 +113,10 @@ public class DetoxAccessibilityService extends AccessibilityService {
         // 0) During a focus lock, don't let the app be uninstalled, force-stopped or switched off.
         if (Prefs.isLocked(this) && isSystemGuardPackage(pkg) && guardSelf(event, pkg)) return;
 
+        // 0b) Any time the user wants it: this app's VPN can't be switched off from Settings.
+        if (!Prefs.isLocked(this) && Prefs.isVpnGuardOn(this) && Prefs.isVpnOn(this)
+                && isSystemGuardPackage(pkg) && guardVpnPage(event, pkg)) return;
+
         if (!Prefs.isBlockingActive(this)) return;
 
         Prefs.Rules r = rules;
@@ -476,14 +480,62 @@ public class DetoxAccessibilityService extends AccessibilityService {
                 || pkg.contains("packageinstaller")     // uninstall confirmation dialogs
                 || pkg.equals("com.samsung.accessibility")
                 || pkg.contains("securitycenter")       // Xiaomi app management
-                || pkg.contains("safecenter");          // OPPO / OnePlus app management
+                || pkg.contains("safecenter")           // OPPO / OnePlus app management
+                || pkg.contains("vpndialogs");          // the VPN "disconnect?" popup
     }
 
     private static final String[] UNINSTALL_WORDS = {"삭제", "제거", "uninstall", "Uninstall", "UNINSTALL"};
     /** The force-stop button only appears on an app-info page (every app-info page has it). */
     private static final String[] APP_INFO_WORDS = {"강제 중지", "강제 종료", "강제종료", "Force stop", "FORCE STOP"};
     /** Buttons on our VPN's page in Settings (network blocking). */
-    private static final String[] VPN_WORDS = {"연결 해제", "연결 끊기", "VPN 삭제", "VPN 해제", "Disconnect", "Forget VPN", "DISCONNECT"};
+    private static final String[] VPN_WORDS = {"연결 해제", "연결 끊기", "VPN 삭제", "VPN 해제", "VPN 잊기",
+            "Disconnect", "DISCONNECT", "Forget VPN", "Forget"};
+
+    /**
+     * True on a screen that can switch off THIS app's VPN: its VPN page in Settings or the VPN
+     * "disconnect?" popup. The VPN list, other apps' VPNs and the "allow VPN connection?" popup
+     * (needed to turn it on) are not affected.
+     */
+    static boolean shouldGuardVpn(List<String> texts, String appLabel) {
+        boolean mentionsUs = false;
+        for (String t : texts) {
+            if (t.contains(appLabel)) {
+                mentionsUs = true;
+                break;
+            }
+        }
+        return mentionsUs && anyOtherTextContains(texts, appLabel, VPN_WORDS);
+    }
+
+    private long lastVpnGuardCheck;
+
+    private boolean guardVpnPage(AccessibilityEvent event, String pkg) {
+        long now = SystemClock.uptimeMillis();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && now - lastVpnGuardCheck < CHECK_INTERVAL_MS) {
+            return false;
+        }
+        lastVpnGuardCheck = now;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null || !pkg.equals(root.getPackageName().toString())) return false;
+        List<AccessibilityNodeInfo> mine = root.findAccessibilityNodeInfosByText(myLabel());
+        if (mine == null || mine.isEmpty()) return false;
+        if (!shouldGuardVpn(collectTexts(root), myLabel())) return false;
+
+        if ("vpn-guard".equals(lastBlockedKey) && now - lastBlockedAt < 800) return true;
+        lastBlockedKey = "vpn-guard";
+        lastBlockedAt = now;
+        // Popup: BACK closes it. Settings page: go home.
+        performGlobalAction(pkg.contains("vpndialogs") ? GLOBAL_ACTION_BACK : GLOBAL_ACTION_HOME);
+        handler.postDelayed(() -> {
+            try {
+                startActivity(new Intent(this, BlockedActivity.class)
+                        .putExtra(BlockedActivity.EXTRA_REASON, BlockedActivity.REASON_VPN)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+            } catch (RuntimeException ignored) {
+            }
+        }, 250);
+        return true;
+    }
     /** Words next to our service name on its own on/off switch or "stop service?" dialog. */
     private static final String[] TOGGLE_WORDS = {"사용", "중지", "끄", "Use ", "Stop", "Turn off"};
 

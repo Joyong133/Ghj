@@ -186,9 +186,6 @@ final class ReaderBackend {
      * Must not be called on the main thread.
      */
     private String loadHtml(String url, String script) throws Exception {
-        if (Prefs.isSelfBlocked(fetcher.getContext())) {
-            throw new IOException("'이 앱도 VPN으로 막기'가 켜져 있어서 읽을 수 없어요. 메인 화면에서 끄면 다시 읽을 수 있어요.");
-        }
         synchronized (queue) {
             loadError = null;
             expectedHost = Uri.parse(url).getHost();

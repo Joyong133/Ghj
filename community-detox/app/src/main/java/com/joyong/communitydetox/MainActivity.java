@@ -363,6 +363,27 @@ public class MainActivity extends Activity {
                 else ensureVpn();
             }), Ui.fill(ui.dp(10)));
         }
+        if (on) {
+            // Settings guard: this app's VPN can't be switched off from system settings. Free on/off.
+            boolean guard = Prefs.isVpnGuardOn(this);
+            LinearLayout gr = ui.row();
+            LinearLayout gt = ui.column();
+            gt.addView(ui.text("설정에서 이 앱의 VPN 끄기 막기", 15, ui.text, true));
+            gt.addView(ui.text(guard ? "🛡️ 켜짐 · 설정의 이 앱 VPN 화면·연결 해제 창이 바로 닫혀요" : "꺼짐 · 설정에서 VPN을 끌 수 있어요",
+                    12, ui.sub, false));
+            gr.addView(gt, Ui.weight(0));
+            Switch gsw = new Switch(this);
+            gsw.setChecked(guard);
+            gsw.setOnCheckedChangeListener((b, checked) -> {
+                Prefs.setVpnGuardOn(this, checked);
+                render();
+            });
+            gr.addView(gsw);
+            c.addView(gr, Ui.fill(ui.dp(12)));
+            if (guard && !isServiceEnabled()) {
+                c.addView(ui.body("※ 이 기능은 접근성 권한이 켜져 있어야 작동해요."), Ui.wrap(ui.dp(4)));
+            }
+        }
         c.addView(ui.body("다른 VPN 앱과는 함께 쓸 수 없어요. 휴대폰 설정의 '비공개 DNS'가 특정 주소로 지정돼 있으면 꺼 주세요."),
                 Ui.wrap(ui.dp(8)));
         content.addView(c);
@@ -712,31 +733,8 @@ public class MainActivity extends Activity {
         c.addView(ui.title("📖 모아읽기"));
         c.addView(ui.body("브라우저에서는 막혀 있는 펨코 해외축구·롤 인기글, 디시 특갤 개념글, 아카 나무 실검을 "
                 + "이 앱 안에서만 댓글까지 읽어요. VPN은 이 앱 하나로 충분해요 (예전 모아읽기 앱은 지워도 돼요)."));
-        boolean selfBlocked = Prefs.isSelfBlocked(this);
-        c.addView(ui.button(selfBlocked ? "읽으러 가기 (지금은 막혀 있어요)" : "읽으러 가기", !selfBlocked,
-                v -> startActivity(new Intent(this, ReaderActivity.class))), Ui.fill(ui.dp(10)));
-
-        // "This app too": the VPN stops exempting this app, so 모아읽기 can't load the boards either.
-        // Free to switch at any time (also during a focus lock).
-        LinearLayout r = ui.row();
-        LinearLayout texts = ui.column();
-        texts.addView(ui.text("이 앱(모아읽기)도 VPN으로 막기", 15, ui.text, true));
-        texts.addView(ui.text(selfBlocked ? "🔒 켜짐 · 모아읽기도 커뮤니티를 불러오지 못해요" : "꺼짐 · 이 앱 안에서만 읽을 수 있어요",
-                12, ui.sub, false));
-        r.addView(texts, Ui.weight(0));
-        Switch sw = new Switch(this);
-        sw.setChecked(selfBlocked);
-        sw.setOnCheckedChangeListener((b, checked) -> {
-            Prefs.setSelfBlocked(this, checked);
-            DetoxVpnService.restart(this); // reconnect now so it applies right away
-            Toast.makeText(this, checked ? "이 앱도 막았어요 🔒" : "이 앱에서 다시 읽을 수 있어요 📖", Toast.LENGTH_SHORT).show();
-            render();
-        });
-        r.addView(sw);
-        c.addView(r, Ui.fill(ui.dp(12)));
-        if (!Prefs.isVpnOn(this)) {
-            c.addView(ui.body("※ VPN(커뮤니티 차단)이 꺼져 있으면 이 스위치는 VPN 대신 모아읽기 화면만 막아요."), Ui.wrap(ui.dp(4)));
-        }
+        c.addView(ui.button("읽으러 가기", true, v -> startActivity(new Intent(this, ReaderActivity.class))),
+                Ui.fill(ui.dp(10)));
         content.addView(c);
     }
 
