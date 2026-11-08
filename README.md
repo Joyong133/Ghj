@@ -22,4 +22,4 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 ## AI 대체 확률 앱
 
 한국·일본 개발자의 AI 대체 확률을 실시간 뉴스와 AI 성능 가정으로 추정하는 안드로이드 앱이
-[`ai-replace-meter/`](ai-replace-meter/)에 있습니다. APK: [`ai-replace-meter/release/AI-Replace-Meter-1.0.apk`](ai-replace-meter/release/AI-Replace-Meter-1.0.apk)
+[`ai-replace-meter/`](ai-replace-meter/)에 있습니다. APK: [`ai-replace-meter/release/AI-Replace-Meter-1.1.apk`](ai-replace-meter/release/AI-Replace-Meter-1.1.apk)
