@@ -27,6 +27,8 @@ jobs:
         working-directory: vr-app
         run: |
           chmod +x gradlew
+          # Gradle 내려받기가 일시적으로 실패할 때를 대비해 몇 번 다시 시도합니다.
+          for i in 1 2 3 4 5; do ./gradlew --version --no-daemon && break; echo "retry $i"; sleep $((i * 20)); done
           ./gradlew assembleDebug --no-daemon --stacktrace
           cp app/build/outputs/apk/debug/app-debug.apk ../vr-black-screen.apk
 
