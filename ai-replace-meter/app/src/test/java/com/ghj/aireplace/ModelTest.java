@@ -89,9 +89,28 @@ public class ModelTest {
 
     @Test
     public void feedUrlEncodesQuery() {
-        String u = News.Feed.JP.url();
+        assertTrue(News.Feed.KR.queryCount() >= 8);
+        assertTrue(News.Feed.JP.queryCount() >= 8);
+        String u = News.Feed.JP.url(0);
+        assertTrue(u.contains("when%3A30d"));
         assertTrue(u.startsWith("https://news.google.com/rss/search?q="));
         assertTrue(u.contains("hl=ja&gl=JP&ceid=JP:ja"));
         assertTrue(!u.contains(" "));
+    }
+
+    @Test
+    public void mergeDedupesAndSortsNewestFirst() {
+        List<News.Item> a = java.util.Arrays.asList(
+                new News.Item("개발자 감원 확산", "A", "https://x/1", 1000),
+                new News.Item("AI 채용 급감", "B", "https://x/2", 3000));
+        List<News.Item> b = java.util.Arrays.asList(
+                new News.Item("개발자 감원, 확산!", "C", "https://x/9", 1000), // 같은 제목(문장부호만 다름)
+                new News.Item("다른 기사", "D", "https://x/2", 5000),          // 같은 링크
+                new News.Item("새 기사", "E", "https://x/3", 4000));
+        List<News.Item> m = News.merge(java.util.Arrays.asList(a, b), 10);
+        assertEquals(3, m.size());
+        assertEquals("새 기사", m.get(0).title);
+        assertEquals("AI 채용 급감", m.get(1).title);
+        assertEquals(2, News.merge(java.util.Arrays.asList(a, b), 2).size());
     }
 }

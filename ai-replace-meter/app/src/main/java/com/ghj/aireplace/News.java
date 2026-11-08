@@ -23,27 +23,43 @@ public final class News {
 
     private News() {}
 
-    public enum Feed {
-        KR("AI 개발자 대체 OR AI 개발자 채용 OR AI 코딩 일자리 OR 개발자 구조조정 AI", "ko", "KR", "KR:ko"),
-        JP("AI エンジニア 代替 OR 生成AI プログラマー 雇用 OR AI 開発者 仕事 OR IT人材 AI", "ja", "JP", "JP:ja"),
-        GLOBAL("AI coding agent benchmark OR SWE-bench OR AI software engineer model", "en-US", "US", "US:en");
+    /** 기사 수집 기간. */
+    static final String WINDOW = "when:30d";
 
-        final String query;
+    public enum Feed {
+        KR("ko", "KR", "KR:ko",
+                "AI 개발자 대체", "AI 개발자 채용", "AI 코딩 일자리", "개발자 구조조정 AI",
+                "생성형 AI 소프트웨어 개발자", "AI 에이전트 코딩", "신입 개발자 채용 AI", "바이브 코딩",
+                "AI 프로그래머 일자리", "IT 업계 감원 AI", "개발자 인력난", "AI 코딩 도구 도입"),
+        JP("ja", "JP", "JP:ja",
+                "AI エンジニア 代替", "生成AI プログラマー 雇用", "AI 開発者 仕事", "IT人材 AI",
+                "SIer 生成AI", "AIエージェント エンジニア", "エンジニア 採用 AI", "バイブコーディング",
+                "プログラマー 仕事 なくなる", "IT人材不足", "AI コーディング 導入", "人員削減 AI IT"),
+        GLOBAL("en-US", "US", "US:en",
+                "AI coding agent benchmark", "SWE-bench", "AI software engineer model",
+                "AI coding model release", "AI replace software developers", "AI coding assistant",
+                "software engineer layoffs AI", "autonomous coding agent");
+
+        final String[] queries;
         final String hl;
         final String gl;
         final String ceid;
 
-        Feed(String query, String hl, String gl, String ceid) {
-            this.query = query;
+        Feed(String hl, String gl, String ceid, String... queries) {
+            this.queries = queries;
             this.hl = hl;
             this.gl = gl;
             this.ceid = ceid;
         }
 
-        public String url() {
+        public int queryCount() {
+            return queries.length;
+        }
+
+        public String url(int i) {
             try {
                 return "https://news.google.com/rss/search?q="
-                        + URLEncoder.encode(query + " when:14d", "UTF-8")
+                        + URLEncoder.encode(queries[i] + " " + WINDOW, "UTF-8")
                         + "&hl=" + hl + "&gl=" + gl + "&ceid=" + ceid;
             } catch (java.io.UnsupportedEncodingException e) {
                 throw new IllegalStateException(e);
@@ -170,22 +186,48 @@ public final class News {
 
     // ── 수집 ─────────────────────────────────────────────────────────────
 
-    public static List<Item> fetch(Feed feed, int max) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(feed.url()).openConnection();
+    /** 검색어 하나(최대 100건, Google 뉴스 RSS 한도)를 가져와 점수를 매긴다. */
+    public static List<Item> fetchQuery(Feed feed, int query) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(feed.url(query)).openConnection();
         c.setConnectTimeout(10_000);
         c.setReadTimeout(15_000);
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AIReplaceMeter/1.0");
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AIReplaceMeter/1.1");
         try {
             int code = c.getResponseCode();
             if (code != 200) throw new java.io.IOException("HTTP " + code);
             try (InputStream in = c.getInputStream()) {
-                List<Item> items = parse(in, max);
+                List<Item> items = parse(in, 100);
                 for (Item it : items) score(it, feed);
                 return items;
             }
         } finally {
             c.disconnect();
         }
+    }
+
+    /** 여러 검색어 결과를 합쳐 같은 기사(링크·제목 기준)를 지우고 최신순으로 max 건까지 남긴다. */
+    public static List<Item> merge(List<List<Item>> batches, int max) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<Item> out = new ArrayList<>();
+        for (List<Item> batch : batches) {
+            for (Item it : batch) {
+                String key = normalize(it.title);
+                if (key.isEmpty() || !seen.add(key)) continue;
+                if (!it.link.isEmpty() && !seen.add("link:" + it.link)) continue;
+                out.add(it);
+            }
+        }
+        java.util.Collections.sort(out, (a, b) -> Long.compare(b.publishedAt, a.publishedAt));
+        return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
+    }
+
+    private static String normalize(String title) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < title.length(); i++) {
+            char ch = title.charAt(i);
+            if (Character.isLetterOrDigit(ch)) sb.append(Character.toLowerCase(ch));
+        }
+        return sb.toString();
     }
 
     public static List<Item> parse(InputStream in, int max) throws Exception {
