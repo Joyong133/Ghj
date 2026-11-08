@@ -44,6 +44,7 @@ final class ReaderBackend {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Object queue = new Object();
     private String expectedHost = "";
+    private volatile String loadError;
 
     @SuppressLint("SetJavaScriptEnabled")
     ReaderBackend(WebView fetcher) {
@@ -63,6 +64,11 @@ final class ReaderBackend {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return !allowedSite(request.getUrl().getHost()); // stay on the three sites
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                if (request.isForMainFrame()) loadError = "사이트에 연결하지 못했어요 (" + error.getDescription() + ")";
             }
 
             @Override
@@ -180,7 +186,11 @@ final class ReaderBackend {
      * Must not be called on the main thread.
      */
     private String loadHtml(String url, String script) throws Exception {
+        if (Prefs.isSelfBlocked(fetcher.getContext())) {
+            throw new IOException("'이 앱도 VPN으로 막기'가 켜져 있어서 읽을 수 없어요. 메인 화면에서 끄면 다시 읽을 수 있어요.");
+        }
         synchronized (queue) {
+            loadError = null;
             expectedHost = Uri.parse(url).getHost();
             CountDownLatch done = new CountDownLatch(1);
             AtomicReference<String> result = new AtomicReference<>();
@@ -192,8 +202,8 @@ final class ReaderBackend {
                 main.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        if (System.currentTimeMillis() > deadline) {
-                            error.set("사이트가 응답하지 않아요");
+                        if (loadError != null || System.currentTimeMillis() > deadline) {
+                            error.set(loadError != null ? loadError : "사이트가 응답하지 않아요");
                             done.countDown();
                             return;
                         }

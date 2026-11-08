@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 public class DetoxVpnService extends VpnService implements Runnable {
 
     static final String ACTION_STOP = "com.joyong.communitydetox.STOP_VPN";
+    static final String ACTION_RESTART = "com.joyong.communitydetox.RESTART_VPN";
     private static final String VPN_ADDRESS = "10.111.222.1";
     private static final String VPN_DNS = "10.111.222.2";
 
@@ -89,6 +90,15 @@ public class DetoxVpnService extends VpnService implements Runnable {
         }
     }
 
+    /** Re-connects with the current settings (e.g. after "이 앱도 막기" changed). */
+    static void restart(Context c) {
+        if (!running || VpnService.prepare(c) != null) return;
+        try {
+            c.startForegroundService(new Intent(c, DetoxVpnService.class).setAction(ACTION_RESTART));
+        } catch (RuntimeException ignored) {
+        }
+    }
+
     static void stop(Context c) {
         try {
             c.startService(new Intent(c, DetoxVpnService.class).setAction(ACTION_STOP));
@@ -105,6 +115,13 @@ public class DetoxVpnService extends VpnService implements Runnable {
             return START_NOT_STICKY;
         }
         goForeground();
+        if (intent != null && ACTION_RESTART.equals(intent.getAction())) {
+            shutdown(); // the loop below starts a fresh connection with the new settings
+            try {
+                if (thread != null) thread.join(2000);
+            } catch (InterruptedException ignored) {
+            }
+        }
         if (thread == null || !thread.isAlive()) {
             refresh();
             Prefs.sp(this).registerOnSharedPreferenceChangeListener(prefsListener);
@@ -154,9 +171,13 @@ public class DetoxVpnService extends VpnService implements Runnable {
                     .addDnsServer(VPN_DNS)
                     .addRoute(VPN_DNS, 32)
                     .setBlocking(true);
-            try {
-                b.addDisallowedApplication(getPackageName()); // our own forwarding goes out directly
-            } catch (Exception ignored) {
+            if (!Prefs.isSelfBlocked(this)) {
+                // Normally this app is exempt, so 모아읽기 can read the boards that browsers can't.
+                // (Our own DNS forwarding is protect()ed either way.)
+                try {
+                    b.addDisallowedApplication(getPackageName());
+                } catch (Exception ignored) {
+                }
             }
             synchronized (this) {
                 tun = b.establish();
@@ -190,7 +211,7 @@ public class DetoxVpnService extends VpnService implements Runnable {
         } catch (Exception e) {
             // closed or revoked
         } finally {
-            running = false;
+            if (Thread.currentThread() == thread) running = false; // a restart may already run a new loop
         }
     }
 
