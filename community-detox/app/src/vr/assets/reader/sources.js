@@ -1,5 +1,6 @@
 /* From 모아읽기 (MoaReader 1.2.4): list / post / comment parsers for the four boards.
-   Changed for Digital Detox: the list no longer needs a separate approved-id list. */
+   Changed for Digital Detox: the list no longer needs a separate approved-id list;
+   펨코 comments are also found under .fdb_lst_wrp / .fdb_lst_ul / #cmtPosition and li.fdb_itm. */
 'use strict';
 /* Pure extractors. Every displayed post must also be approved by the native broker.
    Source HTML is parsed inertly and never attached to the live document. */
@@ -73,10 +74,10 @@ window.Feeds=(()=>{
  function commentResult(d,b,page){
   if(b===2&&Array.isArray(d.comments))return {max:commentMax(parse(d.pagination||''),b,page),total:Number(d.total),items:d.comments.map(c=>({id:String(c.id),name:text(parse(c.name||'').body)||'익명',date:c.date||'',reply:Number(c.depth)>0,content:parse(c.html||c.memo||'').body,images:c.images||[]}))};
   if(typeof d.html!=='string')throw new Error('댓글 응답 형식이 올바르지 않아요.');const doc=parse(d.html);
-  const selector=b===2?'.moa-mobile-comments,.comment-wrap,.comment_wrap,.comment_box,.comment-list,#comment_list,#reply_list,.reply_list,.cmt_list':b===3?'.comment-list,#comment,.comment-wrapper,.article-wrapper':'.fdb_lst,#cmt_list,#comment_list,#comment';
+  const selector=b===2?'.moa-mobile-comments,.comment-wrap,.comment_wrap,.comment_box,.comment-list,#comment_list,#reply_list,.reply_list,.cmt_list':b===3?'.comment-list,#comment,.comment-wrapper,.article-wrapper':'.fdb_lst,.fdb_lst_wrp,.fdb_lst_ul,#cmtPosition,#cmt_list,#comment_list,#comment';
   const root=[...doc.querySelectorAll(selector)].find(n=>!n.closest('.write_div,.thum-txtin,.article-content,.rd_body'));
   if(!root)throw new Error('댓글 영역을 확인하지 못했어요.');
-  const rowSelector=b===2?'li[id^="comment_"],li[id^="reply_"],.comment-item,.comment-row,li.comment,li[data-no],[data-comment-id],.reply_list > li,.cmt_list > li':b===3?'.comment-item,[data-comment-id],.comment':'[id^="comment_"],[data-comment-srl]';
+  const rowSelector=b===2?'li[id^="comment_"],li[id^="reply_"],.comment-item,.comment-row,li.comment,li[data-no],[data-comment-id],.reply_list > li,.cmt_list > li':b===3?'.comment-item,[data-comment-id],.comment':'[id^="comment_"],[data-comment-srl],li.fdb_itm';
   const nodes=[...root.querySelectorAll(rowSelector)];if(root.matches(rowSelector))nodes.unshift(root);
   const seen=new Set(),items=[];
   for(const c of nodes){

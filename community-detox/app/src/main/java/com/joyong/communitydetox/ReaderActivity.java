@@ -41,13 +41,14 @@ public class ReaderActivity extends Activity {
         super.onCreate(savedInstanceState);
         FrameLayout root = new FrameLayout(this);
 
-        // Hidden page loader (must be attached to a window to run the sites' scripts).
+        // Hidden page loader: full screen size (pages that load things only when they come into view
+        // need a real viewport), sitting behind the reader screen so it's never seen.
         WebView fetcher = new WebView(this);
-        fetcher.setAlpha(0f);
-        root.addView(fetcher, new FrameLayout.LayoutParams(4, 4));
+        root.addView(fetcher, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         backend = new ReaderBackend(fetcher);
 
         ui = new WebView(this);
+        ui.setBackgroundColor(new Ui(this).bg); // opaque, so the page loader behind never shows through
         WebSettings s = ui.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);

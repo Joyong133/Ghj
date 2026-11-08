@@ -102,11 +102,12 @@ final class ReaderBackend {
         } else {
             url = "https://arca.live/b/namuhotnow?p=" + page;
         }
-        return new JSONObject().put("ok", true).put("html", loadHtml(url, null));
+        return new JSONObject().put("ok", true).put("html", loadHtml(url, null, null));
     }
 
     JSONObject post(int board, long no) throws Exception {
-        return new JSONObject().put("ok", true).put("no", String.valueOf(no)).put("html", loadHtml(postUrl(board, no), null));
+        return new JSONObject().put("ok", true).put("no", String.valueOf(no))
+                .put("html", loadHtml(postUrl(board, no), null, board < 2 ? WAIT_FM_COMMENTS : null));
     }
 
     JSONObject comments(int board, long no, int page) throws Exception {
@@ -125,13 +126,14 @@ final class ReaderBackend {
                     + "pagination:String(d.pagination||''),comments:list.map(function(c){return {id:String(c.no),"
                     + "name:String(c.name||''),date:String(c.reg_date||''),depth:Number(c.depth||0),memo:String(c.memo||'')};})});"
                     + "}catch(err){return JSON.stringify({ok:false,message:String(err)});}})(" + no + "," + page + ")";
-            String json = loadHtml(postUrl(board, no), js);
+            String json = loadHtml(postUrl(board, no), js, null);
             return new JSONObject(json);
         }
         String url = board == 3
                 ? "https://arca.live/b/namuhotnow/" + no + "?cp=" + page
                 : "https://www.fmkorea.com/index.php?mid=" + FM_MID[board] + "&document_srl=" + no + "&cpage=" + page;
-        return new JSONObject().put("ok", true).put("no", String.valueOf(no)).put("html", loadHtml(url, null));
+        return new JSONObject().put("ok", true).put("no", String.valueOf(no))
+                .put("html", loadHtml(url, null, board < 2 ? WAIT_FM_COMMENTS : null));
     }
 
     private static String postUrl(int board, long no) {
@@ -185,7 +187,19 @@ final class ReaderBackend {
      * there (not a "please wait" check), then returns its HTML — or the result of {@code script}.
      * Must not be called on the main thread.
      */
-    private String loadHtml(String url, String script) throws Exception {
+    /**
+     * 펨코 adds comments after the page has loaded (and only when the comment area comes into view):
+     * scroll there and report true once comment rows (or a "no comments" note) are on the page.
+     */
+    private static final String WAIT_FM_COMMENTS = "(function(){"
+            + "var r=document.querySelector('#cmtPosition,.fdb_lst_wrp,.fdb_lst,#comment,#comment_list,.comment_list');"
+            + "if(r){r.scrollIntoView();}else{window.scrollTo(0,document.body.scrollHeight);}"
+            + "var rows=document.querySelectorAll('.fdb_lst [id^=\"comment_\"],li.fdb_itm,[data-comment-srl],#cmt_list li,#comment_list li').length;"
+            + "var t=(r||document.body).innerText.slice(0,3000);"
+            + "return rows>0||/등록된 댓글이 없|댓글이 없습니다|댓글 0/.test(t);})()";
+    private static final long COMMENT_WAIT_MS = 8_000;
+
+    private String loadHtml(String url, String script, String waitFor) throws Exception {
         synchronized (queue) {
             loadError = null;
             expectedHost = Uri.parse(url).getHost();
@@ -216,13 +230,29 @@ final class ReaderBackend {
                                 main.postDelayed(this, 700);
                                 return;
                             }
-                            fetcher.evaluateJavascript(script != null ? script : "document.documentElement.outerHTML", v -> {
-                                try {
-                                    result.set(unquote(v));
-                                } catch (Exception e) {
-                                    error.set("페이지를 읽지 못했어요");
+                            Runnable grab = () -> fetcher.evaluateJavascript(
+                                    script != null ? script : "document.documentElement.outerHTML", v -> {
+                                        try {
+                                            result.set(unquote(v));
+                                        } catch (Exception e) {
+                                            error.set("페이지를 읽지 못했어요");
+                                        }
+                                        done.countDown();
+                                    });
+                            if (waitFor == null) {
+                                grab.run();
+                                return;
+                            }
+                            // Wait (a few seconds at most) for content the page adds later, e.g. comments.
+                            long until = System.currentTimeMillis() + COMMENT_WAIT_MS;
+                            main.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    fetcher.evaluateJavascript(waitFor, ok -> {
+                                        if ("true".equals(ok) || System.currentTimeMillis() > until) grab.run();
+                                        else main.postDelayed(this, 600);
+                                    });
                                 }
-                                done.countDown();
                             });
                         });
                     }
