@@ -30,6 +30,7 @@ public class LauncherActivity extends Activity {
         size = findViewById(R.id.size);
         Button paste = findViewById(R.id.paste);
         Button start = findViewById(R.id.start);
+        Button preview = findViewById(R.id.preview);
 
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         url.setText(prefs.getString("url", ""));
@@ -47,7 +48,8 @@ public class LauncherActivity extends Activity {
             }
         });
 
-        start.setOnClickListener(v -> startVr());
+        start.setOnClickListener(v -> launch(VrActivity.class));
+        preview.setOnClickListener(v -> launch(PreviewActivity.class));
     }
 
     @Override
@@ -64,7 +66,7 @@ public class LauncherActivity extends Activity {
         }
     }
 
-    private void startVr() {
+    private void launch(Class<? extends Activity> target) {
         String text = url.getText().toString().trim();
         String watch = YouTubeScripts.toWatchUrl(text);
         if (watch == null) {
@@ -78,12 +80,14 @@ public class LauncherActivity extends Activity {
                 .putString("size", sizeKey)
                 .apply();
 
-        Intent intent = new Intent(this, VrActivity.class)
+        Intent intent = new Intent(this, target)
                 .putExtra(VrActivity.EXTRA_URL, watch)
                 .putExtra(VrActivity.EXTRA_LANG, "ko")
                 .putExtra(VrActivity.EXTRA_TRANSLATE, translate.isChecked())
-                .putExtra(VrActivity.EXTRA_CAPTION_WIDTH, widthFor(sizeKey))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                .putExtra(VrActivity.EXTRA_CAPTION_WIDTH, widthFor(sizeKey));
+        if (target == VrActivity.class) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        }
         startActivity(intent);
     }
 

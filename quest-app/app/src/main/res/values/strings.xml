@@ -12,10 +12,12 @@
     <string name="size_m">보통</string>
     <string name="size_l">크게</string>
     <string name="start">검은 화면 시작</string>
-    <string name="help">• 퀘스트 브라우저에서 유튜브 영상을 열고 \'공유\' → 이 앱을 고르면 주소가 바로 들어옵니다.\n• 시작하면 시야가 까맣게 되고 소리가 나오며, 자막이 정중앙에 뜹니다.\n• 끄려면 컨트롤러 트리거를 빠르게 두 번 누르거나, 메타(∞) 버튼을 누르세요.\n• 광고가 나오면 광고가 끝난 뒤 자막이 나옵니다.</string>
+    <string name="help">• 퀘스트 브라우저에서 유튜브 영상을 열고 \'공유\' → 이 앱을 고르면 주소가 바로 들어옵니다.\n• 시작하면 시야가 까맣게 되고 소리가 나오며, 자막이 정중앙에 뜹니다.\n• 끄려면 컨트롤러 트리거를 빠르게 두 번 누르거나, 메타(∞) 버튼을 누르세요.\n• 광고가 나오면 광고가 끝난 뒤 자막이 나옵니다.\n• 자막이 안 나오면 \'VR 없이 미리보기\'로 유튜브 화면과 아래 노란 진단 줄을 확인해 주세요.</string>
     <string name="bad_url">유튜브 주소를 알아보지 못했습니다. 주소를 다시 확인해 주세요.</string>
     <string name="vr_loading">불러오는 중…</string>
     <string name="vr_ad">광고 중 · 끝나면 자막이 나옵니다</string>
     <string name="vr_no_captions">이 영상에는 자막이 없습니다</string>
+    <string name="vr_searching">자막을 찾는 중…</string>
+    <string name="preview">VR 없이 미리보기 (자막 문제 확인용)</string>
     <string name="vr_failed">VR 화면을 시작하지 못했습니다.</string>
 </resources>

@@ -39,6 +39,12 @@
             </intent-filter>
         </activity>
 
+        <!-- VR 없이 미리보기 (일반 창): 유튜브 화면 + 읽은 자막 + 진단 정보 -->
+        <activity
+            android:name=".PreviewActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false" />
+
         <!-- 몰입형 VR 화면 (시야 전체 검은색) -->
         <activity
             android:name=".VrActivity"
