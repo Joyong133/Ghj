@@ -1,0 +1,28 @@
+name: AI 대체 확률 APK
+
+on:
+  push:
+    paths:
+      - 'ai-replace-meter/**'
+      - '.github/workflows/ai-replace-meter-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-replace-meter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Test & build
+        run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-replace-meter-apk
+          path: ai-replace-meter/app/build/outputs/apk/release/*.apk

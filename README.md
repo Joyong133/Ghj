@@ -16,3 +16,10 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 영양 수치는 100ml당 근삿값(열량 43kcal, 당류 10.8g, 카페인 9.6mg)으로 계산합니다.
 실제 값은 나라와 제품마다 다릅니다.
+
+---
+
+## AI 대체 확률 앱
+
+한국·일본 개발자의 AI 대체 확률을 실시간 뉴스와 AI 성능 가정으로 추정하는 안드로이드 앱이
+[`ai-replace-meter/`](ai-replace-meter/)에 있습니다. APK: [`ai-replace-meter/release/AI-Replace-Meter-1.0.apk`](ai-replace-meter/release/AI-Replace-Meter-1.0.apk)
