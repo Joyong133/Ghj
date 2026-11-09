@@ -566,9 +566,10 @@ public class PlayerActivity extends AppCompatActivity {
         candidatesFromCache = false;
         String category = ch.url.substring(Channel.MIX_PREFIX.length());
         final List<String> sources = new ArrayList<>();
+        if (Channel.CAT_DRAMA.equals(category)) sources.addAll(ChannelStore.DRAMA_MIX_SOURCES);
         for (Channel c : channels) {
             if (category.equals(c.category) && !c.isMix() && !c.isStream() && !c.isLiveSource()
-                    && LiveResolver.isYouTube(c.url)) {
+                    && LiveResolver.isYouTube(c.url) && !sources.contains(c.url)) {
                 sources.add(c.url);
             }
         }

@@ -60,9 +60,14 @@
             android:text="@string/label_category"
             android:textAppearance="?attr/textAppearanceLabelLarge" />
 
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
         <RadioGroup
             android:id="@+id/categoryGroup"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
@@ -79,12 +84,19 @@
                 android:text="@string/cat_drama" />
 
             <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/catCam"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/cat_cam" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
                 android:id="@+id/catCustom"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:checked="true"
                 android:text="@string/cat_custom" />
         </RadioGroup>
+        </HorizontalScrollView>
 
         <com.google.android.material.checkbox.MaterialCheckBox
             android:id="@+id/checkStream"

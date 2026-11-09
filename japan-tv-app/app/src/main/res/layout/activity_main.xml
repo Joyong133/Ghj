@@ -112,6 +112,13 @@
                     android:text="@string/filter_drama" />
 
                 <com.google.android.material.chip.Chip
+                    android:id="@+id/chipCam"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/filter_cam" />
+
+                <com.google.android.material.chip.Chip
                     android:id="@+id/chipCustom"
                     style="@style/Widget.Material3.Chip.Filter"
                     android:layout_width="wrap_content"

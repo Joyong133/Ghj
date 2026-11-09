@@ -71,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
             int id = ids.isEmpty() ? R.id.chipAll : ids.get(0);
             if (id == R.id.chipNews) filter = Channel.CAT_NEWS;
             else if (id == R.id.chipDrama) filter = Channel.CAT_DRAMA;
+            else if (id == R.id.chipCam) filter = Channel.CAT_CAM;
             else if (id == R.id.chipCustom) filter = Channel.CAT_CUSTOM;
             else filter = null;
             refreshList();
@@ -261,10 +262,10 @@ public class MainActivity extends AppCompatActivity {
         EditText descIn = view.findViewById(R.id.inputDesc);
         MaterialCheckBox streamCheck = view.findViewById(R.id.checkStream);
         RadioGroup categoryGroup = view.findViewById(R.id.categoryGroup);
-        String startCategory = existing != null ? existing.category
-                : (Channel.CAT_DRAMA.equals(filter) || Channel.CAT_NEWS.equals(filter) ? filter : Channel.CAT_CUSTOM);
+        String startCategory = existing != null ? existing.category : (filter != null ? filter : Channel.CAT_CUSTOM);
         categoryGroup.check(Channel.CAT_NEWS.equals(startCategory) ? R.id.catNews
-                : Channel.CAT_DRAMA.equals(startCategory) ? R.id.catDrama : R.id.catCustom);
+                : Channel.CAT_DRAMA.equals(startCategory) ? R.id.catDrama
+                : Channel.CAT_CAM.equals(startCategory) ? R.id.catCam : R.id.catCustom);
 
         if (existing != null) {
             nameIn.setText(existing.name);
@@ -324,6 +325,7 @@ public class MainActivity extends AppCompatActivity {
     private static String categoryOf(int radioId) {
         if (radioId == R.id.catNews) return Channel.CAT_NEWS;
         if (radioId == R.id.catDrama) return Channel.CAT_DRAMA;
+        if (radioId == R.id.catCam) return Channel.CAT_CAM;
         return Channel.CAT_CUSTOM;
     }
 
