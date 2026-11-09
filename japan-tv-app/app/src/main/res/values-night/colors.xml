@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#FFB3B3</color>
+    <color name="on_brand">#680014</color>
+    <color name="brand_container">#920021</color>
+    <color name="on_brand_container">#FFDADA</color>
+    <color name="tag_color">#FFB3B3</color>
+</resources>

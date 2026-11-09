@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 안테나 -->
+    <path
+        android:pathData="M45,27L54,36L63,27"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- TV 화면 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31,37h46a5,5 0 0 1 5,5v28a5,5 0 0 1 -5,5h-46a5,5 0 0 1 -5,-5v-28a5,5 0 0 1 5,-5z" />
+    <!-- 일장기 해 -->
+    <path
+        android:fillColor="#FFBC002D"
+        android:pathData="M54,56m-10,0a10,10 0 1,0 20,0a10,10 0 1,0 -20,0" />
+    <!-- 받침 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M44,78h20v3h-20z" />
+</vector>

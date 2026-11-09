@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_help"
+        android:icon="@drawable/ic_help"
+        android:title="@string/menu_help"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_goal"
+        android:title="@string/menu_goal"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_auto_resume"
+        android:checkable="true"
+        android:title="@string/menu_auto_resume"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_pip"
+        android:checkable="true"
+        android:title="@string/menu_pip"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_restore"
+        android:title="@string/menu_restore"
+        app:showAsAction="never" />
+</menu>
