@@ -45,13 +45,21 @@ public final class Prefs {
         sp.edit().putString("last_channel", id).apply();
     }
 
-    /** 일본어 자막 켜기 (임베드 플레이어) */
-    public boolean isCaptions() {
-        return sp.getBoolean("captions", false);
+    public static final int CAPTION_OFF = 0;
+    public static final int CAPTION_JA_KO = 1;
+    public static final int CAPTION_KO = 2;
+    public static final int CAPTION_JA = 3;
+
+    /** 자막 표시: 끔 / 일본어+한국어 / 한국어 / 일본어 */
+    public int getCaptionMode() {
+        if (!sp.contains("caption_mode")) {
+            return sp.getBoolean("captions", false) ? CAPTION_JA_KO : CAPTION_OFF;
+        }
+        return sp.getInt("caption_mode", CAPTION_OFF);
     }
 
-    public void setCaptions(boolean v) {
-        sp.edit().putBoolean("captions", v).apply();
+    public void setCaptionMode(int v) {
+        sp.edit().putInt("caption_mode", v).apply();
     }
 
     /** 재생 화면을 가로로 고정 */

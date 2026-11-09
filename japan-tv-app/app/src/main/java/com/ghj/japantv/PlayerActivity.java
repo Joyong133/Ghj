@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.LruCache;
 import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
@@ -41,18 +42,25 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.lifecycle.Lifecycle;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.text.Cue;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.SubtitleView;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -102,6 +110,46 @@ public class PlayerActivity extends AppCompatActivity {
             "try{if(window.jtvPlayer&&jtvPlayer.unMute){jtvPlayer.unMute();jtvPlayer.setVolume(100);}}catch(e){}"
                     + "document.querySelectorAll('video').forEach(function(v){try{v.muted=false;}catch(e){}});";
 
+    /**
+     * 유튜브 플레이어 안(임베드 iframe 포함)에 넣는 스크립트.
+     * 플레이어가 그리는 일본어 자막 글자를 읽어서 앱으로 보내고, 유튜브 자체 자막은 숨깁니다.
+     * 앱이 직접 일본어/한국어 두 줄 자막을 그립니다.
+     */
+    private static final String CAPTION_JS = "(function(){"
+            + "if(window.__jtvCap){return;}window.__jtvCap=true;"
+            + "if(!window.JTV||!JTV.captionMode){return;}"
+            + "var last='',lastTry=0,none=false,t0=Date.now();"
+            + "function hide(on){var s=document.getElementById('__jtv_cap_css');"
+            + "if(on){if(!s){s=document.createElement('style');s.id='__jtv_cap_css';"
+            + "s.textContent='.ytp-caption-window-container,.caption-window{opacity:0!important}';"
+            + "(document.head||document.documentElement).appendChild(s);}}"
+            + "else if(s){s.parentNode.removeChild(s);}}"
+            + "function track(p){try{if(!p||!p.getOption){return 'wait';}"
+            + "if(p.loadModule){p.loadModule('captions');}"
+            + "var list=p.getOption('captions','tracklist')||[];"
+            + "if(!list.length){return 'none';}"
+            + "var cur=p.getOption('captions','track')||{};"
+            + "if(!cur.languageCode){var t=null;for(var i=0;i<list.length;i++){"
+            + "if((list[i].languageCode||'').indexOf('ja')===0){t=list[i];break;}}"
+            + "p.setOption('captions','track',t||list[0]);}"
+            + "return 'ok';}catch(e){return 'wait';}}"
+            + "setInterval(function(){var mode=0;try{mode=JTV.captionMode();}catch(e){}"
+            + "hide(mode>0);"
+            + "if(mode===0){if(last){last='';JTV.onCaption('');}return;}"
+            + "var p=document.getElementById('movie_player')||document.querySelector('.html5-video-player');"
+            + "if(!p){return;}"
+            + "var lines=[];var vl=p.querySelectorAll('.caption-visual-line');"
+            + "if(vl.length){vl.forEach(function(l){var x=(l.textContent||'').trim();if(x){lines.push(x);}});}"
+            + "else{p.querySelectorAll('.ytp-caption-segment').forEach(function(l){var x=(l.textContent||'').trim();if(x){lines.push(x);}});}"
+            + "var text=lines.join('\\n');"
+            + "if(text!==last){last=text;JTV.onCaption(text);}"
+            + "var now=Date.now();"
+            + "if(!text&&now-lastTry>3000){lastTry=now;var r=track(p);"
+            + "if(r==='none'&&now-t0>20000&&!none){none=true;JTV.onCaptionStatus('none');}"
+            + "if(r==='ok'&&none){none=false;JTV.onCaptionStatus('ok');}}"
+            + "},300);"
+            + "})();";
+
     public static void start(Context context, String channelId) {
         Intent i = new Intent(context, PlayerActivity.class);
         i.putExtra(EXTRA_CHANNEL_ID, channelId);
@@ -136,9 +184,21 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView btnPage;
     private TextView btnTouch;
     private FrameLayout fullscreenContainer;
+    private View captionBox;
+    private TextView capJa;
+    private TextView capKo;
+    private TextView capNotice;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService translateExecutor = Executors.newFixedThreadPool(2);
+    /** 일본어 자막 한 줄 → 한국어 번역 */
+    private final LruCache<String, String> koCache = new LruCache<>(400);
+    private final Set<String> inFlight = new HashSet<>();
+    /** 지금 화면에 나온 일본어 자막 (여러 줄은 \n 으로 구분) */
+    private String capText = "";
+    private long translatePausedUntil;
+    private boolean docStartScript;
 
     private ExoPlayer player;
     private List<Channel> channels = new ArrayList<>();
@@ -169,6 +229,11 @@ public class PlayerActivity extends AppCompatActivity {
     };
     private final Runnable videoOnlyRunnable = this::applyVideoOnlyCss;
     private final Runnable restoreTouchRunnable = this::updateModeUi;
+    private final Runnable captionStableRunnable = this::translateAllLines;
+    private final Runnable hideNoticeRunnable = () -> {
+        capNotice.setVisibility(View.GONE);
+        renderCaptions();
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -194,6 +259,10 @@ public class PlayerActivity extends AppCompatActivity {
         btnPage = findViewById(R.id.btnPage);
         btnTouch = findViewById(R.id.btnTouch);
         fullscreenContainer = findViewById(R.id.fullscreenContainer);
+        captionBox = findViewById(R.id.captionBox);
+        capJa = findViewById(R.id.capJa);
+        capKo = findViewById(R.id.capKo);
+        capNotice = findViewById(R.id.capNotice);
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         findViewById(R.id.btnPrev).setOnClickListener(v -> switchChannel(-1));
@@ -203,7 +272,7 @@ public class PlayerActivity extends AppCompatActivity {
         findViewById(R.id.btnStatusRetry).setOnClickListener(v -> reload());
         findViewById(R.id.btnStatusNext).setOnClickListener(v -> switchChannel(1));
         btnPip.setOnClickListener(v -> enterPip(true));
-        btnCc.setOnClickListener(v -> toggleCaptions());
+        btnCc.setOnClickListener(v -> cycleCaptionMode());
         btnAlt.setOnClickListener(v -> nextCandidate());
         btnPage.setOnClickListener(v -> togglePageMode());
         btnTouch.setOnClickListener(v -> allowDirectTouch());
@@ -273,6 +342,7 @@ public class PlayerActivity extends AppCompatActivity {
         hintText.setVisibility(View.GONE);
         candidates = new ArrayList<>();
         candidateIdx = 0;
+        clearCaptions();
 
         if (ch.isStream()) {
             webView.stopLoading();
@@ -386,12 +456,13 @@ public class PlayerActivity extends AppCompatActivity {
         everPlayed = false;
         mutedAutoplay = false;
         hintText.setVisibility(View.GONE);
+        clearCaptions();
         updateModeUi();
         showStatus("불러오는 중…", true, false);
         String id = candidates.get(candidateIdx);
         // 앱 패키지 이름을 출처(Referer)로 보내야 유튜브 임베드가 정상 재생됩니다.
         webView.loadDataWithBaseURL("https://" + getPackageName() + "/",
-                embedHtml(id, prefs.isCaptions(), token), "text/html", "utf-8", null);
+                embedHtml(id, prefs.getCaptionMode() != Prefs.CAPTION_OFF, token), "text/html", "utf-8", null);
         handler.removeCallbacks(stallRunnable);
         handler.postDelayed(stallRunnable, STALL_MS);
     }
@@ -436,6 +507,25 @@ public class PlayerActivity extends AppCompatActivity {
         public void onError(int t, int code) {
             runOnUiThread(() -> {
                 if (t == token) onEmbedFailed(code);
+            });
+        }
+
+        @JavascriptInterface
+        public int captionMode() {
+            return prefs.getCaptionMode();
+        }
+
+        @JavascriptInterface
+        public void onCaption(String text) {
+            runOnUiThread(() -> onCaptionText(text));
+        }
+
+        @JavascriptInterface
+        public void onCaptionStatus(String status) {
+            runOnUiThread(() -> {
+                if ("none".equals(status) && prefs.getCaptionMode() != Prefs.CAPTION_OFF) {
+                    showCaptionNotice("이 방송에는 자막이 없어요.\n유튜브 자막(자동 생성 포함)이 있는 방송만 번역돼요.");
+                }
             });
         }
 
@@ -496,13 +586,151 @@ public class PlayerActivity extends AppCompatActivity {
         showOverlay();
     }
 
-    private void toggleCaptions() {
-        boolean on = !prefs.isCaptions();
-        prefs.setCaptions(on);
-        if (mode == MODE_EMBED) loadEmbed();
-        toast(on ? "일본어 자막을 켰어요 (자막이 없는 방송도 있어요)" : "자막을 껐어요");
+    private static String captionLabel(int mode) {
+        switch (mode) {
+            case Prefs.CAPTION_JA_KO:
+                return "자막: 일본어+한국어";
+            case Prefs.CAPTION_KO:
+                return "자막: 한국어";
+            case Prefs.CAPTION_JA:
+                return "자막: 일본어";
+            default:
+                return "자막 끔";
+        }
+    }
+
+    /** 자막 버튼: 끔 → 일본어+한국어 → 한국어 → 일본어 → 끔 */
+    private void cycleCaptionMode() {
+        int old = prefs.getCaptionMode();
+        int next = (old + 1) % 4;
+        prefs.setCaptionMode(next);
+        // 자막을 처음 켜거나 끌 때는 플레이어를 다시 불러서 유튜브 자막을 켜고 끕니다.
+        if (mode == MODE_EMBED && (old == Prefs.CAPTION_OFF || next == Prefs.CAPTION_OFF)) loadEmbed();
+        applyStreamCaptionPrefs();
+        renderCaptions();
+        String msg = captionLabel(next);
+        if (next != Prefs.CAPTION_OFF) {
+            msg += "\n(유튜브 자막이 있는 방송만 나와요. 한국어는 구글 번역)";
+            if (!docStartScript && mode == MODE_EMBED) {
+                msg += "\n번역 자막을 쓰려면 Play 스토어에서 'Android System WebView'를 업데이트해 주세요.";
+            }
+        }
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
         updateModeUi();
         showOverlay();
+    }
+
+    // ---------- 자막 (일본어 + 구글 번역 한국어) ----------
+
+    private void onCaptionText(String text) {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF) {
+            clearCaptions();
+            return;
+        }
+        String t = text == null ? "" : text.replace("\r", "").trim();
+        if (t.equals(capText)) return;
+        capText = t;
+        if (!t.isEmpty()) capNotice.setVisibility(View.GONE);
+        renderCaptions();
+        // 다 나온 줄(마지막 줄 말고)은 바로 번역하고, 마지막 줄은 잠깐 멈췄을 때 번역합니다.
+        String[] lines = t.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) requestTranslation(lines[i]);
+        handler.removeCallbacks(captionStableRunnable);
+        if (!t.isEmpty()) handler.postDelayed(captionStableRunnable, 700L);
+    }
+
+    private boolean wantsKorean() {
+        int m = prefs.getCaptionMode();
+        return m == Prefs.CAPTION_JA_KO || m == Prefs.CAPTION_KO;
+    }
+
+    private void translateAllLines() {
+        for (String line : capText.split("\n")) requestTranslation(line);
+    }
+
+    private void requestTranslation(String raw) {
+        if (!wantsKorean()) return;
+        final String line = raw.trim();
+        if (line.isEmpty() || koCache.get(line) != null || inFlight.contains(line)) return;
+        if (SystemClock.elapsedRealtime() < translatePausedUntil || inFlight.size() >= 3) return;
+        inFlight.add(line);
+        translateExecutor.execute(() -> {
+            String ko = null;
+            boolean limited = false;
+            try {
+                ko = Translator.japaneseToKorean(line);
+            } catch (Translator.RateLimitedException e) {
+                limited = true;
+            } catch (Exception ignored) {
+            }
+            final String result = ko;
+            final boolean rateLimited = limited;
+            runOnUiThread(() -> {
+                inFlight.remove(line);
+                if (isDestroyed()) return;
+                if (result != null && !result.isEmpty()) {
+                    koCache.put(line, result);
+                    renderCaptions();
+                } else if (rateLimited) {
+                    translatePausedUntil = SystemClock.elapsedRealtime() + 60_000L;
+                    showCaptionNotice("번역 요청이 많아서 1분 쉬었다가 다시 번역해요.");
+                }
+            });
+        });
+    }
+
+    private void renderCaptions() {
+        int m = prefs.getCaptionMode();
+        boolean showJa = m == Prefs.CAPTION_JA_KO || m == Prefs.CAPTION_JA;
+        boolean showKo = wantsKorean();
+        StringBuilder ko = new StringBuilder();
+        if (showKo && !capText.isEmpty()) {
+            for (String line : capText.split("\n")) {
+                String k = koCache.get(line.trim());
+                if (k != null) {
+                    if (ko.length() > 0) ko.append('\n');
+                    ko.append(k);
+                }
+            }
+        }
+        boolean jaVisible = showJa && !capText.isEmpty();
+        boolean koVisible = showKo && ko.length() > 0;
+        capJa.setText(capText);
+        capJa.setVisibility(jaVisible ? View.VISIBLE : View.GONE);
+        capKo.setText(ko);
+        capKo.setVisibility(koVisible ? View.VISIBLE : View.GONE);
+        boolean notice = capNotice.getVisibility() == View.VISIBLE;
+        boolean any = m != Prefs.CAPTION_OFF && (jaVisible || koVisible || notice);
+        captionBox.setVisibility(any && !isInPictureInPictureMode() ? View.VISIBLE : View.GONE);
+    }
+
+    private void clearCaptions() {
+        capText = "";
+        handler.removeCallbacks(captionStableRunnable);
+        handler.removeCallbacks(hideNoticeRunnable);
+        capNotice.setVisibility(View.GONE);
+        renderCaptions();
+    }
+
+    private void showCaptionNotice(String msg) {
+        capNotice.setText(msg);
+        capNotice.setVisibility(View.VISIBLE);
+        renderCaptions();
+        handler.removeCallbacks(hideNoticeRunnable);
+        handler.postDelayed(hideNoticeRunnable, 6_000L);
+    }
+
+    /** 스트림(m3u8 등)에 들어 있는 자막 트랙도 같은 방식으로 보여 줍니다. */
+    private void applyStreamCaptionPrefs() {
+        boolean on = prefs.getCaptionMode() != Prefs.CAPTION_OFF;
+        if (player != null) {
+            player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
+                    .setPreferredTextLanguage("ja")
+                    .build());
+        }
+        SubtitleView sv = playerView.getSubtitleView();
+        if (sv != null) sv.setVisibility(on ? View.GONE : View.VISIBLE);
     }
 
     private void togglePageMode() {
@@ -577,6 +805,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (player == null) {
             player = buildPlayer();
             playerView.setPlayer(player);
+            applyStreamCaptionPrefs();
         }
         MediaItem.Builder b = new MediaItem.Builder().setUri(ch.url);
         String lower = ch.url.toLowerCase(Locale.ROOT);
@@ -610,6 +839,17 @@ public class PlayerActivity extends AppCompatActivity {
                 } else if (state == Player.STATE_ENDED) {
                     scheduleStreamRetry("방송이 끝났거나 잠시 끊겼어요.");
                 }
+            }
+
+            @Override
+            public void onCues(@NonNull CueGroup cueGroup) {
+                StringBuilder sb = new StringBuilder();
+                for (Cue cue : cueGroup.cues) {
+                    if (cue.text == null) continue;
+                    if (sb.length() > 0) sb.append('\n');
+                    sb.append(cue.text.toString().trim());
+                }
+                onCaptionText(sb.toString());
             }
 
             @Override
@@ -657,8 +897,9 @@ public class PlayerActivity extends AppCompatActivity {
         boolean youtube = current != null && !current.isStream() && LiveResolver.isYouTube(current.url);
         touchLayer.setVisibility(mode == MODE_PAGE ? View.GONE : View.VISIBLE);
         btnMenu.setVisibility(mode == MODE_PAGE && !pip ? View.VISIBLE : View.GONE);
-        btnCc.setVisibility(mode == MODE_EMBED ? View.VISIBLE : View.GONE);
-        btnCc.setText(prefs.isCaptions() ? "자막 켜짐" : "자막 꺼짐");
+        btnCc.setVisibility(mode == MODE_EMBED || mode == MODE_STREAM || (mode == MODE_PAGE && youtube)
+                ? View.VISIBLE : View.GONE);
+        btnCc.setText(captionLabel(prefs.getCaptionMode()));
         btnAlt.setVisibility(mode == MODE_EMBED && candidates.size() > 1 ? View.VISIBLE : View.GONE);
         btnPage.setVisibility(youtube && !candidates.isEmpty() && (mode == MODE_EMBED || mode == MODE_PAGE)
                 ? View.VISIBLE : View.GONE);
@@ -797,6 +1038,16 @@ public class PlayerActivity extends AppCompatActivity {
         cm.setAcceptThirdPartyCookies(webView, true);
         webView.setBackgroundColor(Color.BLACK);
         webView.addJavascriptInterface(new Bridge(), "JTV");
+        // 유튜브 플레이어(임베드 iframe 포함) 안에 자막 읽기 스크립트를 넣습니다.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                WebViewCompat.addDocumentStartJavaScript(webView, CAPTION_JS, new HashSet<>(Arrays.asList(
+                        "https://www.youtube.com", "https://m.youtube.com", "https://www.youtube-nocookie.com")));
+                docStartScript = true;
+            } catch (Exception ignored) {
+                docStartScript = false;
+            }
+        }
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -819,6 +1070,9 @@ public class PlayerActivity extends AppCompatActivity {
                         clearHistoryOnLoad = false;
                     }
                     scheduleVideoOnly();
+                    if (!docStartScript && url != null && LiveResolver.isYouTube(url)) {
+                        view.evaluateJavascript(CAPTION_JS, null);
+                    }
                 }
             }
 
@@ -942,6 +1196,7 @@ public class PlayerActivity extends AppCompatActivity {
             hintText.setVisibility(View.GONE);
         }
         updateModeUi();
+        renderCaptions();
     }
 
     // ================= 생명주기 =================
@@ -970,6 +1225,7 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         executor.shutdownNow();
+        translateExecutor.shutdownNow();
         releasePlayer();
         if (webView != null) {
             webView.stopLoading();

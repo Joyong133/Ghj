@@ -99,6 +99,57 @@
         android:textSize="15sp"
         android:visibility="gone" />
 
+    <!-- 앱이 직접 그리는 자막: 일본어 + 한국어(구글 번역) -->
+    <LinearLayout
+        android:id="@+id/captionBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="18dp"
+        android:background="@drawable/bg_caption"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/capJa"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp"
+            android:shadowColor="#FF000000"
+            android:shadowRadius="3"
+            android:textColor="@android:color/white"
+            android:textSize="19sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/capKo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp"
+            android:shadowColor="#FF000000"
+            android:shadowRadius="3"
+            android:textColor="#FFFFE07A"
+            android:textSize="17sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/capNotice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="#CCFFFFFF"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
     <!-- 화면을 누르면 나오는 메뉴 -->
     <FrameLayout
         android:id="@+id/overlay"
