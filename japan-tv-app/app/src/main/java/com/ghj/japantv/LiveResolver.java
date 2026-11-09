@@ -10,6 +10,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -26,7 +30,8 @@ final class LiveResolver {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                     + "Chrome/130.0.0.0 Safari/537.36";
     private static final int MAX_BYTES = 4 * 1024 * 1024;
-    private static final int MAX_CANDIDATES = 15;
+    private static final int MAX_CANDIDATES = 30;
+    private static final int MAX_MIX = 150;
 
     private static final Pattern VALID_ID = Pattern.compile("^[A-Za-z0-9_-]{11}$");
     private static final Pattern[] DIRECT = {
@@ -86,6 +91,43 @@ final class LiveResolver {
         Matcher m = VIDEO_ID.matcher(body);
         while (m.find() && ids.size() < MAX_CANDIDATES) ids.add(m.group(1));
         return new ArrayList<>(ids);
+    }
+
+    /**
+     * 여러 채널의 영상 목록을 모아 섞습니다 (드라마 24시간 모아 틀기).
+     * 채널마다 돌아가며 하나씩 뽑아서 한 채널 영상만 몰리지 않게 한 뒤 순서를 섞습니다.
+     */
+    static List<String> resolveMix(List<String> urls) {
+        List<List<String>> lists = new ArrayList<>();
+        if (urls.isEmpty()) return new ArrayList<>();
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(4, urls.size()));
+        try {
+            List<Future<List<String>>> futures = new ArrayList<>();
+            for (String u : urls) futures.add(pool.submit(() -> resolve(u)));
+            for (Future<List<String>> f : futures) {
+                try {
+                    lists.add(f.get(30, TimeUnit.SECONDS));
+                } catch (Exception ignored) {
+                    // 이 채널은 건너뜁니다.
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        Set<String> merged = new LinkedHashSet<>();
+        for (int i = 0; merged.size() < MAX_MIX; i++) {
+            boolean any = false;
+            for (List<String> l : lists) {
+                if (i < l.size()) {
+                    merged.add(l.get(i));
+                    any = true;
+                }
+            }
+            if (!any) break;
+        }
+        List<String> out = new ArrayList<>(merged);
+        Collections.shuffle(out);
+        return out;
     }
 
     private static String directId(String url) {

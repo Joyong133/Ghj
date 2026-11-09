@@ -13,6 +13,8 @@ public final class Channel {
     public static final String CAT_NEWS = "news";
     public static final String CAT_DRAMA = "drama";
     public static final String CAT_CUSTOM = "custom";
+    /** 같은 분류의 채널 영상을 모아서 쉬지 않고 틀어 주는 채널 (예: jtv://mix/drama) */
+    public static final String MIX_PREFIX = "jtv://mix/";
 
     public final String id;
     public final String name;
@@ -46,7 +48,12 @@ public final class Channel {
         return u.matches(".*/live/?([?#].*)?$") || u.contains("egjaaq");
     }
 
+    public boolean isMix() {
+        return url.startsWith(MIX_PREFIX);
+    }
+
     public String typeLabel() {
+        if (isMix()) return "24시간";
         if (isStream()) return "스트림";
         String u = url.toLowerCase(Locale.ROOT);
         if (u.contains("youtube.com") || u.contains("youtu.be")) return "YouTube";

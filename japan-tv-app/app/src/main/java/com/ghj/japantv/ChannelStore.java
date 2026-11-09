@@ -17,8 +17,8 @@ public final class ChannelStore {
     private static final String PREFS = "channels";
     private static final String KEY = "list_v1";
     private static final String VERSION_KEY = "defaults_version";
-    /** 기본 채널 목록이 바뀔 때마다 올립니다. (2: 드라마 채널 추가) */
-    private static final int DEFAULTS_VERSION = 2;
+    /** 기본 채널 목록이 바뀔 때마다 올립니다. (2: 드라마 채널, 3: 드라마 24시간 모아 틀기·DMM TV) */
+    private static final int DEFAULTS_VERSION = 3;
     /** 유튜브 검색의 '실시간' 필터 */
     private static final String LIVE_FILTER = "&sp=EgJAAQ%253D%253D";
     private static final Pattern STREAM_EXT = Pattern.compile(
@@ -48,17 +48,45 @@ public final class ChannelStore {
         } catch (JSONException e) {
             return defaults();
         }
-        // 앱을 업데이트하면 새로 생긴 기본 채널(드라마)을 목록에 넣어 줍니다.
-        if (sp.getInt(VERSION_KEY, 1) < 2) {
+        // 앱을 업데이트하면 그 뒤로 새로 생긴 기본 채널만 목록에 넣어 줍니다.
+        int stored = sp.getInt(VERSION_KEY, 1);
+        if (stored < DEFAULTS_VERSION) {
             for (Channel d : defaults()) {
-                if (Channel.CAT_DRAMA.equals(d.category) && indexOf(out, d.id) < 0) out.add(d);
+                if (sinceVersion(d.id) <= stored || indexOf(out, d.id) >= 0) continue;
+                if (d.isMix()) {
+                    // 모아 틀기 채널은 드라마 채널들 맨 앞에 넣습니다.
+                    int at = out.size();
+                    for (int i = 0; i < out.size(); i++) {
+                        if (d.category.equals(out.get(i).category)) {
+                            at = i;
+                            break;
+                        }
+                    }
+                    out.add(at, d);
+                } else {
+                    out.add(d);
+                }
             }
             save(out);
-        }
-        if (sp.getInt(VERSION_KEY, 1) < DEFAULTS_VERSION) {
             sp.edit().putInt(VERSION_KEY, DEFAULTS_VERSION).apply();
         }
         return out;
+    }
+
+    /** 그 기본 채널이 몇 번째 목록 버전에서 생겼는지 */
+    private static int sinceVersion(String id) {
+        switch (id) {
+            case "ntv_drama":
+            case "tbs_drama":
+            case "tx_drama":
+            case "toei":
+                return 2;
+            case "drama_mix":
+            case "dmm_drama":
+                return 3;
+            default:
+                return 1;
+        }
     }
 
     private static int indexOf(List<Channel> list, String id) {
@@ -123,6 +151,9 @@ public final class ChannelStore {
                 youtubeLiveSearch("ニュース ライブ 日本"), Channel.KIND_WEB, "🔴", true, Channel.CAT_NEWS));
 
         // ---- 드라마 (공식 채널의 영상을 차례로 틀어 줍니다) ----
+        l.add(new Channel("drama_mix", "드라마 24시간 (모아 틀기)",
+                "아래 드라마 채널들의 영상을 섞어서 쉬지 않고 이어서 틀어 줘요",
+                Channel.MIX_PREFIX + Channel.CAT_DRAMA, Channel.KIND_WEB, "📺", true, Channel.CAT_DRAMA));
         l.add(new Channel("ntv_drama", "日テレドラマ公式",
                 "니혼TV 드라마 공식 채널 · 명장면·하이라이트·특별 영상",
                 "https://m.youtube.com/channel/UCCJge2nWVQwnJj9BxQMecWg/videos", Channel.KIND_WEB, "🎭", true,
@@ -136,6 +167,9 @@ public final class ChannelStore {
         l.add(new Channel("toei", "東映特撮 (仮面ライダー・戦隊)",
                 "토에이 공식 · 가면라이더·전대 무료 공개 에피소드",
                 youtubeSearch("東映特撮YouTube Official 第1話"), Channel.KIND_WEB, "🦸", true, Channel.CAT_DRAMA));
+        l.add(new Channel("dmm_drama", "DMM TV ドラマ",
+                "DMM TV 공식 드라마 채널 · 예고·무료 공개 회차",
+                "https://m.youtube.com/@dmmtv-drama/videos", Channel.KIND_WEB, "🎞️", true, Channel.CAT_DRAMA));
         return l;
     }
 

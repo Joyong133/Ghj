@@ -8,6 +8,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -259,6 +260,11 @@ public class MainActivity extends AppCompatActivity {
         EditText urlIn = view.findViewById(R.id.inputUrl);
         EditText descIn = view.findViewById(R.id.inputDesc);
         MaterialCheckBox streamCheck = view.findViewById(R.id.checkStream);
+        RadioGroup categoryGroup = view.findViewById(R.id.categoryGroup);
+        String startCategory = existing != null ? existing.category
+                : (Channel.CAT_DRAMA.equals(filter) || Channel.CAT_NEWS.equals(filter) ? filter : Channel.CAT_CUSTOM);
+        categoryGroup.check(Channel.CAT_NEWS.equals(startCategory) ? R.id.catNews
+                : Channel.CAT_DRAMA.equals(startCategory) ? R.id.catDrama : R.id.catCustom);
 
         if (existing != null) {
             nameIn.setText(existing.name);
@@ -304,7 +310,7 @@ public class MainActivity extends AppCompatActivity {
                     streamCheck.isChecked() ? Channel.KIND_STREAM : Channel.KIND_WEB,
                     existing != null ? existing.icon : "📺",
                     existing != null && existing.builtIn,
-                    existing != null ? existing.category : Channel.CAT_CUSTOM);
+                    categoryOf(categoryGroup.getCheckedRadioButtonId()));
             int idx = existing != null ? channels.indexOf(existing) : -1;
             if (idx >= 0) channels.set(idx, updated);
             else channels.add(updated);
@@ -313,6 +319,12 @@ public class MainActivity extends AppCompatActivity {
             dialog.dismiss();
         }));
         dialog.show();
+    }
+
+    private static String categoryOf(int radioId) {
+        if (radioId == R.id.catNews) return Channel.CAT_NEWS;
+        if (radioId == R.id.catDrama) return Channel.CAT_DRAMA;
+        return Channel.CAT_CUSTOM;
     }
 
     private static String text(EditText e) {

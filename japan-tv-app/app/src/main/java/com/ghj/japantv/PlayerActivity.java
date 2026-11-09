@@ -425,7 +425,9 @@ public class PlayerActivity extends AppCompatActivity {
             releasePlayer();
             playerView.setVisibility(View.GONE);
             webView.setVisibility(View.VISIBLE);
-            if (LiveResolver.isYouTube(ch.url)) {
+            if (ch.isMix()) {
+                resolveMix(ch);
+            } else if (LiveResolver.isYouTube(ch.url)) {
                 resolveAndPlay(ch);
             } else {
                 loadPage(ch.url);
@@ -546,6 +548,44 @@ public class PlayerActivity extends AppCompatActivity {
                 }
                 CACHE.put(url, new CachedIds(result, SystemClock.elapsedRealtime()));
                 startCandidates(result);
+            });
+        });
+    }
+
+    /** 드라마 24시간 모아 틀기: 같은 분류의 유튜브 채널 영상을 모아 섞어서 이어 틉니다. */
+    private void resolveMix(Channel ch) {
+        mode = MODE_NONE;
+        webView.loadUrl("about:blank");
+        showStatus("드라마 영상을 모으는 중…", true, false);
+        CachedIds cached = CACHE.get(ch.url);
+        if (cached != null && !cached.ids.isEmpty() && SystemClock.elapsedRealtime() - cached.at < CACHE_MS) {
+            candidatesFromCache = true;
+            startCandidates(cached.ids);
+            return;
+        }
+        candidatesFromCache = false;
+        String category = ch.url.substring(Channel.MIX_PREFIX.length());
+        final List<String> sources = new ArrayList<>();
+        for (Channel c : channels) {
+            if (category.equals(c.category) && !c.isMix() && !c.isStream() && !c.isLiveSource()
+                    && LiveResolver.isYouTube(c.url)) {
+                sources.add(c.url);
+            }
+        }
+        final int t = token;
+        final String key = ch.url;
+        executor.execute(() -> {
+            final List<String> ids = LiveResolver.resolveMix(sources);
+            runOnUiThread(() -> {
+                if (t != token || isFinishing() || isDestroyed()) return;
+                if (ids.isEmpty()) {
+                    mode = MODE_NONE;
+                    updateModeUi();
+                    showStatus("드라마 영상을 불러오지 못했어요.\n인터넷 연결을 확인해 주세요.", false, true);
+                    return;
+                }
+                CACHE.put(key, new CachedIds(ids, SystemClock.elapsedRealtime()));
+                startCandidates(ids);
             });
         });
     }
@@ -1175,7 +1215,8 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void updateModeUi() {
         boolean pip = isInPictureInPictureMode();
-        boolean youtube = current != null && !current.isStream() && LiveResolver.isYouTube(current.url);
+        boolean youtube = current != null && !current.isStream()
+                && (current.isMix() || LiveResolver.isYouTube(current.url));
         touchLayer.setVisibility(mode == MODE_PAGE ? View.GONE : View.VISIBLE);
         btnMenu.setVisibility(mode == MODE_PAGE && !pip ? View.VISIBLE : View.GONE);
         btnCc.setVisibility(mode == MODE_EMBED || mode == MODE_STREAM || (mode == MODE_PAGE && youtube)
