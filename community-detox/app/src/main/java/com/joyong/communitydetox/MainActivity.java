@@ -122,6 +122,7 @@ public class MainActivity extends Activity {
             vpnCard();      // phones: optional extra
         }
         controlCard();
+        if (!BuildConfig.IS_VR) readerCard(); // 모아읽기 on phones too
         blockListCard();
         installBlockCard();
         focusCard();
@@ -732,7 +733,9 @@ public class MainActivity extends Activity {
         c.setBackground(ui.rounded(ui.accentSoft, 20));
         c.addView(ui.title("📖 모아읽기"));
         c.addView(ui.body("브라우저에서는 막혀 있는 펨코 해외축구·롤 인기글, 디시 특갤 개념글, 아카 나무 실검을 "
-                + "이 앱 안에서만 댓글까지 읽어요. VPN은 이 앱 하나로 충분해요 (예전 모아읽기 앱은 지워도 돼요)."));
+                + "이 앱 안에서만 댓글까지 읽어요. "
+                + (BuildConfig.IS_VR ? "VPN은 이 앱 하나로 충분해요 (예전 모아읽기 앱은 지워도 돼요)."
+                                     : "예전 모아읽기 앱은 지워도 돼요. (두 앱의 VPN은 동시에 켤 수 없어요)")));
         c.addView(ui.button("읽으러 가기", true, v -> startActivity(new Intent(this, ReaderActivity.class))),
                 Ui.fill(ui.dp(10)));
         content.addView(c);
