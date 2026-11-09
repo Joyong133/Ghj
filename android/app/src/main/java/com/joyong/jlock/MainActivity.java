@@ -13,7 +13,7 @@ public class MainActivity extends Activity implements Bridge.Host {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         speaker = new Speaker(this);
-        web = WebHost.create(this, new Bridge(this, speaker, this), "home", true);
+        web = WebHost.create(this, new Bridge(this, this, speaker, this), "home", true);
         setContentView(web);
         if (Prefs.isEnabled(this)) LockService.start(this);
     }

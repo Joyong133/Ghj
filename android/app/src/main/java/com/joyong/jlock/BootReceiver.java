@@ -10,6 +10,8 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context c, Intent i) {
         String a = i.getAction();
         if (!Intent.ACTION_BOOT_COMPLETED.equals(a) && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) return;
-        if (Prefs.isEnabled(c)) LockService.start(c);
+        if (!Prefs.isEnabled(c)) return;
+        if (Intent.ACTION_BOOT_COMPLETED.equals(a)) Prefs.setPending(c, true);
+        LockService.start(c);
     }
 }

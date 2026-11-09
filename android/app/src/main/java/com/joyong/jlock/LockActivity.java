@@ -12,9 +12,9 @@ import android.webkit.WebView;
 import android.window.OnBackInvokedDispatcher;
 
 /**
- * The study lock. Shown over the system lock screen when the screen turns on, and again
- * on the relock timer. It only finishes after the quiz is passed or the emergency exit is held.
- * The system lock (PIN/pattern) stays underneath, so this never replaces device security.
+ * Fallback study lock used only when "display over other apps" is not granted (normally the
+ * overlay in {@link LockOverlay} is used). Finishes after the quiz is passed or the emergency
+ * exit is held. The system lock (PIN/pattern) stays in place either way.
  */
 public class LockActivity extends Activity implements Bridge.Host {
     static volatile boolean showing;
@@ -35,7 +35,7 @@ public class LockActivity extends Activity implements Bridge.Host {
                     | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
         speaker = new Speaker(this);
-        web = WebHost.create(this, new Bridge(this, speaker, this), "lock", false);
+        web = WebHost.create(this, new Bridge(this, this, speaker, this), "lock", false);
         setContentView(web);
         hideSystemBars();
 
@@ -99,13 +99,14 @@ public class LockActivity extends Activity implements Bridge.Host {
     @Override
     public void onUnlocked() {
         done = true;
-        LockService.scheduleRelock(this);
+        LockService.passedExternally(this);
         finishAndRemoveTask();
     }
 
     @Override
     public void onEmergencyExit() {
         done = true;
+        LockService.abandonedExternally(this);
         finishAndRemoveTask();
     }
 

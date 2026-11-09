@@ -21,6 +21,11 @@ final class Prefs {
 
     static void setEnabled(Context c, boolean on) { sp(c).edit().putBoolean(KEY_ENABLED, on).apply(); }
 
+    /** A lock is due and has not been passed yet (survives the service being killed). */
+    static boolean isPending(Context c) { return sp(c).getBoolean("pending", false); }
+
+    static void setPending(Context c, boolean on) { sp(c).edit().putBoolean("pending", on).apply(); }
+
     static String getConfig(Context c) { return sp(c).getString(KEY_CONFIG, ""); }
 
     static void setConfig(Context c, String json) { sp(c).edit().putString(KEY_CONFIG, json).apply(); }

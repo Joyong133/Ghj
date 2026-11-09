@@ -235,7 +235,7 @@
         <label class="switch"><input type="checkbox" id="svcToggle"><span></span></label>
       </div>
       <div class="perm" style="margin-top:10px">
-        <div>다른 앱 위에 표시 <small>필수 · 화면을 켜면 바로 잠금을 띄우는 데 필요</small></div>
+        <div>다른 앱 위에 표시 <small>필수 · 홈 버튼으로도 못 빠져나가는 잠금 화면에 필요</small></div>
         <span id="pOverlay"></span>
       </div>
       <div class="perm">
@@ -243,8 +243,8 @@
         <span id="pNotif"></span>
       </div>
       <div class="perm">
-        <div>배터리 최적화 제외 <small>권장 · 일부 기기에서 서비스가 꺼지는 것을 방지</small></div>
-        <button class="sbtn" onclick="N.openBatterySettings()">설정 열기</button>
+        <div>배터리 최적화 제외 <small>권장 · 삼성 등에서 잠금이 꺼지는 것을 방지</small></div>
+        <span id="pBattery"></span>
       </div>
     </div>
 
@@ -274,7 +274,7 @@
     </div>
     <div class="foot">
       <span class="web-only">다음 자동 잠금: <b id="nextLock">—</b> · <span style="text-decoration:underline;cursor:pointer" onclick="App.fullscreen()">전체화면</span><br></span>
-      <span id="ver">日本語ロック v2.0</span>
+      <span id="ver">日本語ロック v2.1</span>
     </div>
   </div>
 </div>
@@ -310,7 +310,7 @@
         <option value="7200">2시간</option>
       </select>
     </div>
-    <div class="row">
+    <div class="row web-only">
       <div><label>탈출 방지</label><small>풀지 않고 홈으로 나가면 어떻게 할까요</small></div>
       <select id="setGuard">
         <option value="strict">강함 (즉시 다시 잠김)</option>
@@ -768,12 +768,13 @@ const App = (()=>{
     if(NATIVE) renderNative();
   }
   function renderNative(){
-    let on=false, ov=false, nt=false;
-    try{ on=N.isEnabled(); ov=N.hasOverlay(); nt=N.hasNotif(); }catch(e){}
+    let on=false, ov=false, nt=false, bt=false;
+    try{ on=N.isEnabled(); ov=N.hasOverlay(); nt=N.hasNotif(); bt=N.hasBatteryExemption(); }catch(e){}
     $("svcToggle").checked=on;
     $("svcTitle").textContent= on ? "🔒 잠금 작동 중" : "잠금 꺼짐";
-    $("svcSub").textContent= on ? (ov ? "화면을 켤 때마다 학습 잠금이 나타납니다" : "⚠️ '다른 앱 위에 표시'를 허용해야 바로 잠깁니다") : "켜면 화면을 켤 때마다 학습 잠금이 나타납니다";
+    $("svcSub").textContent= on ? (ov ? "화면을 켜면 학습 잠금이 먼저 나타납니다 (홈 버튼으로도 못 나감)" : "⚠️ '다른 앱 위에 표시'를 허용해야 제대로 잠깁니다") : "켜면 화면을 켤 때마다 학습 잠금이 나타납니다";
     $("pOverlay").innerHTML = ov ? `<span class="ok">✓ 허용됨</span>` : `<button class="sbtn" onclick="N.openOverlaySettings()">허용하기</button>`;
+    $("pBattery").innerHTML = bt ? `<span class="ok">✓ 제외됨</span>` : `<button class="sbtn" onclick="N.openBatterySettings()">허용하기</button>`;
     $("pNotif").innerHTML = nt ? `<span class="ok">✓ 허용됨</span>` : `<button class="sbtn" onclick="N.requestNotif()">허용하기</button>`;
   }
 
@@ -877,8 +878,8 @@ const App = (()=>{
         const on=e.target.checked;
         N.setEnabled(on);
         if(on && !N.hasNotif()) N.requestNotif();
-        if(on && !N.hasOverlay()) toast("'다른 앱 위에 표시'를 허용해 주세요");
-        else toast(on?"🔒 잠금을 켰습니다":"잠금을 껐습니다");
+        if(on && !N.hasOverlay()){ toast("'日本語ロック'을 찾아 '다른 앱 위에 표시'를 허용해 주세요"); setTimeout(()=>N.openOverlaySettings(), 900); }
+        else toast(on?"🔒 잠금을 켰습니다. 화면을 껐다 켜 보세요":"잠금을 껐습니다");
         renderNative();
       });
       window.onNativeResume=()=>{ if(MODE==="home"){ cfg=loadCfg(); stats=loadStats(); srs=LS.get("jlock.srs",{}); renderHome(); } };

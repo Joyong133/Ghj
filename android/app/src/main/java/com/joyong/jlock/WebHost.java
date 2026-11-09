@@ -1,7 +1,7 @@
 package com.joyong.jlock;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
+import android.content.Context;
 import android.os.Build;
 import android.view.View;
 import android.view.WindowInsets;
@@ -15,7 +15,7 @@ final class WebHost {
     private WebHost() {}
 
     @SuppressLint("SetJavaScriptEnabled")
-    static WebView create(Activity act, Bridge bridge, String mode, boolean padForSystemBars) {
+    static WebView create(Context act, Bridge bridge, String mode, boolean padForSystemBars) {
         WebView wv = new WebView(act);
         wv.setBackgroundColor(0xFF0B1021);
         WebSettings s = wv.getSettings();
