@@ -39,9 +39,9 @@
   function listenOn() { return G.APP.state.settings.listening; }
 
   LG.nodeLabel = function (unit, k) {
-    const base = { learn1: '새 단어 1', learn2: '새 단어 2', chest: '보물상자', sent: '문장 만들기', listen: '듣기·말하기', practice: '종합 연습', test: '유닛 테스트' };
-    if (unit.kind === 'kana') return { learn1: '글자 익히기 1', learn2: '글자 익히기 2', chest: '보물상자', sent: '단어 읽기', listen: '듣기', practice: '쓰기 연습', test: '유닛 테스트' }[k];
-    if (unit.kind === 'kanji') return { learn1: '한자 익히기 1', learn2: '한자 익히기 2', chest: '보물상자', sent: '한자어 읽기', listen: '듣기', practice: '쓰기 연습', test: '유닛 테스트' }[k];
+    const base = { learn1: '새 단어 1', learn2: '새 단어 2', chest: '보물상자', sent: '문장 만들기', listen: '듣기·말하기', practice: '종합 연습', hard: '심화 (직접 쓰기)', test: '유닛 테스트' };
+    if (unit.kind === 'kana') return { learn1: '글자 익히기 1', learn2: '글자 익히기 2', chest: '보물상자', sent: '단어 읽기', listen: '듣기', practice: '쓰기 연습', hard: '심화 (보지 않고 쓰기)', test: '유닛 테스트' }[k];
+    if (unit.kind === 'kanji') return { learn1: '한자 익히기 1', learn2: '한자 익히기 2', chest: '보물상자', sent: '한자어 읽기', listen: '듣기', practice: '쓰기 연습', hard: '심화 (보지 않고 쓰기)', test: '유닛 테스트' }[k];
     return base[k];
   };
 
@@ -100,6 +100,17 @@
       if (speakOn() && ss[9]) out.push(EX.speak(ss[9]));
       return finalize(U.shuffle(out), 15);
     }
+    if (k === 'hard') {
+      const ss = U.shuffle(S);
+      U.sample(W, 4).forEach(function (w) { out.push(EX.typeReading(w)); });
+      ss.slice(0, 3).forEach(function (s) { out.push(EX.transKJ(s, sp)); });
+      ss.slice(3, 5).forEach(function (s) { out.push(listenOn() ? EX.listenBuild(s, sp) : EX.transJK(s, sp)); });
+      if (listenOn()) U.sample(W.filter(function (w) { return w.r.length <= 8; }), 2).forEach(function (w) { out.push(EX.listenType(w)); });
+      ss.slice(5, 7).forEach(function (s) { push(out, EX.fill(s, sp, W)); });
+      push(out, EX.sentJaMC(ss[7] || ss[0], sp));
+      if (speakOn() && ss[8]) out.push(EX.speak(ss[8]));
+      return hard(finalize(U.shuffle(out), 15));
+    }
     if (k === 'test') {
       const ss = U.shuffle(S);
       ss.slice(0, 4).forEach(function (s) { out.push(EX.transKJ(s, sp)); });
@@ -128,6 +139,7 @@
       }
       if (k === 'sent' || k === 'listen') { U.shuffle(Ws).forEach(function (w, i) { out.push(i % 2 ? EX.listenMC(w, wp) : EX.meaningMC(w, wp)); }); return finalize(out, 12); }
       if (k === 'practice') { U.sample(Ws, 6).forEach(function (w) { out.push(EX.typeReading(w)); }); out.push(EX.match(U.sample(Ws, 5))); return finalize(out, 10); }
+      if (k === 'hard') { U.shuffle(Ws).forEach(function (w, i) { out.push(i % 2 ? EX.listenType(w) : EX.typeReading(w)); }); return hard(finalize(out, 12)); }
       U.sample(Ws, 12).forEach(function (w, i) { out.push([EX.kanaWordRead, EX.listenMC, EX.meaningMC][i % 3](w, wp)); });
       U.sample(allH, 4).forEach(function (c) { out.push(EX.kanaMC(c, allH)); });
       return finalize(U.shuffle(out), 16);
@@ -163,6 +175,13 @@
       U.sample(Ws, 2).forEach(function (w) { out.push(EX.typeReading(w)); });
       out.push(EX.kanaMatch(U.sample(cp, 5)));
       return finalize(out, 11);
+    }
+    if (k === 'hard') {
+      U.sample(Cs.filter(function (c) { return c.c.length === 1; }), 3).forEach(function (c) { const t = EX.kanaTrace(c); t.noGuide = true; t.title = '보지 않고 써 보세요'; out.push(t); });
+      U.sample(Cs, 5).forEach(function (c) { out.push(EX.kanaType(c)); });
+      U.sample(Ws, 3).forEach(function (w) { out.push(EX.listenType(w)); });
+      U.sample(Ws, 2).forEach(function (w) { out.push(EX.typeReading(w)); });
+      return hard(finalize(U.shuffle(out), 13));
     }
     // test
     U.sample(Cs, 6).forEach(function (c, i) { out.push(i % 2 ? EX.kanaMC(c, cp) : EX.romajiMC(c, cp)); });
@@ -204,6 +223,13 @@
       U.sample(W, 4).forEach(function (w) { out.push(EX.typeReading(w)); });
       return finalize(out, 9);
     }
+    if (k === 'hard') {
+      U.sample(K, 3).forEach(function (kj) { const t = EX.kanjiTrace(kj); t.noGuide = true; t.title = '보지 않고 써 보세요'; t.sub = kj.hm + ' (힌트: 가이드 보기 버튼)'; out.push(t); });
+      U.sample(W, 5).forEach(function (w) { out.push(EX.typeReading(w)); });
+      U.sample(W, 3).forEach(function (w) { out.push(EX.listenType(w)); });
+      U.sample(K, 3).forEach(function (kj) { out.push(EX.kanjiReading(kj, kp)); });
+      return hard(finalize(U.shuffle(out), 14));
+    }
     U.sample(K, 5).forEach(function (kj) { out.push(EX.kanjiMeaning(kj, kp)); });
     U.sample(K, 3).forEach(function (kj) { out.push(EX.kanjiFromMeaning(kj, kp)); });
     U.sample(K, 3).forEach(function (kj) { out.push(EX.kanjiReading(kj, kp)); });
@@ -211,6 +237,7 @@
     return finalize(U.shuffle(out), 16);
   }
 
+  function hard(arr) { arr.forEach(function (x) { if (x && !x.badge) x.badge = { t: '🔥 심화', c: 'hard' }; }); return arr; }
   function finalize(arr, max) {
     arr = arr.filter(Boolean);
     // 소개 카드는 유지하고 연습문제만 max 로 제한

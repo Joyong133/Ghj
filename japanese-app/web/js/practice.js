@@ -76,7 +76,7 @@
     add('⏰', '시간·날짜', '時·分·月·日 읽기', function () { APP.push(timeTrainer, '시간·날짜 트레이너'); });
     add('🍡', '조수사', '本·匹·枚·人… 음편', function () { counterRun(); });
     add('📖', '스토리', (G.STORIES || []).length + '편의 회화 이야기', function () { APP.push(storyList, '스토리'); });
-    add('📝', 'JLPT 모의고사', 'N5 · N4 · N3', function () { APP.push(jlptHub, 'JLPT 모의고사'); });
+    add('📝', 'JLPT 모의고사', 'N5 · N4 · N3 · N2', function () { APP.push(jlptHub, 'JLPT 모의고사'); });
     add('🎲', '랜덤 믹스', '배운 내용 전체 섞기', function () {
       const ids = Object.keys(APP.state.srs);
       run('랜덤 믹스', buildFromIds(ids, 15), 10);
@@ -472,9 +472,9 @@
   function jlptHub(el) {
     const box = h('div', { class: 'pad' });
     box.appendChild(h('div', { class: 'small muted', style: { marginBottom: '14px' }, text: '코스 데이터로 매번 새롭게 출제되는 실전형 모의고사 (문자·어휘 / 문법 / 청해 / 독해). 60% 이상이면 합격!' }));
-    [['N5', [2, 3], 5], ['N4', [4], 4], ['N3', [5], 3]].forEach(function (x) {
+    [['N5', [2, 3], 5], ['N4', [4], 4], ['N3', [5], 3], ['N2', [6], 2]].forEach(function (x) {
       const best = APP.state.jlpt[x[0]];
-      box.appendChild(h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { style: { fontSize: '40px', flex: 'none' }, text: x[0] === 'N5' ? '🌱' : x[0] === 'N4' ? '🌿' : '🌳' }),
+      box.appendChild(h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { style: { fontSize: '40px', flex: 'none' }, text: { N5: '🌱', N4: '🌿', N3: '🌳', N2: '🏔️' }[x[0]] }),
         h('div', null, h('h3', { text: 'JLPT ' + x[0] + ' 모의고사' }), h('div', { class: 'small muted', text: '30문항 · 최고 점수 ' + (best !== undefined ? best + '점' : '-') }))),
         h('button', { class: 'btn', style: { marginTop: '10px' }, text: '시험 시작', onclick: function () { jlptRun(x[0], x[1], x[2]); } })));
     });

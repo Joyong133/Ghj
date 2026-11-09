@@ -14,7 +14,7 @@
     const grid = h('div', { class: 'grid-cards' },
       card('あ', '히라가나 표', G.KANA.all.length / 2 + '자 · 발음·쓰기', function () { APP.push(kanaChart, '히라가나', 'h'); }),
       card('ア', '가타카나 표', '외래어 확장음 포함', function () { APP.push(kanaChart, '가타카나', 'k'); }),
-      card('漢', '한자 사전', C.kanji.length + '자 · N5~N3 훈음', function () { APP.push(kanjiList, '한자 사전'); }),
+      card('漢', '한자 사전', C.kanji.length + '자 · N5~N2 훈음', function () { APP.push(kanjiList, '한자 사전'); }),
       card('📘', '단어장', C.words.length + '개 단어', function () { APP.push(wordList, '단어장'); }),
       card('📗', '문법 가이드', C.tips.length + '개 문법 해설', function () { APP.push(grammarList, '문법 가이드'); }),
       card('💬', '표현집', C.sents.length + '개 예문 + 음성', function () { APP.push(phraseList, '표현집'); }),
@@ -135,7 +135,7 @@
     const body = h('div');
     function draw() {
       chips.innerHTML = '';
-      [5, 4, 3].forEach(function (l) {
+      [5, 4, 3, 2].forEach(function (l) {
         const n = G.COURSE.kanji.filter(function (k) { return k.lv === l; }).length;
         chips.appendChild(h('span', { class: 'chip' + (lv === l ? ' on' : ''), text: 'N' + l + ' (' + n + ')', onclick: function () { lv = l; draw(); } }));
       });

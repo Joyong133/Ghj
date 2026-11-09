@@ -65,14 +65,26 @@
   C.PARTICLES = PARTICLES;
 
   /* ---------- 섹션/유닛 구성 ---------- */
+  // req: 먼저 끝내야 하는 섹션 / track: 'main' · 'theme' · 'kanji'
   const SEC_META = [
-    { id: 1, t: '문자 마스터', st: '히라가나 · 가타카나', color: '#58cc02', dark: '#46a302', cefr: '시작' },
-    { id: 2, t: '입문', st: '첫걸음 · 기초 표현 (JLPT N5)', color: '#ce82ff', dark: '#a568cc', cefr: 'N5' },
-    { id: 3, t: '초급', st: '일상 회화 · 동사 활용 (JLPT N5)', color: '#00cd9c', dark: '#00a57d', cefr: 'N5+' },
-    { id: 4, t: '초중급', st: '복합 문법 · 경어 (JLPT N4)', color: '#1cb0f6', dark: '#1899d6', cefr: 'N4' },
-    { id: 5, t: '중급', st: '사회 · 문화 · 고급 문형 (JLPT N3)', color: '#ff9600', dark: '#e08600', cefr: 'N3' },
-    { id: 6, t: '한자 트랙', st: '한자 훈음 · 음독 · 훈독 (N5~N3)', color: '#ff4b4b', dark: '#ea2b2b', cefr: '漢字', free: true }
+    { id: 1, t: '문자 마스터', st: '히라가나 · 가타카나 · 외래어', color: '#58cc02', dark: '#46a302', cefr: '시작', track: 'main', req: [] },
+    { id: 2, t: '입문', st: '첫걸음 · 기초 표현 (JLPT N5)', color: '#ce82ff', dark: '#a568cc', cefr: 'N5', track: 'main', req: [1] },
+    { id: 3, t: '초급', st: '일상 회화 · 동사 활용 (JLPT N5)', color: '#00cd9c', dark: '#00a57d', cefr: 'N5+', track: 'main', req: [2] },
+    { id: 4, t: '초중급', st: '복합 문법 · 경어 (JLPT N4)', color: '#1cb0f6', dark: '#1899d6', cefr: 'N4', track: 'main', req: [3] },
+    { id: 5, t: '중급', st: '사회 · 문화 · 고급 문형 (JLPT N3)', color: '#ff9600', dark: '#e08600', cefr: 'N3', track: 'main', req: [4] },
+    { id: 6, t: '상급', st: 'JLPT N2 핵심 문법 · 어휘', color: '#7c4dff', dark: '#5e35b1', cefr: 'N2', track: 'main', req: [5] },
+    { id: 7, t: '여행 일본어', st: '공항 · 교통 · 숙소 · 맛집 · 쇼핑 실전', color: '#00b8d4', dark: '#0097a7', cefr: '테마', track: 'theme', req: [2] },
+    { id: 8, t: '일상 회화 · 구어체', st: '맞장구 · 리액션 · 신조어 · 사투리', color: '#ff6f91', dark: '#d9577a', cefr: '테마', track: 'theme', req: [3] },
+    { id: 9, t: '비즈니스 · 경어 마스터', st: '전화 · 메일 · 회의 · 접객', color: '#455a64', dark: '#263238', cefr: '테마', track: 'theme', req: [4] },
+    { id: 10, t: '애니 · 드라마 · 노래', st: '캐릭터 말투 · 명대사 패턴 · 가사 표현', color: '#ff7043', dark: '#e64a19', cefr: '테마', track: 'theme', req: [4] },
+    { id: 11, t: '일본 문화와 사회', st: '지리 · 역사 · 전통 · 현대 사회 읽기', color: '#8d6e63', dark: '#6d4c41', cefr: '테마', track: 'theme', req: [5] },
+    { id: 12, t: '한자 N5', st: '기초 한자 79자 · 훈음 · 음독 · 훈독', color: '#ff4b4b', dark: '#ea2b2b', cefr: '漢字', track: 'kanji', req: [] },
+    { id: 13, t: '한자 N4', st: '생활 한자 167자', color: '#e53935', dark: '#b71c1c', cefr: '漢字', track: 'kanji', req: [12] },
+    { id: 14, t: '한자 N3', st: '중급 한자 310자', color: '#c62828', dark: '#8e0000', cefr: '漢字', track: 'kanji', req: [13] },
+    { id: 15, t: '한자 N2', st: '상급 한자 · 신문·비즈니스 한자어', color: '#ad1457', dark: '#78002e', cefr: '漢字', track: 'kanji', req: [14] }
   ];
+  const KANJI_SEC = { 5: 12, 4: 13, 3: 14, 2: 15 };
+  C.TRACKS = { main: '🎓 메인 코스', theme: '🌸 테마 코스', kanji: '🈷️ 한자 트랙' };
   const UNIT_COLORS = ['#58cc02', '#ce82ff', '#00cd9c', '#1cb0f6', '#ff9600', '#ff4b4b', '#ff86d0', '#2bdbc2', '#a56644', '#7c83fd'];
 
   C.NODES = [
@@ -82,8 +94,10 @@
     { k: 'sent', ic: '💬', n: '문장 만들기' },
     { k: 'listen', ic: '🎧', n: '듣기·말하기' },
     { k: 'practice', ic: '🏋️', n: '종합 연습' },
+    { k: 'hard', ic: '🔥', n: '심화' },
     { k: 'test', ic: '🏆', n: '유닛 테스트' }
   ];
+  C.LAST = C.NODES.length - 1;
 
   C.build = function () {
     C.sections = SEC_META.map(function (s) { return Object.assign({ units: [] }, s); });
@@ -94,7 +108,12 @@
     const K = G.KANA;
     K.units.forEach(function (ku) {
       const chars = [];
-      ku.rows.forEach(function (rk) { K.rows[rk].forEach(function (r) { chars.push({ id: 'k:' + ku.script + ':' + r[0], c: ku.script === 'h' ? r[0] : r[1], o: ku.script === 'h' ? r[1] : r[0], r: r[2], ko: r[3], mn: ku.script === 'h' ? (K.mnemo[r[0]] || '') : '' }); }); });
+      function addChar(r) { chars.push({ id: 'k:' + ku.script + ':' + r[0], c: ku.script === 'h' ? r[0] : r[1], o: ku.script === 'h' ? r[1] : r[0], r: r[2], ko: r[3], mn: ku.script === 'h' ? (K.mnemo[r[0]] || '') : '' }); }
+      ku.rows.forEach(function (rk) { K.rows[rk].forEach(addChar); });
+      (ku.set || []).forEach(function (ch) {
+        const r = K.all.find(function (x) { return x.h === ch || x.k === ch; });
+        if (r) addChar([r.h, r.k, r.r, r.ko]);
+      });
       const words = (K.words[ku.id] || []).map(function (x, i) { return { id: 'kw:' + x[0], w: x[0], r: x[0], m: x[1], p: 'n', e: '', u: ku.id, i: i }; });
       const unit = { id: ku.id, kind: 'kana', sec: 1, t: (ku.script === 'h' ? '히라가나 ' : '가타카나 ') + ku.t, e: ku.script === 'h' ? 'あ' : 'ア', chars: chars, words: words, sents: [], script: ku.script, color: UNIT_COLORS[colorIdx++ % UNIT_COLORS.length] };
       unit.tip = kanaTip(ku, chars);
@@ -124,12 +143,12 @@
       C.kanji.push(k); C.kanjiMap[k.c] = k;
       (byLv[k.lv] = byLv[k.lv] || []).push(k);
     });
-    [5, 4, 3].forEach(function (lv) {
+    [5, 4, 3, 2].forEach(function (lv) {
       const arr = byLv[lv] || [];
       for (let i = 0; i < arr.length; i += 10) {
         const chunk = arr.slice(i, i + 10);
         const n = Math.floor(i / 10) + 1;
-        const unit = { id: 'kj' + lv + '-' + n, kind: 'kanji', sec: 6, t: 'N' + lv + ' 한자 ' + n + ': ' + chunk.slice(0, 5).map(function (k) { return k.c; }).join(''), e: chunk[0].c, kanji: chunk, words: [], sents: [], color: UNIT_COLORS[colorIdx++ % UNIT_COLORS.length], lv: lv };
+        const unit = { id: 'kj' + lv + '-' + n, kind: 'kanji', sec: KANJI_SEC[lv], t: 'N' + lv + ' 한자 ' + n + ': ' + chunk.slice(0, 5).map(function (k) { return k.c; }).join(''), e: chunk[0].c, kanji: chunk, words: [], sents: [], color: UNIT_COLORS[colorIdx++ % UNIT_COLORS.length], lv: lv };
         chunk.forEach(function (k) {
           k.ex.forEach(function (e, j) { unit.words.push({ id: 'w:' + e.w + ':' + e.r, w: e.w, r: e.r, m: e.m, p: 'n', e: '', u: unit.id, i: j, kj: k.c }); });
         });
@@ -147,6 +166,8 @@
       });
       unit.sents.forEach(function (s) { C.sents.push(s); });
     }
+
+    C.units.sort(function (a, b) { return a.sec - b.sec || a.idx - b.idx; });
 
     // 사전 (탭 힌트)
     C.words.forEach(function (w) {
@@ -172,6 +193,8 @@
     if (ku.id === 'h9') b += '<h4>촉음 っ (작은 つ)</h4><p>작은 っ는 다음 자음을 한 박자 끊어 발음합니다. 한국어 받침 ㄱ·ㅅ·ㅂ과 비슷해요. きって(킷테, 우표), がっこう(각코-, 학교)</p><h4>장음 (길게 늘이기)</h4><p>모음을 한 박자 더 길게 발음합니다.</p><table><tr><th>앞 글자</th><th>장음 표기</th><th>예</th></tr><tr><td>あ단</td><td>+あ</td><td>おかあさん</td></tr><tr><td>い단</td><td>+い</td><td>おにいさん</td></tr><tr><td>う단</td><td>+う</td><td>すうがく</td></tr><tr><td>え단</td><td>+い/え</td><td>せんせい, おねえさん</td></tr><tr><td>お단</td><td>+う/お</td><td>がっこう, とおい</td></tr></table><div class="pt">가타카나에서는 장음을 <b>ー</b>로 표시합니다: コーヒー, ケーキ</div>';
     if (ku.id === 'k1') b += '<p><b>가타카나</b>는 외래어(コーヒー 커피), 외국 이름, 의성어, 강조 표현에 사용합니다. 히라가나와 소리는 같고 모양만 다릅니다. 직선적이고 각진 모양이 특징이에요.</p><div class="pt">장음은 <b>ー</b>(장음 부호)로 표시합니다. ケーキ = け+え(길게)+き</div>';
     if (ku.id === 'k3') b += '<div class="pt">헷갈리기 쉬운 글자: <b>シ(shi)</b>와 <b>ツ(tsu)</b>, <b>ソ(so)</b>와 <b>ン(n)</b>. シ·ン은 획이 아래에서 위로, ツ·ソ는 위에서 아래로 향합니다.</div>';
+    if (ku.id === 'h10') b += '<p>모양이 비슷해서 자주 틀리는 히라가나를 모아 비교합니다. 차이를 의식하며 써 보세요.</p><table><tr><th>짝</th><th>구별 포인트</th></tr><tr><td class="jp">さ / ち</td><td>좌우가 반대. さ(sa)는 아래 획이 왼쪽으로, ち(chi)는 오른쪽으로 둥글게</td></tr><tr><td class="jp">き / さ</td><td>き는 가로획 2개, さ는 1개</td></tr><tr><td class="jp">ぬ / め</td><td>ぬ(nu)는 끝에 작은 고리가 있고, め(me)는 없음</td></tr><tr><td class="jp">ね / れ / わ</td><td>마지막 획: ね(ne)는 고리, れ(re)는 바깥으로 뻗고, わ(wa)는 안으로 둥글게</td></tr><tr><td class="jp">る / ろ</td><td>る(ru)는 끝에 고리, ろ(ro)는 고리 없음</td></tr><tr><td class="jp">は / ほ</td><td>ほ(ho)는 오른쪽 위에 가로선이 하나 더</td></tr><tr><td class="jp">い / り</td><td>り(ri)는 오른쪽 획이 길게 내려옴</td></tr><tr><td class="jp">こ / に</td><td>に(ni)는 왼쪽에 세로획이 있음</td></tr><tr><td class="jp">あ / お</td><td>あ는 세로획이 가운데를 관통, お는 오른쪽 위에 점</td></tr></table>';
+    if (ku.id === 'k10') b += '<p>가타카나는 직선이 많아 비슷한 글자가 특히 많아요. <b>획의 방향</b>이 핵심입니다.</p><table><tr><th>짝</th><th>구별 포인트</th></tr><tr><td class="jp">シ / ツ</td><td>シ(shi)는 점이 왼쪽에 세로로, 마지막 획이 아래→위. ツ(tsu)는 점이 위에 가로로, 마지막 획이 위→아래</td></tr><tr><td class="jp">ソ / ン</td><td>ソ(so)는 위→아래로 내리긋고, ン(n)은 아래→위로 올려 그음</td></tr><tr><td class="jp">ク / ケ / タ</td><td>ケ(ke)는 가로획이 밖으로 나오고, タ(ta)는 안에 점이 있음</td></tr><tr><td class="jp">ノ / メ</td><td>メ(me)는 ノ에 짧은 획을 교차</td></tr><tr><td class="jp">ス / ヌ</td><td>ヌ(nu)는 가운데에 획이 하나 더</td></tr><tr><td class="jp">ワ / ウ / フ</td><td>ウ(u)는 위에 점, フ(fu)는 왼쪽 세로획이 없음</td></tr><tr><td class="jp">チ / テ</td><td>チ(chi)는 위가 비스듬, テ(te)는 위가 수평</td></tr><tr><td class="jp">ア / マ</td><td>マ(ma)는 아래 획이 짧게 안으로</td></tr><tr><td class="jp">コ / ユ</td><td>ユ(yu)는 아래 가로획이 길게 튀어나옴</td></tr></table>';
     if (ku.id === 'k9') b += '<p>원래 일본어에 없는 외국어 소리를 표기하기 위해 작은 ァ ィ ゥ ェ ォ를 조합합니다. ファ(fa), ティ(ti), ウィ(wi), ヴ(vu)…</p>';
     b += '<h4>이번 유닛의 ' + name + '</h4><table><tr><th>글자</th><th>로마자</th><th>발음</th></tr>' + chars.map(function (c) { return '<tr><td class="jp" style="font-size:22px">' + c.c + '</td><td>' + c.r + '</td><td>' + c.ko + '</td></tr>'; }).join('') + '</table>';
     return { t: name + ' ' + ku.t, b: b, ex: [], u: ku.id };

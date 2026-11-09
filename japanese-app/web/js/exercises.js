@@ -580,7 +580,9 @@
     function end() { if (cur) { cur = null; ctl.ready(strokes.length > 0); } }
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     clr.addEventListener('click', function () { strokes = []; redraw(); ctl.ready(false); res.textContent = ''; });
-    hide.addEventListener('click', function () { bg.style.visibility = bg.style.visibility === 'hidden' ? 'visible' : 'hidden'; });
+    function toggleGuide() { const hid = bg.style.visibility !== 'hidden'; bg.style.visibility = hid ? 'hidden' : 'visible'; hide.textContent = hid ? '👁 가이드 보기' : '👁 가이드 숨기기'; }
+    hide.addEventListener('click', toggleGuide);
+    if (ex.noGuide) toggleGuide();
     setTimeout(setup, 30);
     ex.check = function () {
       const N = 96;

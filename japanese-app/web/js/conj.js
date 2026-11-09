@@ -143,6 +143,12 @@
       });
       const nai = verb(word, reading, cls, 'nai');
       out.push({ w: nai.w.replace(/ない$/, 'ないで'), r: nai.r.replace(/ない$/, 'ないで'), f: 'ないで' });
+      if (nai.w !== 'ない') {
+        out.push({ w: nai.w.replace(/ない$/, ''), r: nai.r.replace(/ない$/, ''), f: 'ない형 어간' });
+        const zu = cls === 'vs' ? { w: nai.w.replace(/しない$/, 'せず'), r: nai.r.replace(/しない$/, 'せず') } : { w: nai.w.replace(/ない$/, 'ず'), r: nai.r.replace(/ない$/, 'ず') };
+        out.push({ w: zu.w, r: zu.r, f: 'ず (~하지 않고)' });
+        out.push({ w: zu.w + 'に', r: zu.r + 'に', f: 'ずに (~하지 않고)' });
+      }
       const masu = verb(word, reading, cls, 'masu');
       out.push({ w: masu.w.replace(/ます$/, 'ませんか'), r: masu.r.replace(/ます$/, 'ませんか'), f: 'ませんか(권유)' });
       out.push({ w: masu.w.replace(/ます$/, ''), r: masu.r.replace(/ます$/, ''), f: 'ます형 어간' });

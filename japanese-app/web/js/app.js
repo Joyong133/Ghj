@@ -18,7 +18,7 @@
 
   function defState() {
     return {
-      v: 1, name: '학습자', avatar: '🦊', created: U.dayNum(), xp: 0, gems: 500, hearts: 5, heartTs: Date.now(),
+      v: 2, name: '학습자', avatar: '🦊', created: U.dayNum(), xp: 0, gems: 500, hearts: 5, heartTs: Date.now(),
       streak: 0, longest: 0, lastDay: null, freeze: 0, daily: {}, progress: {}, jumped: {}, srs: {}, mistakes: {}, saved: [], fav: [],
       stats: { lessons: 0, perfect: 0, listen: 0, speak: 0, write: 0, read: 0, correct: 0, wrong: 0, stories: 0, tests: 0, trainers: 0, maxCombo: 0, reviews: 0, ms: 0, chests: 0 },
       quests: null, league: null, ach: {}, storiesDone: {}, boostUntil: 0, onboarded: false, maxTier: 0, jlpt: {},
@@ -33,6 +33,10 @@
       for (const k in d.settings) if (s.settings[k] === undefined) s.settings[k] = d.settings[k];
       for (const k in d.stats) if (s.stats[k] === undefined) s.stats[k] = d.stats[k];
       APP.state = s;
+      if (!s.v || s.v < 2) { // v1(7노드) → v2(8노드: 심화 추가)
+        for (const id in s.progress) { if (s.progress[id] >= 7) s.progress[id] = 8; }
+        s.v = 2;
+      }
     } else APP.state = d;
   };
   let saveT = null;
@@ -147,7 +151,7 @@
     if (cfg.unit && cfg.nodeIdx !== undefined) {
       const p = st.progress[cfg.unit.id] || 0;
       if (cfg.nodeIdx >= p) st.progress[cfg.unit.id] = cfg.nodeIdx + 1;
-      if (cfg.nodeIdx === 6) { // 유닛 완료
+      if (cfg.nodeIdx === G.COURSE.LAST) { // 유닛 완료
         APP._unitDone = cfg.unit;
       }
     }
@@ -247,14 +251,14 @@
   const ACH = [
     { id: 'streak', n: '불꽃의 의지', d: '연속 학습 {n}일', i: '🔥', c: '#ff9600', t: [3, 7, 14, 30, 60, 100, 365], v: function (s) { return s.longest; } },
     { id: 'xp', n: '현자', d: '총 {n} XP 획득', i: '🦉', c: '#58cc02', t: [100, 500, 1000, 2500, 5000, 10000, 25000], v: function (s) { return s.xp; } },
-    { id: 'words', n: '어휘왕', d: '단어 {n}개 학습', i: '📚', c: '#1cb0f6', t: [25, 50, 100, 250, 500, 1000, 1500], v: function () { return APP.learnedCount('w:'); } },
-    { id: 'kanji', n: '한자 박사', d: '한자 {n}자 학습', i: '🈷️', c: '#ff4b4b', t: [10, 50, 100, 200, 300, 400], v: function () { return APP.learnedCount('kj:'); } },
+    { id: 'words', n: '어휘왕', d: '단어 {n}개 학습', i: '📚', c: '#1cb0f6', t: [25, 50, 100, 250, 500, 1000, 1500, 2500, 3500], v: function () { return APP.learnedCount('w:'); } },
+    { id: 'kanji', n: '한자 박사', d: '한자 {n}자 학습', i: '🈷️', c: '#ff4b4b', t: [10, 50, 100, 200, 300, 400, 600, 800], v: function () { return APP.learnedCount('kj:'); } },
     { id: 'kana', n: '가나 마스터', d: '가나 {n}자 학습', i: 'あ', c: '#ce82ff', t: [20, 46, 100, 200], v: function () { return APP.learnedCount('k:'); } },
     { id: 'perfect', n: '완벽주의자', d: '실수 없는 레슨 {n}개', i: '🎯', c: '#ffc800', t: [1, 5, 10, 25, 50, 100], v: function (s) { return s.stats.perfect; } },
     { id: 'listen', n: '귀가 트였다', d: '듣기 문제 {n}개 정답', i: '🎧', c: '#2bdbc2', t: [25, 100, 250, 500, 1000], v: function (s) { return s.stats.listen; } },
     { id: 'speak', n: '수다쟁이', d: '말하기 {n}회 성공', i: '🎤', c: '#ff86d0', t: [5, 25, 50, 100, 250], v: function (s) { return s.stats.speak; } },
     { id: 'write', n: '서예가', d: '쓰기·입력 {n}회 성공', i: '🖌️', c: '#a56644', t: [10, 50, 100, 250, 500], v: function (s) { return s.stats.write; } },
-    { id: 'units', n: '정복자', d: '유닛 {n}개 완료', i: '🏯', c: '#7c83fd', t: [1, 5, 10, 25, 50, 100, 150], v: function () { return APP.unitsDone(); } },
+    { id: 'units', n: '정복자', d: '유닛 {n}개 완료', i: '🏯', c: '#7c83fd', t: [1, 5, 10, 25, 50, 100, 150, 200, 250, 300], v: function () { return APP.unitsDone(); } },
     { id: 'stories', n: '이야기꾼', d: '스토리 {n}편 완료', i: '📖', c: '#00cd9c', t: [1, 5, 10, 20, 30], v: function (s) { return Object.keys(s.storiesDone).length; } },
     { id: 'combo', n: '콤보 장인', d: '{n}연속 정답', i: '⚡', c: '#ff9600', t: [10, 20, 30, 50], v: function (s) { return s.stats.maxCombo; } },
     { id: 'league', n: '챔피언', d: '{n} 리그 도달', i: '🏆', c: '#ffc800', t: [1, 2, 3, 5, 7, 9], v: function (s) { return s.maxTier || 0; }, label: function (n) { return LEAGUES[n].n; } },
@@ -278,14 +282,16 @@
   APP.checkAch = checkAch;
 
   /* ---------- 진행/잠금 ---------- */
-  APP.unitDone = function (u) { return (APP.state.progress[u.id] || 0) >= 7; };
+  APP.unitDone = function (u) { return (APP.state.progress[u.id] || 0) > G.COURSE.LAST; };
   APP.unitsDone = function () { return G.COURSE.units.filter(APP.unitDone).length; };
   APP.secDone = function (sec) { return sec.units.every(APP.unitDone); };
   APP.secUnlocked = function (sec) {
     const st = APP.state;
-    if (st.settings.unlockAll || sec.free || sec.id === 1 || st.jumped['s' + sec.id]) return true;
-    const prev = G.COURSE.sections.find(function (s) { return s.id === sec.id - 1; });
-    return prev ? APP.secDone(prev) : true;
+    if (st.settings.unlockAll || !sec.req || !sec.req.length || st.jumped['s' + sec.id]) return true;
+    return sec.req.every(function (id) {
+      const r = G.COURSE.sections.find(function (x) { return x.id === id; });
+      return !r || APP.secDone(r) || (st.jumped['s' + (id + 1)] && r.track === 'main' && sec.track !== 'main');
+    });
   };
   APP.unitUnlocked = function (u) {
     const st = APP.state;
@@ -294,15 +300,15 @@
     return APP.unitDone(u.secObj.units[u.idx - 1]);
   };
   APP.currentUnit = function () {
-    // 점프한 섹션이 있으면 그 이후 섹션부터 찾기
+    // 메인 코스 기준 (점프한 섹션이 있으면 그 이후부터)
     let minSec = 1;
-    for (const k in APP.state.jumped) if (k[0] === 's') minSec = Math.max(minSec, +k.slice(1));
-    for (const sec of G.COURSE.sections) {
-      if (sec.free || sec.id < minSec) continue;
+    for (const k in APP.state.jumped) if (k[0] === 's') { const id = +k.slice(1); if (id <= 6) minSec = Math.max(minSec, id); }
+    const mains = G.COURSE.sections.filter(function (x) { return x.track === 'main'; });
+    for (const sec of mains) {
+      if (sec.id < minSec) continue;
       for (const u of sec.units) if (APP.unitUnlocked(u) && !APP.unitDone(u)) return u;
     }
     for (const sec of G.COURSE.sections) {
-      if (sec.free) continue;
       for (const u of sec.units) if (APP.unitUnlocked(u) && !APP.unitDone(u)) return u;
     }
     return G.COURSE.units[0];
@@ -531,10 +537,10 @@
       if (step === 0) {
         c.appendChild(h('div', { class: 'logo', text: '🦊' }));
         c.appendChild(h('h1', { class: 'center', text: 'こんにちは! 니홍고 마스터' }));
-        c.appendChild(h('p', { class: 'center muted', html: '히라가나부터 JLPT N3까지<br><b>' + G.COURSE.units.length + '개 유닛 · ' + (G.COURSE.units.length * 6) + '개+ 레슨 · 단어 ' + G.COURSE.words.length + '개 · 한자 ' + G.COURSE.kanji.length + '자 · 문장 ' + G.COURSE.sents.length + '개</b><br>완전 무료 · 광고 없음 · 오프라인 지원' }));
+        c.appendChild(h('p', { class: 'center muted', html: '히라가나부터 JLPT N2까지 · 15개 섹션<br><b>' + G.COURSE.units.length + '개 유닛 · ' + (G.COURSE.units.length * G.COURSE.LAST) + '개 레슨 · 단어 ' + G.COURSE.words.length + '개 · 한자 ' + G.COURSE.kanji.length + '자 · 문장 ' + G.COURSE.sents.length + '개</b><br>완전 무료 · 광고 없음 · 오프라인 지원' }));
       } else if (step === 1) {
         c.appendChild(h('h1', { text: '일본어를 얼마나 알고 있나요?' }));
-        [['🌱', '처음이에요', '히라가나부터 시작', 1], ['🔤', '가나는 읽을 수 있어요', '입문(N5) 섹션부터 시작', 2], ['🗣️', '기초 회화는 할 수 있어요', '초급 섹션부터 시작', 3], ['📗', 'N4 정도예요', '초중급 섹션부터 시작', 4], ['📕', 'N3에 도전하고 싶어요', '중급 섹션부터 시작', 5]].forEach(function (x) {
+        [['🌱', '처음이에요', '히라가나부터 시작', 1], ['🔤', '가나는 읽을 수 있어요', '입문(N5) 섹션부터 시작', 2], ['🗣️', '기초 회화는 할 수 있어요', '초급 섹션부터 시작', 3], ['📗', 'N4 정도예요', '초중급 섹션부터 시작', 4], ['📕', 'N3 정도예요', '중급 섹션부터 시작', 5], ['🏯', 'N2에 도전하고 싶어요', '상급(N2) 섹션부터 시작', 6]].forEach(function (x) {
           c.appendChild(h('button', { class: 'opt', style: { marginBottom: '10px' }, onclick: function () {
             for (let s = 2; s <= x[3]; s++) st.jumped['s' + s] = true;
             step = 2; draw();
@@ -586,11 +592,13 @@
         wod ? h('div', { class: 'small', style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, html: '📅 오늘의 단어: <b class="jp" style="font-size:16px;color:var(--title)">' + U.esc(wod.w) + '</b> <span class="jp muted">' + (wod.r !== wod.w ? U.esc(wod.r) : '') + '</span> — ' + U.esc(wod.m) }) : null),
       wod ? h('button', { class: 'spk', style: { flex: 'none' }, html: wod.e || '🔊', onclick: function () { U.tts.speak(wod.r); } }) : null);
     el.appendChild(daily);
+    let lastTrack = null;
     C.sections.forEach(function (sec) {
+      if (sec.track !== lastTrack) { lastTrack = sec.track; el.appendChild(h('div', { class: 'sec-label', style: { margin: '22px 16px 0' }, text: C.TRACKS[sec.track] || '' })); }
       const unlocked = APP.secUnlocked(sec);
       const done = sec.units.filter(APP.unitDone).length;
       const head = h('div', { class: 'section-head', style: { background: unlocked ? sec.color : '#afafaf', boxShadow: '0 4px 0 ' + (unlocked ? sec.dark : '#8f8f8f'), cursor: 'pointer' }, onclick: function () { openSec = openSec === sec.id ? -1 : sec.id; APP.refresh(); } },
-        h('div', null, h('div', { class: 'st', text: (sec.free ? '특별 트랙' : '섹션 ' + sec.id) + ' · ' + sec.cefr }), h('div', { class: 'sn', text: (unlocked ? '' : '🔒 ') + sec.t }), h('div', { class: 'sp', text: sec.st + ' · ' + done + '/' + sec.units.length + ' 유닛' })),
+        h('div', null, h('div', { class: 'st', text: '섹션 ' + sec.id + ' · ' + sec.cefr }), h('div', { class: 'sn', text: (unlocked ? '' : '🔒 ') + sec.t }), h('div', { class: 'sp', text: sec.st + ' · ' + done + '/' + sec.units.length + ' 유닛' })),
         h('div', { style: { fontSize: '26px' }, text: openSec === sec.id ? '▾' : '▸' }));
       el.appendChild(head);
       if (openSec !== sec.id) return;
@@ -649,7 +657,7 @@
     } else {
       box.appendChild(h('div', { class: 'ex-badge', text: u.t }));
       box.appendChild(h('h2', { text: n.ic + ' ' + label }));
-      const desc = { learn1: '새로운 내용을 배워요', learn2: '새로운 내용을 더 배워요', chest: '보석이 들어 있어요!', sent: '문장을 만들고 번역해요', listen: '듣고 말하는 연습', practice: '배운 내용을 총정리', test: '실수 3번까지! 통과하면 유닛 완료 + 왕관' }[n.k];
+      const desc = { learn1: '새로운 내용을 배워요', learn2: '새로운 내용을 더 배워요', chest: '보석이 들어 있어요!', sent: '문장을 만들고 번역해요', listen: '듣고 말하는 연습', practice: '배운 내용을 총정리', hard: '보기 없이 직접 입력·받아쓰기·쓰기로 실력 굳히기', test: '실수 3번까지! 통과하면 유닛 완료 + 왕관' }[n.k];
       box.appendChild(h('div', { class: 'sub', text: cls === 'done' ? '완료한 레슨이에요. 다시 연습하면 XP를 조금 더 받아요.' : desc }));
       box.appendChild(h('button', { class: 'btn', text: cls === 'done' ? (n.k === 'chest' ? '이미 열었어요' : '다시 연습 +5 XP') : n.k === 'chest' ? '열기' : '시작하기 +' + (n.k === 'test' ? 20 : 10) + ' XP', onclick: function () {
         pop.remove();
@@ -662,11 +670,12 @@
   APP.unitJump = function (u) {
     const items = G.LG.forNode(u, 'test').filter(function (x) { return !/^intro/.test(x.type); });
     G.LESSON.run({ title: '건너뛰기', items: items, mode: 'test', maxMistakes: 2, xp: 10, onQuit: APP.refresh,
-      after: function (res) { if (res.passed) { const sec = u.secObj; for (let i = 0; i <= u.idx; i++) { const x = sec.units[i]; if (i < u.idx) APP.state.progress[x.id] = Math.max(APP.state.progress[x.id] || 0, 7); } APP.state.jumped['u' + u.id] = true; } },
+      after: function (res) { if (res.passed) { const sec = u.secObj; for (let i = 0; i <= u.idx; i++) { const x = sec.units[i]; if (i < u.idx) APP.state.progress[x.id] = Math.max(APP.state.progress[x.id] || 0, G.COURSE.LAST + 1); } APP.state.jumped['u' + u.id] = true; } },
       onDone: APP.afterLesson });
   };
   APP.jumpTest = function (sec) {
-    const prev = G.COURSE.sections.find(function (s) { return s.id === sec.id - 1; });
+    const reqId = (sec.req && sec.req[0]) || sec.id - 1;
+    const prev = G.COURSE.sections.find(function (s) { return s.id === reqId; });
     const units = prev ? prev.units : sec.units;
     let items = [];
     U.sample(units, 6).forEach(function (u) { items = items.concat(G.LG.forNode(u, 'test').filter(function (x) { return !/^intro/.test(x.type); }).slice(0, 3)); });
@@ -718,11 +727,11 @@
     const C = G.COURSE;
     el.appendChild(h('div', { class: 'h-title', text: '🇯🇵 일본어 코스 (한국어 화자용)' }));
     el.appendChild(h('div', { class: 'stat-grid' },
-      sbox('🗂️', C.units.length, '유닛'), sbox('🧩', C.units.length * 6, '레슨'), sbox('📚', C.words.length, '단어'), sbox('🈷️', C.kanji.length, '한자'),
+      sbox('🗂️', C.units.length, '유닛'), sbox('🧩', C.units.length * C.LAST, '레슨'), sbox('📚', C.words.length, '단어'), sbox('🈷️', C.kanji.length, '한자'),
       sbox('💬', C.sents.length, '예문'), sbox('📗', C.tips.length, '문법 가이드'), sbox('📖', (G.STORIES || []).length, '스토리'), sbox('🔤', G.KANA.all.length, '가나')));
     C.sections.forEach(function (sec) {
       const done = sec.units.filter(APP.unitDone).length;
-      el.appendChild(h('div', { class: 'card', style: { margin: '12px 16px 0' } }, h('h3', { text: (sec.free ? '★ ' : '섹션 ' + sec.id + ' · ') + sec.t + ' (' + sec.cefr + ')' }), h('div', { class: 'small muted', style: { marginBottom: '8px' }, text: sec.st + ' — ' + sec.units.length + '개 유닛' }),
+      el.appendChild(h('div', { class: 'card', style: { margin: '12px 16px 0' } }, h('h3', { text: '섹션 ' + sec.id + ' · ' + sec.t + ' (' + sec.cefr + ')' }), h('div', { class: 'small muted', style: { marginBottom: '8px' }, text: sec.st + ' — ' + sec.units.length + '개 유닛' }),
         h('div', { class: 'prog green' }, h('div', { style: { width: (done / sec.units.length * 100) + '%' } })), h('div', { class: 'small muted', style: { marginTop: '4px' }, text: done + '/' + sec.units.length + ' 완료' })));
     });
   };
@@ -931,7 +940,7 @@
       h('button', { class: 'btn red', text: '🗑 모든 학습 기록 초기화', onclick: function () {
         APP.modal({ icon: '⚠️', title: '정말 초기화할까요?', text: '모든 진행 상황, XP, 보석, 연속 학습 기록이 삭제됩니다.', buttons: [{ t: '초기화', c: 'red', f: function () { U.store.remove(KEY); location.reload(); } }, { t: '취소', c: 'ghost gray' }] });
       } })));
-    el.appendChild(h('div', { class: 'center small muted', style: { padding: '10px 16px 30px' }, html: '니홍고 마스터 v1.0<br>유닛 ' + G.COURSE.units.length + ' · 단어 ' + G.COURSE.words.length + ' · 한자 ' + G.COURSE.kanji.length + ' · 예문 ' + G.COURSE.sents.length }));
+    el.appendChild(h('div', { class: 'center small muted', style: { padding: '10px 16px 30px' }, html: '니홍고 마스터 v1.1<br>유닛 ' + G.COURSE.units.length + ' · 단어 ' + G.COURSE.words.length + ' · 한자 ' + G.COURSE.kanji.length + ' · 예문 ' + G.COURSE.sents.length }));
   };
 
   document.addEventListener('DOMContentLoaded', function () {

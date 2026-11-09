@@ -11,7 +11,9 @@ ctx.window.window = ctx.window;
 vm.createContext(ctx);
 function load(f) { vm.runInContext(fs.readFileSync(path.join(WEB, f), 'utf8'), ctx, { filename: f }); }
 vm.runInContext('var window = this.window; var UNITS = window.UNITS = [];', ctx);
-['js/conj.js', 'data/kana.js', 'data/units_s2.js', 'data/units_s3.js', 'data/units_s4.js', 'data/units_s5.js', 'data/kanji.js', 'data/stories.js'].forEach(load);
+const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
+const dataFiles = (html.match(/src="(data\/[^"]+)"/g) || []).map(x => x.slice(5, -1));
+['js/conj.js'].concat(dataFiles).forEach(load);
 const W = ctx.window;
 const UNITS = W.UNITS;
 let errors = 0, warns = 0;
@@ -70,7 +72,7 @@ kj.forEach(l => {
   const f = l.split('|');
   if (f.length < 6) return err('한자 형식 오류 → ' + l);
   if (kset.has(f[0])) err('한자 중복 ' + f[0]); kset.add(f[0]);
-  if (!/^[345]$/.test(f[4])) err('JLPT 레벨 오류 → ' + l);
+  if (!/^[2345]$/.test(f[4])) err('JLPT 레벨 오류 → ' + l);
   if (f[2] && /[ぁ-ゖ]/.test(f[2])) err('음독에 히라가나 → ' + l);
   if (f[3] && /[ァ-ヶ]/.test(f[3])) err('훈독에 가타카나 → ' + l);
   f[5].split(';').forEach(e => { if (!/^.+?\(.+?\)=.+$/.test(e)) err('한자 예시 형식 오류 → ' + e + ' @ ' + f[0]); else if (e.indexOf(f[0]) < 0) err('예시에 해당 한자 없음 → ' + e + ' @ ' + f[0]); });
@@ -80,6 +82,8 @@ kj.forEach(l => {
   s.lines.forEach(l => { const f = l.split('|'); if (f.length < 3) err('스토리 ' + s.id + ' 줄 형식 → ' + l); else if (f[0] !== 'N' && !s.c[f[0]]) err('스토리 ' + s.id + ' 화자 없음 → ' + f[0]); });
   (s.q || []).forEach(q => { if (q.a >= q.o.length) err('스토리 ' + s.id + ' 정답 인덱스 오류'); if (q.at > s.lines.length) err('스토리 ' + s.id + ' at 범위 오류'); });
 });
+const bySec = {}; UNITS.forEach(u => { bySec[u.sec] = (bySec[u.sec] || 0) + 1; });
+console.log('📚 섹션별 주제 유닛: ' + Object.keys(bySec).map(k => k + ':' + bySec[k]).join(' '));
 console.log(`📊 유닛 ${UNITS.length} (+가나 ${W.KANA.units.length}) · 단어 ${nW} · 문장 ${nS} · 한자 ${kj.length} · 스토리 ${(W.STORIES || []).length}`);
 console.log(errors ? `❌ 오류 ${errors}개, 경고 ${warns}개` : `✅ 데이터 검사 통과 (경고 ${warns}개, -v 로 보기)`);
 if (errors) process.exit(1);
