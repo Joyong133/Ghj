@@ -183,20 +183,20 @@
 
                     <TextView
                         android:id="@+id/btnCc"
-                        style="@style/Widget.JapanTV.OverlayChip" />
+                        style="@style/OverlayChip" />
 
                     <TextView
                         android:id="@+id/btnAlt"
-                        style="@style/Widget.JapanTV.OverlayChip"
+                        style="@style/OverlayChip"
                         android:text="@string/other_live" />
 
                     <TextView
                         android:id="@+id/btnPage"
-                        style="@style/Widget.JapanTV.OverlayChip" />
+                        style="@style/OverlayChip" />
 
                     <TextView
                         android:id="@+id/btnTouch"
-                        style="@style/Widget.JapanTV.OverlayChip"
+                        style="@style/OverlayChip"
                         android:text="@string/direct_touch" />
                 </LinearLayout>
             </HorizontalScrollView>
