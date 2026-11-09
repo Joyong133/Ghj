@@ -29,7 +29,7 @@ jobs:
           chmod +x gradlew
           # Gradle 내려받기가 일시적으로 실패할 때를 대비해 몇 번 다시 시도합니다.
           for i in 1 2 3 4 5; do ./gradlew --version --no-daemon && break; echo "retry $i"; sleep $((i * 20)); done
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk ../japan-tv.apk
 
       - uses: actions/upload-artifact@v4

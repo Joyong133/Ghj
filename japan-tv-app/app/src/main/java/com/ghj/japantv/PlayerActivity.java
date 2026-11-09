@@ -473,12 +473,12 @@ public class PlayerActivity extends AppCompatActivity {
         boolean pip = isInPictureInPictureMode();
         boolean land = isLandscape();
         topBar.setVisibility(pip || land || customView != null ? View.GONE : View.VISIBLE);
-        if (!pip) setImmersive(land || customView != null);
+        if (!pip) hideSystemBars(land || customView != null);
         playerView.setUseController(!pip);
         scheduleTvMode();
     }
 
-    private void setImmersive(boolean on) {
+    private void hideSystemBars(boolean on) {
         WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (on) {
             c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
