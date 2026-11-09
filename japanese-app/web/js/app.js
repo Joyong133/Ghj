@@ -18,11 +18,11 @@
 
   function defState() {
     return {
-      v: 2, name: '학습자', avatar: '🦊', created: U.dayNum(), xp: 0, gems: 500, hearts: 5, heartTs: Date.now(),
+      v: 3, name: '학습자', avatar: '🦊', created: U.dayNum(), xp: 0, gems: 500, hearts: 5, heartTs: Date.now(),
       streak: 0, longest: 0, lastDay: null, freeze: 0, daily: {}, progress: {}, jumped: {}, srs: {}, mistakes: {}, saved: [], fav: [],
       stats: { lessons: 0, perfect: 0, listen: 0, speak: 0, write: 0, read: 0, correct: 0, wrong: 0, stories: 0, tests: 0, trainers: 0, maxCombo: 0, reviews: 0, ms: 0, chests: 0 },
       quests: null, league: null, ach: {}, storiesDone: {}, boostUntil: 0, onboarded: false, maxTier: 0, jlpt: {},
-      settings: { furi: true, romaji: false, ttsRate: 0.9, sound: true, vibrate: true, unlimitedHearts: false, autoplay: true, listening: true, speaking: true, dark: 'auto', goal: 20, unlockAll: false }
+      settings: { furi: true, romaji: false, ttsRate: 0.9, sound: true, vibrate: true, unlimitedHearts: true, autoplay: true, listening: true, speaking: true, dark: 'auto', goal: 20, unlockAll: false }
     };
   }
   APP.load = function () {
@@ -36,6 +36,10 @@
       if (!s.v || s.v < 2) { // v1(7노드) → v2(8노드: 심화 추가)
         for (const id in s.progress) { if (s.progress[id] >= 7) s.progress[id] = 8; }
         s.v = 2;
+      }
+      if (s.v < 3) { // v3: 무제한 하트를 기본으로 (한 번만 적용, 이후엔 설정 존중)
+        s.settings.unlimitedHearts = true;
+        s.v = 3;
       }
     } else APP.state = d;
   };
@@ -940,7 +944,7 @@
       h('button', { class: 'btn red', text: '🗑 모든 학습 기록 초기화', onclick: function () {
         APP.modal({ icon: '⚠️', title: '정말 초기화할까요?', text: '모든 진행 상황, XP, 보석, 연속 학습 기록이 삭제됩니다.', buttons: [{ t: '초기화', c: 'red', f: function () { U.store.remove(KEY); location.reload(); } }, { t: '취소', c: 'ghost gray' }] });
       } })));
-    el.appendChild(h('div', { class: 'center small muted', style: { padding: '10px 16px 30px' }, html: '니홍고 마스터 v1.1<br>유닛 ' + G.COURSE.units.length + ' · 단어 ' + G.COURSE.words.length + ' · 한자 ' + G.COURSE.kanji.length + ' · 예문 ' + G.COURSE.sents.length }));
+    el.appendChild(h('div', { class: 'center small muted', style: { padding: '10px 16px 30px' }, html: '니홍고 마스터 v1.1.1<br>유닛 ' + G.COURSE.units.length + ' · 단어 ' + G.COURSE.words.length + ' · 한자 ' + G.COURSE.kanji.length + ' · 예문 ' + G.COURSE.sents.length }));
   };
 
   document.addEventListener('DOMContentLoaded', function () {
