@@ -16,3 +16,10 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 영양 수치는 100ml당 근삿값(열량 43kcal, 당류 10.8g, 카페인 9.6mg)으로 계산합니다.
 실제 값은 나라와 제품마다 다릅니다.
+
+## 서울 1호선 VR
+
+[`line1-vr/`](line1-vr/) 폴더에는 메타 퀘스트용 VR 앱이 들어 있습니다. 1호선 열차를 타고
+서울역에서 광운대역까지 실제 역 간 거리(13.3km) 그대로 달립니다.
+설치 파일은 [`line1-vr/dist/seoul-line1-vr.apk`](line1-vr/dist/seoul-line1-vr.apk) 이고,
+설치와 조작 방법은 [`line1-vr/README.md`](line1-vr/README.md) 에 있습니다.
