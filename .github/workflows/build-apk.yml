@@ -1,0 +1,25 @@
+name: Build Japanese app APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'japanese-app/**'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends aapt zipalign apksigner dalvik-exchange python3-pil fonts-noto-cjk
+      - name: Build APK
+        working-directory: japanese-app
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nihongo-master-apk
+          path: japanese-app/dist/nihongo-master.apk

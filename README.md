@@ -16,3 +16,13 @@ GitHub Pages에서 이 저장소의 루트를 배포해도 그대로 동작합�
 
 영양 수치는 100ml당 근삿값(열량 43kcal, 당류 10.8g, 카페인 9.6mg)으로 계산합니다.
 실제 값은 나라와 제품마다 다릅니다.
+
+---
+
+# 🦊 니홍고 마스터 (일본어 학습 앱)
+
+이 저장소의 [`japanese-app/`](japanese-app/) 폴더에는 듀오링고 스타일의 일본어 학습 안드로이드 앱이 있습니다.
+178개 유닛, 1,068개 레슨, 단어 1,751개, 한자 556자, 예문 1,279개, 회화 스토리 24편이 들어 있습니다.
+
+- APK 다운로드: [`japanese-app/dist/nihongo-master.apk`](japanese-app/dist/nihongo-master.apk)
+- 설명서: [`japanese-app/README.md`](japanese-app/README.md)
