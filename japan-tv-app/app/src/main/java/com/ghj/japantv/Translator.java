@@ -28,7 +28,7 @@ final class Translator {
     }
 
     static String japaneseToKorean(String text) throws IOException {
-        String url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=ko&dt=t&q="
+        String url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ko&dt=t&q="
                 + URLEncoder.encode(text, "UTF-8");
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         try {

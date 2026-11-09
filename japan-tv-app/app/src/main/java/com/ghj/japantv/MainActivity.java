@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.checkbox.MaterialCheckBox;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
@@ -31,6 +32,9 @@ public class MainActivity extends AppCompatActivity {
     private ChannelStore store;
     private Prefs prefs;
     private final List<Channel> channels = new ArrayList<>();
+    /** 지금 고른 분류(전체/뉴스/드라마/내 채널)에 맞는 채널만 */
+    private final List<Channel> visible = new ArrayList<>();
+    private String filter = null;
     private ChannelAdapter adapter;
 
     private TextView todayText;
@@ -54,13 +58,23 @@ public class MainActivity extends AppCompatActivity {
 
         RecyclerView list = findViewById(R.id.channelList);
         list.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new ChannelAdapter(channels, this::play, this::showChannelMenu);
+        adapter = new ChannelAdapter(visible, this::play, this::showChannelMenu);
         list.setAdapter(adapter);
 
         findViewById(R.id.addButton).setOnClickListener(v -> showEditDialog(null));
 
         channels.addAll(store.load());
-        adapter.notifyDataSetChanged();
+
+        ChipGroup chips = findViewById(R.id.filterChips);
+        chips.setOnCheckedStateChangeListener((group, ids) -> {
+            int id = ids.isEmpty() ? R.id.chipAll : ids.get(0);
+            if (id == R.id.chipNews) filter = Channel.CAT_NEWS;
+            else if (id == R.id.chipDrama) filter = Channel.CAT_DRAMA;
+            else if (id == R.id.chipCustom) filter = Channel.CAT_CUSTOM;
+            else filter = null;
+            refreshList();
+        });
+        refreshList();
 
         // 앱을 새로 켰을 때만 마지막 채널을 바로 틀어 줍니다 (TV처럼).
         if (savedInstanceState == null && prefs.isAutoResume()) {
@@ -80,6 +94,10 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("NotifyDataSetChanged")
     private void refreshList() {
+        visible.clear();
+        for (Channel c : channels) {
+            if (filter == null || filter.equals(c.category)) visible.add(c);
+        }
         adapter.notifyDataSetChanged();
     }
 
@@ -208,9 +226,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void move(Channel c, int delta) {
+        // 보이는 목록에서 바로 옆 채널과 자리를 바꿉니다.
+        int vi = visible.indexOf(c);
+        int vj = vi + delta;
+        if (vi < 0 || vj < 0 || vj >= visible.size()) return;
         int i = channels.indexOf(c);
-        int j = i + delta;
-        if (i < 0 || j < 0 || j >= channels.size()) return;
+        int j = channels.indexOf(visible.get(vj));
+        if (i < 0 || j < 0) return;
         Collections.swap(channels, i, j);
         store.save(channels);
         refreshList();
@@ -281,7 +303,8 @@ public class MainActivity extends AppCompatActivity {
                     url,
                     streamCheck.isChecked() ? Channel.KIND_STREAM : Channel.KIND_WEB,
                     existing != null ? existing.icon : "📺",
-                    existing != null && existing.builtIn);
+                    existing != null && existing.builtIn,
+                    existing != null ? existing.category : Channel.CAT_CUSTOM);
             int idx = existing != null ? channels.indexOf(existing) : -1;
             if (idx >= 0) channels.set(idx, updated);
             else channels.add(updated);

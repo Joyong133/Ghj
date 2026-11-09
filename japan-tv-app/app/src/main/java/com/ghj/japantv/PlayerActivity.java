@@ -31,6 +31,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -56,8 +57,13 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.SubtitleView;
+import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -88,6 +94,11 @@ public class PlayerActivity extends AppCompatActivity {
     private static final int MODE_PAGE = 2;
     private static final int MODE_STREAM = 3;
 
+    /** 자막을 어떻게 보여 줄지: 아직 모름 / 앱이 읽어서 일본어+한국어로 직접 그림 / 유튜브 자막(자동 번역) 그대로 */
+    private static final int CAP_UNKNOWN = 0;
+    private static final int CAP_APP = 1;
+    private static final int CAP_NATIVE = 2;
+
     private static final long OVERLAY_MS = 4_000L;
     private static final long STALL_MS = 25_000L;
     private static final long TOUCH_PASSTHROUGH_MS = 10_000L;
@@ -112,42 +123,56 @@ public class PlayerActivity extends AppCompatActivity {
 
     /**
      * 유튜브 플레이어 안(임베드 iframe 포함)에 넣는 스크립트.
-     * 플레이어가 그리는 일본어 자막 글자를 읽어서 앱으로 보내고, 유튜브 자체 자막은 숨깁니다.
-     * 앱이 직접 일본어/한국어 두 줄 자막을 그립니다.
+     * <ul>
+     *   <li>앱에 연결되면 "hello" 를 보내고, 앱이 보내 주는 설정(cfg)을 따릅니다.</li>
+     *   <li>자막 트랙 목록을 앱에 알려 주고, 앱이 원하는 트랙(일본어, 필요하면 한국어 자동 번역)을 켭니다.</li>
+     *   <li>cfg.read 일 때: 플레이어가 그리는 자막 글자를 읽어 앱으로 보내고, 유튜브 자막은 숨깁니다.</li>
+     * </ul>
+     * 메시지는 WebMessageListener(jtvCap)로 보내고, 없으면 JTV 자바스크립트 인터페이스를 씁니다.
      */
     private static final String CAPTION_JS = "(function(){"
             + "if(window.__jtvCap){return;}window.__jtvCap=true;"
-            + "if(!window.JTV||!JTV.captionMode){return;}"
-            + "var last='',lastTry=0,none=false,t0=Date.now();"
+            + "var cfg={read:false,track:'',tlang:''},applied=null,appliedAt=0,last='',lastTracks=null,lastCheck=0,"
+            + "bridge=null,hello=false;"
+            + "function br(){if(!bridge&&window.jtvCap&&window.jtvCap.postMessage){bridge=window.jtvCap;"
+            + "bridge.onmessage=function(e){try{cfg=JSON.parse(e.data);}catch(x){}};}return bridge;}"
+            + "function send(o){var s=JSON.stringify(o);var b=br();if(b){b.postMessage(s);return true;}"
+            + "if(window.JTV&&JTV.onCapMsg){JTV.onCapMsg(s);return true;}return false;}"
             + "function hide(on){var s=document.getElementById('__jtv_cap_css');"
             + "if(on){if(!s){s=document.createElement('style');s.id='__jtv_cap_css';"
             + "s.textContent='.ytp-caption-window-container,.caption-window{opacity:0!important}';"
             + "(document.head||document.documentElement).appendChild(s);}}"
             + "else if(s){s.parentNode.removeChild(s);}}"
-            + "function track(p){try{if(!p||!p.getOption){return 'wait';}"
-            + "if(p.loadModule){p.loadModule('captions');}"
+            + "function tracks(p,now){if(now-lastCheck<2000||!p.getOption){return;}lastCheck=now;"
+            + "try{if(cfg.track&&p.loadModule){p.loadModule('captions');}"
             + "var list=p.getOption('captions','tracklist')||[];"
-            + "if(!list.length){return 'none';}"
-            + "var cur=p.getOption('captions','track')||{};"
-            + "if(!cur.languageCode){var t=null;for(var i=0;i<list.length;i++){"
-            + "if((list[i].languageCode||'').indexOf('ja')===0){t=list[i];break;}}"
-            + "p.setOption('captions','track',t||list[0]);}"
-            + "return 'ok';}catch(e){return 'wait';}}"
-            + "setInterval(function(){var mode=0;try{mode=JTV.captionMode();}catch(e){}"
-            + "hide(mode>0);"
-            + "if(mode===0){if(last){last='';JTV.onCaption('');}return;}"
+            + "var d=[];for(var i=0;i<list.length;i++){var x=list[i]||{};"
+            + "d.push({c:x.languageCode||'',k:x.kind||'',n:x.displayName||x.languageName||''});}"
+            + "var ds=JSON.stringify(d);if(ds!==lastTracks){lastTracks=ds;send({t:'tracks',list:d});}"
+            + "var key=cfg.track+'|'+cfg.tlang;"
+            + "if(key===applied&&now-appliedAt<10000){return;}"
+            + "if(!cfg.track){if(applied&&applied!=='|'){p.setOption('captions','track',{});}applied=key;appliedAt=now;return;}"
+            + "if(!list.length){return;}"
+            + "var f=null;for(var j=0;j<list.length;j++){if((list[j].languageCode||'').indexOf(cfg.track)===0){f=list[j];break;}}"
+            + "if(!f){f=list[0];}"
+            + "var cur=p.getOption('captions','track')||{};var want=cfg.tlang||'';"
+            + "var curT=(cur.translationLanguage&&cur.translationLanguage.languageCode)||'';"
+            + "if(cur.languageCode!==f.languageCode||curT!==want){var o={};for(var k in f){o[k]=f[k];}"
+            + "if(want){o.translationLanguage={languageCode:want};}p.setOption('captions','track',o);}"
+            + "applied=key;appliedAt=now;}catch(e){}}"
+            + "function tick(){if(!hello){hello=send({t:'hello'});}"
+            + "if(!br()&&window.JTV&&JTV.capConfig){try{cfg=JSON.parse(JTV.capConfig());}catch(x){}}"
+            + "hide(!!cfg.read);"
             + "var p=document.getElementById('movie_player')||document.querySelector('.html5-video-player');"
             + "if(!p){return;}"
-            + "var lines=[];var vl=p.querySelectorAll('.caption-visual-line');"
+            + "tracks(p,Date.now());"
+            + "if(cfg.read){var lines=[];var vl=p.querySelectorAll('.caption-visual-line');"
             + "if(vl.length){vl.forEach(function(l){var x=(l.textContent||'').trim();if(x){lines.push(x);}});}"
             + "else{p.querySelectorAll('.ytp-caption-segment').forEach(function(l){var x=(l.textContent||'').trim();if(x){lines.push(x);}});}"
             + "var text=lines.join('\\n');"
-            + "if(text!==last){last=text;JTV.onCaption(text);}"
-            + "var now=Date.now();"
-            + "if(!text&&now-lastTry>3000){lastTry=now;var r=track(p);"
-            + "if(r==='none'&&now-t0>20000&&!none){none=true;JTV.onCaptionStatus('none');}"
-            + "if(r==='ok'&&none){none=false;JTV.onCaptionStatus('ok');}}"
-            + "},300);"
+            + "if(text!==last){last=text;send({t:'cap',x:text});}}"
+            + "else if(last){last='';send({t:'cap',x:''});}}"
+            + "setInterval(tick,300);"
             + "})();";
 
     public static void start(Context context, String channelId) {
@@ -199,6 +224,20 @@ public class PlayerActivity extends AppCompatActivity {
     private String capText = "";
     private long translatePausedUntil;
     private boolean docStartScript;
+    private int capPath = CAP_UNKNOWN;
+    private boolean capFrameConnected;
+    private JavaScriptReplyProxy capReply;
+    private volatile String capConfigJson = "{\"read\":false,\"track\":\"\",\"tlang\":\"\"}";
+    /** 유튜브가 알려 준 자막 트랙 개수 (-1: 아직 모름) */
+    private int capTrackCount = -1;
+    private boolean capTextSeen;
+    private boolean nativeApplied;
+    private boolean capNone;
+    private boolean paused;
+    private TextView videoTitleView;
+    private View vodControls;
+    private View swipeHint;
+    private ImageButton btnPlayPause;
 
     private ExoPlayer player;
     private List<Channel> channels = new ArrayList<>();
@@ -230,6 +269,24 @@ public class PlayerActivity extends AppCompatActivity {
     private final Runnable videoOnlyRunnable = this::applyVideoOnlyCss;
     private final Runnable restoreTouchRunnable = this::updateModeUi;
     private final Runnable captionStableRunnable = this::translateAllLines;
+    /** 자막 스크립트가 플레이어 안에서 연결되지 않으면 유튜브 자막으로 바꿉니다. */
+    private final Runnable capDecideRunnable = () -> {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF || capFrameConnected) return;
+        switchToNativeCaptions(false);
+    };
+    private final Runnable capNoneRunnable = () -> {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF || capTrackCount > 0) return;
+        capNone = true;
+        updateModeUi();
+        showCaptionNotice(current != null && current.isLiveSource()
+                ? "이 방송에는 유튜브 자막이 없어요.\n생방송은 자막이 없는 경우가 많아요. 드라마·동영상 채널에서 써 보세요."
+                : "이 영상에는 유튜브 자막이 없어요.");
+    };
+    /** 자막 트랙은 있는데 글자를 못 읽고 있으면 유튜브 자막으로 바꿉니다. */
+    private final Runnable capSafetyRunnable = () -> {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF || capPath != CAP_APP || capTextSeen) return;
+        if (capTrackCount > 0) switchToNativeCaptions(true);
+    };
     private final Runnable hideNoticeRunnable = () -> {
         capNotice.setVisibility(View.GONE);
         renderCaptions();
@@ -263,6 +320,13 @@ public class PlayerActivity extends AppCompatActivity {
         capJa = findViewById(R.id.capJa);
         capKo = findViewById(R.id.capKo);
         capNotice = findViewById(R.id.capNotice);
+        videoTitleView = findViewById(R.id.videoTitle);
+        vodControls = findViewById(R.id.vodControls);
+        swipeHint = findViewById(R.id.swipeHint);
+        btnPlayPause = findViewById(R.id.btnPlayPause);
+        btnPlayPause.setOnClickListener(v -> togglePlayPause());
+        findViewById(R.id.btnRew).setOnClickListener(v -> seekBy(-10));
+        findViewById(R.id.btnFwd).setOnClickListener(v -> seekBy(10));
 
         findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         findViewById(R.id.btnPrev).setOnClickListener(v -> switchChannel(-1));
@@ -343,6 +407,9 @@ public class PlayerActivity extends AppCompatActivity {
         candidates = new ArrayList<>();
         candidateIdx = 0;
         clearCaptions();
+        resetCaptionState(false);
+        setVideoTitle("");
+        paused = false;
 
         if (ch.isStream()) {
             webView.stopLoading();
@@ -376,17 +443,65 @@ public class PlayerActivity extends AppCompatActivity {
         play(current, true);
     }
 
+    /** 채널 넘기기: 지금 보는 채널과 같은 분류(뉴스/드라마/내 채널) 안에서 돕니다. */
     private void switchChannel(int delta) {
-        if (channels.isEmpty()) return;
+        List<Channel> zap = new ArrayList<>();
+        for (Channel c : channels) {
+            if (current == null || c.category.equals(current.category)) zap.add(c);
+        }
+        if (zap.size() < 2) zap = channels;
+        if (zap.isEmpty()) return;
         int idx = 0;
-        for (int i = 0; i < channels.size(); i++) {
-            if (current != null && channels.get(i).id.equals(current.id)) {
+        for (int i = 0; i < zap.size(); i++) {
+            if (current != null && zap.get(i).id.equals(current.id)) {
                 idx = i;
                 break;
             }
         }
-        int n = channels.size();
-        play(channels.get(((idx + delta) % n + n) % n), true);
+        int n = zap.size();
+        play(zap.get(((idx + delta) % n + n) % n), true);
+    }
+
+    // ---------- 재생/일시정지/건너뛰기 (드라마·동영상) ----------
+
+    private void setPaused(boolean p) {
+        paused = p;
+        btnPlayPause.setImageResource(p ? R.drawable.ic_play : R.drawable.ic_pause);
+    }
+
+    private void togglePlayPause() {
+        if (mode == MODE_STREAM && player != null) {
+            if (player.isPlaying()) player.pause();
+            else player.play();
+            setPaused(!player.getPlayWhenReady());
+        } else if (mode == MODE_EMBED) {
+            webView.evaluateJavascript("try{var s=jtvPlayer.getPlayerState();"
+                    + "if(s===1||s===3){jtvPlayer.pauseVideo();}else{jtvPlayer.playVideo();}}catch(e){}", null);
+        } else if (mode == MODE_PAGE) {
+            webView.evaluateJavascript("(function(){var v=document.querySelector('video');"
+                    + "if(v){if(v.paused){v.play();}else{v.pause();}}})();", null);
+            setPaused(!paused);
+        }
+        showOverlay();
+    }
+
+    private void seekBy(int seconds) {
+        if (mode == MODE_STREAM && player != null) {
+            player.seekTo(Math.max(0, player.getCurrentPosition() + seconds * 1000L));
+        } else if (mode == MODE_EMBED) {
+            webView.evaluateJavascript("try{jtvPlayer.seekTo(Math.max(0,jtvPlayer.getCurrentTime()+("
+                    + seconds + ")),true);}catch(e){}", null);
+        } else if (mode == MODE_PAGE) {
+            webView.evaluateJavascript("(function(){var v=document.querySelector('video');"
+                    + "if(v){v.currentTime=Math.max(0,v.currentTime+(" + seconds + "));}})();", null);
+        }
+        showOverlay();
+    }
+
+    private void setVideoTitle(String title) {
+        String t = title == null ? "" : title.trim();
+        videoTitleView.setText(t);
+        videoTitleView.setVisibility(t.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     // ---------- 유튜브: 라이브 찾기 → 임베드 플레이어 ----------
@@ -457,6 +572,9 @@ public class PlayerActivity extends AppCompatActivity {
         mutedAutoplay = false;
         hintText.setVisibility(View.GONE);
         clearCaptions();
+        resetCaptionState(true);
+        setVideoTitle("");
+        paused = false;
         updateModeUi();
         showStatus("불러오는 중…", true, false);
         String id = candidates.get(candidateIdx);
@@ -474,7 +592,16 @@ public class PlayerActivity extends AppCompatActivity {
                 + "<style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}"
                 + "#p,iframe{position:absolute;top:0;left:0;width:100%!important;height:100%!important;border:0}</style>"
                 + "</head><body><div id='p'></div><script>"
-                + "var T=" + tok + ",jtvPlayer=null,started=false;"
+                + "var T=" + tok + ",jtvPlayer=null,started=false,ccOn=" + captions + ";"
+                + "function jtvApplyTrack(lang,tlang){try{jtvPlayer.loadModule('captions');"
+                + "var l=jtvPlayer.getOption('captions','tracklist')||[];var f=null;"
+                + "for(var i=0;i<l.length;i++){if((l[i].languageCode||'').indexOf(lang)===0){f=l[i];break;}}"
+                + "if(!f&&l.length){f=l[0];}"
+                + "if(f){var o={};for(var k in f){o[k]=f[k];}if(tlang){o.translationLanguage={languageCode:tlang};}"
+                + "jtvPlayer.setOption('captions','track',o);}}catch(e){}}"
+                + "function jtvTracks(){try{var l=jtvPlayer.getOption('captions','tracklist')||[];var d=[];"
+                + "for(var i=0;i<l.length;i++){d.push({c:l[i].languageCode||'',k:l[i].kind||'',n:l[i].displayName||''});}"
+                + "JTV.onTracks(T,JSON.stringify(d));}catch(e){}}"
                 + "function onYouTubeIframeAPIReady(){"
                 + "jtvPlayer=new YT.Player('p',{width:'100%',height:'100%',videoId:'" + videoId + "',"
                 + "playerVars:{autoplay:1,playsinline:1,controls:0,disablekb:1,fs:0,rel:0,iv_load_policy:3,"
@@ -482,9 +609,13 @@ public class PlayerActivity extends AppCompatActivity {
                 + "origin:location.origin,widget_referrer:location.href},"
                 + "events:{"
                 + "onReady:function(e){e.target.playVideo();"
+                + "if(ccOn){try{e.target.loadModule('captions');}catch(x){}setInterval(jtvTracks,2500);}"
                 + "setTimeout(function(){try{var s=e.target.getPlayerState();"
                 + "if(!started&&(s===-1||s===5)){e.target.mute();e.target.playVideo();JTV.onMuted(T);}}catch(x){}},3500);},"
-                + "onStateChange:function(e){if(e.data===1){started=true;}JTV.onState(T,e.data);},"
+                + "onStateChange:function(e){if(e.data===1){started=true;"
+                + "try{var d=e.target.getVideoData();JTV.onTitle(T,(d&&d.title)||'');}catch(x){}}"
+                + "JTV.onState(T,e.data);},"
+                + "onApiChange:function(){if(ccOn){jtvTracks();}},"
                 + "onError:function(e){JTV.onError(T,e.data);}"
                 + "}});}"
                 + "</script><script src='https://www.youtube.com/iframe_api'></script></body></html>";
@@ -510,22 +641,34 @@ public class PlayerActivity extends AppCompatActivity {
             });
         }
 
+        /** 자막 스크립트(플레이어 안) → 앱 (WebMessageListener 를 못 쓰는 경우) */
         @JavascriptInterface
-        public int captionMode() {
-            return prefs.getCaptionMode();
+        public void onCapMsg(String json) {
+            runOnUiThread(() -> handleCapMessage(json, null));
         }
 
+        /** 자막 스크립트가 읽어 가는 설정 (WebMessageListener 를 못 쓰는 경우) */
         @JavascriptInterface
-        public void onCaption(String text) {
-            runOnUiThread(() -> onCaptionText(text));
+        public String capConfig() {
+            return capConfigJson;
         }
 
+        /** 임베드 플레이어(바깥 페이지)가 알려 주는 자막 트랙 목록 */
         @JavascriptInterface
-        public void onCaptionStatus(String status) {
+        public void onTracks(int t, String json) {
             runOnUiThread(() -> {
-                if ("none".equals(status) && prefs.getCaptionMode() != Prefs.CAPTION_OFF) {
-                    showCaptionNotice("이 방송에는 자막이 없어요.\n유튜브 자막(자동 생성 포함)이 있는 방송만 번역돼요.");
+                if (t != token) return;
+                try {
+                    handleTracks(new JSONArray(json));
+                } catch (JSONException ignored) {
                 }
+            });
+        }
+
+        @JavascriptInterface
+        public void onTitle(int t, String title) {
+            runOnUiThread(() -> {
+                if (t == token) setVideoTitle(title);
             });
         }
 
@@ -543,10 +686,19 @@ public class PlayerActivity extends AppCompatActivity {
         if (mode != MODE_EMBED) return;
         if (state == 1) { // 재생 중
             everPlayed = true;
+            setPaused(false);
             handler.removeCallbacks(stallRunnable);
             retryDelayMs = FIRST_RETRY_MS;
             hideStatus();
-        } else if (state == 0) { // 방송 종료
+        } else if (state == 2) { // 일시 정지
+            setPaused(true);
+        } else if (state == 0) { // 끝남
+            if (current != null && !current.isLiveSource() && !candidates.isEmpty()) {
+                // 드라마/동영상 채널: TV처럼 다음 영상을 이어서 틀어 줍니다.
+                candidateIdx = (candidateIdx + 1) % candidates.size();
+                loadEmbed();
+                return;
+            }
             showStatus("방송이 끝났어요. 새 방송을 찾는 중…", true, false);
             if (current != null) CACHE.remove(current.url);
             handler.removeCallbacks(retryRunnable);
@@ -582,7 +734,8 @@ public class PlayerActivity extends AppCompatActivity {
         if (candidates.size() < 2) return;
         candidateIdx = (candidateIdx + 1) % candidates.size();
         loadEmbed();
-        toast("다른 라이브 (" + (candidateIdx + 1) + "/" + candidates.size() + ")");
+        boolean live = current != null && current.isLiveSource();
+        toast((live ? "다른 라이브 (" : "다음 영상 (") + (candidateIdx + 1) + "/" + candidates.size() + ")");
         showOverlay();
     }
 
@@ -604,20 +757,135 @@ public class PlayerActivity extends AppCompatActivity {
         int old = prefs.getCaptionMode();
         int next = (old + 1) % 4;
         prefs.setCaptionMode(next);
-        // 자막을 처음 켜거나 끌 때는 플레이어를 다시 불러서 유튜브 자막을 켜고 끕니다.
-        if (mode == MODE_EMBED && (old == Prefs.CAPTION_OFF || next == Prefs.CAPTION_OFF)) loadEmbed();
+        capNone = false;
+        if (mode == MODE_EMBED && (old == Prefs.CAPTION_OFF || next == Prefs.CAPTION_OFF)) {
+            // 자막을 처음 켜거나 끌 때는 플레이어를 다시 불러서 유튜브 자막을 켜고 끕니다.
+            loadEmbed();
+        } else {
+            if (old == Prefs.CAPTION_OFF && mode == MODE_PAGE) startCaptionTimers();
+            nativeApplied = false;
+            pushCapConfig();
+            if (capPath == CAP_NATIVE) applyNativeTrackViaOuter();
+        }
         applyStreamCaptionPrefs();
         renderCaptions();
         String msg = captionLabel(next);
-        if (next != Prefs.CAPTION_OFF) {
-            msg += "\n(유튜브 자막이 있는 방송만 나와요. 한국어는 구글 번역)";
-            if (!docStartScript && mode == MODE_EMBED) {
-                msg += "\n번역 자막을 쓰려면 Play 스토어에서 'Android System WebView'를 업데이트해 주세요.";
-            }
-        }
+        if (next != Prefs.CAPTION_OFF) msg += "\n(유튜브 자막이 있는 영상만 나와요. 한국어는 구글 번역)";
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
         updateModeUi();
         showOverlay();
+    }
+
+    // ---------- 자막 연결 상태 ----------
+
+    /** 새 영상/페이지를 열 때 자막 연결 상태를 처음으로 돌립니다. */
+    private void resetCaptionState(boolean startTimers) {
+        capPath = CAP_UNKNOWN;
+        capFrameConnected = false;
+        capReply = null;
+        capTrackCount = -1;
+        capTextSeen = false;
+        nativeApplied = false;
+        capNone = false;
+        handler.removeCallbacks(capDecideRunnable);
+        handler.removeCallbacks(capNoneRunnable);
+        handler.removeCallbacks(capSafetyRunnable);
+        pushCapConfig();
+        if (startTimers) startCaptionTimers();
+    }
+
+    private void startCaptionTimers() {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF) return;
+        handler.removeCallbacks(capDecideRunnable);
+        handler.removeCallbacks(capNoneRunnable);
+        handler.postDelayed(capDecideRunnable, 6_000L);
+        handler.postDelayed(capNoneRunnable, 25_000L);
+    }
+
+    /** 앱 → 자막 스크립트: 지금 설정을 보냅니다. */
+    private void pushCapConfig() {
+        int m = prefs.getCaptionMode();
+        boolean on = m != Prefs.CAPTION_OFF;
+        JSONObject c = new JSONObject();
+        try {
+            c.put("read", on && capPath == CAP_APP);
+            c.put("track", on ? "ja" : "");
+            c.put("tlang", on && capPath == CAP_NATIVE && wantsKorean() ? "ko" : "");
+        } catch (JSONException ignored) {
+        }
+        capConfigJson = c.toString();
+        if (capReply != null) {
+            try {
+                capReply.postMessage(capConfigJson);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** 자막 스크립트 → 앱 */
+    private void handleCapMessage(String json, JavaScriptReplyProxy reply) {
+        if (json == null) return;
+        try {
+            JSONObject o = new JSONObject(json);
+            String type = o.optString("t");
+            if ("hello".equals(type)) {
+                if (reply != null) capReply = reply;
+                capFrameConnected = true;
+                if (capPath != CAP_NATIVE) capPath = CAP_APP;
+                handler.removeCallbacks(capDecideRunnable);
+                pushCapConfig();
+                updateModeUi();
+            } else if ("tracks".equals(type)) {
+                handleTracks(o.optJSONArray("list"));
+            } else if ("cap".equals(type)) {
+                onCaptionText(o.optString("x"));
+            }
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private void handleTracks(JSONArray list) {
+        int n = list == null ? 0 : list.length();
+        boolean first = capTrackCount <= 0 && n > 0;
+        capTrackCount = n;
+        if (n > 0) {
+            capNone = false;
+            handler.removeCallbacks(capNoneRunnable);
+            if (capPath == CAP_NATIVE && !nativeApplied) applyNativeTrackViaOuter();
+            if (first && capPath == CAP_APP && !capTextSeen) {
+                handler.removeCallbacks(capSafetyRunnable);
+                handler.postDelayed(capSafetyRunnable, 45_000L);
+            }
+        }
+        updateModeUi();
+    }
+
+    /** 앱이 자막 글자를 읽을 수 없을 때: 유튜브 자막(한국어는 유튜브 자동 번역)을 그대로 보여 줍니다. */
+    private void switchToNativeCaptions(boolean becauseNoText) {
+        capPath = CAP_NATIVE;
+        nativeApplied = false;
+        clearCaptions();
+        pushCapConfig();
+        applyNativeTrackViaOuter();
+        updateModeUi();
+        if (wantsKorean() || becauseNoText) {
+            showCaptionNotice("유튜브 자막으로 보여 줘요" + (wantsKorean() ? " (한국어는 유튜브 자동 번역)" : ""));
+        }
+    }
+
+    /** 임베드 플레이어 바깥에서 유튜브 API로 자막 트랙을 켭니다. */
+    private void applyNativeTrackViaOuter() {
+        if (mode != MODE_EMBED || prefs.getCaptionMode() == Prefs.CAPTION_OFF) return;
+        if (capTrackCount > 0) nativeApplied = true;
+        webView.evaluateJavascript("try{jtvApplyTrack('ja','" + (wantsKorean() ? "ko" : "") + "');}catch(e){}", null);
+    }
+
+    private String captionStatusSuffix() {
+        if (prefs.getCaptionMode() == Prefs.CAPTION_OFF) return "";
+        if (capNone) return " · 자막 없음";
+        if (capPath == CAP_NATIVE) return " · 유튜브 자막";
+        if (capTrackCount < 0) return " · 확인 중";
+        return "";
     }
 
     // ---------- 자막 (일본어 + 구글 번역 한국어) ----------
@@ -627,10 +895,15 @@ public class PlayerActivity extends AppCompatActivity {
             clearCaptions();
             return;
         }
+        if (capPath == CAP_NATIVE && mode != MODE_STREAM) return;
         String t = text == null ? "" : text.replace("\r", "").trim();
         if (t.equals(capText)) return;
         capText = t;
-        if (!t.isEmpty()) capNotice.setVisibility(View.GONE);
+        if (!t.isEmpty()) {
+            capTextSeen = true;
+            handler.removeCallbacks(capSafetyRunnable);
+            capNotice.setVisibility(View.GONE);
+        }
         renderCaptions();
         // 다 나온 줄(마지막 줄 말고)은 바로 번역하고, 마지막 줄은 잠깐 멈췄을 때 번역합니다.
         String[] lines = t.split("\n");
@@ -761,6 +1034,8 @@ public class PlayerActivity extends AppCompatActivity {
         token++;
         mode = MODE_PAGE;
         handler.removeCallbacks(stallRunnable);
+        resetCaptionState(true);
+        paused = false;
         updateModeUi();
         showStatus("불러오는 중…", true, false);
         clearHistoryOnLoad = true;
@@ -842,6 +1117,12 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                setPaused(!isPlaying && !p.getPlayWhenReady());
+                updateModeUi();
+            }
+
+            @Override
             public void onCues(@NonNull CueGroup cueGroup) {
                 StringBuilder sb = new StringBuilder();
                 for (Cue cue : cueGroup.cues) {
@@ -899,8 +1180,15 @@ public class PlayerActivity extends AppCompatActivity {
         btnMenu.setVisibility(mode == MODE_PAGE && !pip ? View.VISIBLE : View.GONE);
         btnCc.setVisibility(mode == MODE_EMBED || mode == MODE_STREAM || (mode == MODE_PAGE && youtube)
                 ? View.VISIBLE : View.GONE);
-        btnCc.setText(captionLabel(prefs.getCaptionMode()));
+        btnCc.setText(captionLabel(prefs.getCaptionMode()) + captionStatusSuffix());
+        boolean live = current == null || current.isLiveSource()
+                || (mode == MODE_STREAM && (player == null || player.isCurrentMediaItemLive()));
         btnAlt.setVisibility(mode == MODE_EMBED && candidates.size() > 1 ? View.VISIBLE : View.GONE);
+        btnAlt.setText(live ? "다른 라이브" : "다음 영상 ▶");
+        boolean playable = mode == MODE_EMBED || mode == MODE_PAGE || mode == MODE_STREAM;
+        vodControls.setVisibility(playable && !live ? View.VISIBLE : View.GONE);
+        swipeHint.setVisibility(playable && !live ? View.GONE : View.VISIBLE);
+        btnPlayPause.setImageResource(paused ? R.drawable.ic_play : R.drawable.ic_pause);
         btnPage.setVisibility(youtube && !candidates.isEmpty() && (mode == MODE_EMBED || mode == MODE_PAGE)
                 ? View.VISIBLE : View.GONE);
         btnPage.setText(mode == MODE_PAGE ? "영상만 보기" : "유튜브 화면으로");
@@ -1038,11 +1326,21 @@ public class PlayerActivity extends AppCompatActivity {
         cm.setAcceptThirdPartyCookies(webView, true);
         webView.setBackgroundColor(Color.BLACK);
         webView.addJavascriptInterface(new Bridge(), "JTV");
+        Set<String> ytOrigins = new HashSet<>(Arrays.asList(
+                "https://www.youtube.com", "https://m.youtube.com", "https://www.youtube-nocookie.com"));
+        // 플레이어 안(임베드 iframe 포함)의 자막 스크립트와 주고받는 통로
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            try {
+                WebViewCompat.addWebMessageListener(webView, "jtvCap", ytOrigins,
+                        (view, message, sourceOrigin, isMainFrame, replyProxy) ->
+                                handleCapMessage(message.getData(), replyProxy));
+            } catch (Exception ignored) {
+            }
+        }
         // 유튜브 플레이어(임베드 iframe 포함) 안에 자막 읽기 스크립트를 넣습니다.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             try {
-                WebViewCompat.addDocumentStartJavaScript(webView, CAPTION_JS, new HashSet<>(Arrays.asList(
-                        "https://www.youtube.com", "https://m.youtube.com", "https://www.youtube-nocookie.com")));
+                WebViewCompat.addDocumentStartJavaScript(webView, CAPTION_JS, ytOrigins);
                 docStartScript = true;
             } catch (Exception ignored) {
                 docStartScript = false;

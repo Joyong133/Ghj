@@ -10,6 +10,10 @@ public final class Channel {
     public static final int KIND_WEB = 0;
     public static final int KIND_STREAM = 1;
 
+    public static final String CAT_NEWS = "news";
+    public static final String CAT_DRAMA = "drama";
+    public static final String CAT_CUSTOM = "custom";
+
     public final String id;
     public final String name;
     public final String description;
@@ -17,8 +21,11 @@ public final class Channel {
     public final int kind;
     public final String icon;
     public final boolean builtIn;
+    /** 뉴스 / 드라마 / 내 채널 */
+    public final String category;
 
-    public Channel(String id, String name, String description, String url, int kind, String icon, boolean builtIn) {
+    public Channel(String id, String name, String description, String url, int kind, String icon, boolean builtIn,
+                   String category) {
         this.id = id;
         this.name = name;
         this.description = description == null ? "" : description;
@@ -26,10 +33,17 @@ public final class Channel {
         this.kind = kind;
         this.icon = (icon == null || icon.isEmpty()) ? "📺" : icon;
         this.builtIn = builtIn;
+        this.category = (category == null || category.isEmpty()) ? (builtIn ? CAT_NEWS : CAT_CUSTOM) : category;
     }
 
     public boolean isStream() {
         return kind == KIND_STREAM;
+    }
+
+    /** 생방송 채널인지 (아니면 영상을 차례로 틀어 주는 드라마/동영상 채널) */
+    public boolean isLiveSource() {
+        String u = url.toLowerCase(Locale.ROOT);
+        return u.matches(".*/live/?([?#].*)?$") || u.contains("egjaaq");
     }
 
     public String typeLabel() {
@@ -48,6 +62,7 @@ public final class Channel {
         o.put("kind", isStream() ? "stream" : "web");
         o.put("icon", icon);
         o.put("builtIn", builtIn);
+        o.put("category", category);
         return o;
     }
 
@@ -59,6 +74,7 @@ public final class Channel {
                 o.optString("url"),
                 "stream".equals(o.optString("kind")) ? KIND_STREAM : KIND_WEB,
                 o.optString("icon", "📺"),
-                o.optBoolean("builtIn"));
+                o.optBoolean("builtIn"),
+                o.optString("category", ""));
     }
 }
