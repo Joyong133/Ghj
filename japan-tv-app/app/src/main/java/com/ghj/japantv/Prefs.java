@@ -44,4 +44,22 @@ public final class Prefs {
     public void setLastChannelId(String id) {
         sp.edit().putString("last_channel", id).apply();
     }
+
+    /** 일본어 자막 켜기 (임베드 플레이어) */
+    public boolean isCaptions() {
+        return sp.getBoolean("captions", false);
+    }
+
+    public void setCaptions(boolean v) {
+        sp.edit().putBoolean("captions", v).apply();
+    }
+
+    /** 재생 화면을 가로로 고정 */
+    public boolean isLandscapeLock() {
+        return sp.getBoolean("landscape_lock", true);
+    }
+
+    public void setLandscapeLock(boolean v) {
+        sp.edit().putBoolean("landscape_lock", v).apply();
+    }
 }
