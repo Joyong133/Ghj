@@ -145,6 +145,8 @@ void pose(double s, double lateral, double& x, double& z, double& tx, double& tz
     z = a.z + (b.z - a.z) * t - tx * lateral;
 }
 
+void stationFrame(int i, double& ox, double& oz, double& tx, double& tz) { pose(gS[i], 0, ox, oz, tx, tz); }
+
 int stationAt(double s) {
     for (int i = 0; i < N; i++)
         if (fabs(s - gS[i]) < STATION_HALF) return i;

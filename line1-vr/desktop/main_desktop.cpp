@@ -43,9 +43,14 @@ int main(int argc, char** argv) {
     int station = 0, car = 0, w = 1280, h = 960, steps = 0;
     double extra = 0;
     float x = 0, z = -8.6f, yaw = 0, pitch = 0, headYaw = 0, eyeH = 1.6f, doors = -1, fov = 95;
+    float along = 1e9f, edge = 2.5f;
+    int other = -1;
+    std::string walk;
+    double otherExtra = 0;
     for (int i = 2; i + 1 < argc; i += 2) {
         std::string k = argv[i];
         double v = atof(argv[i + 1]);
+        if (k == "--walk") walk = argv[i + 1];  // "mx,my,frames;mx,my,frames": stick input before the capture
         if (k == "--station") station = (int)v;
         else if (k == "--extra") extra = v;
         else if (k == "--car") car = (int)v;
@@ -58,6 +63,10 @@ int main(int argc, char** argv) {
         else if (k == "--doors") doors = (float)v;
         else if (k == "--fov") fov = (float)v;
         else if (k == "--steps") steps = (int)v;   // simulated 1/72 s frames before the capture
+        else if (k == "--along") along = (float)v;   // stand on the platform, metres from its centre
+        else if (k == "--edge") edge = (float)v;     // ... and this far from the platform edge
+        else if (k == "--other") other = (int)v;     // place the train on the other track at this station
+        else if (k == "--otherextra") otherExtra = v;
         else if (k == "--w") w = (int)v;
         else if (k == "--h") h = (int)v;
     }
@@ -104,6 +113,8 @@ int main(int argc, char** argv) {
     in.headFwdX = -sinf(headYaw);
     in.headFwdZ = -cosf(headYaw);
     if (argc > 2) app.debugPlace(station, extra, car, x, z, yaw);
+    if (along < 1e8f) app.debugPlatform(along, edge, yaw);
+    if (other >= 0) app.debugOther(other, otherExtra);
     for (int i = 0; i < steps; i++) {
         app.update(1.f / 72.f, in);
         if (i % (72 * 20) == 0 || i == steps - 1) {
@@ -119,6 +130,29 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 80; i++) app.update(1.f / 72.f, in);
     }
 
+    // Scripted walking, to test stepping out of the train and back.
+    for (size_t pos = 0; pos < walk.size();) {
+        size_t end = walk.find(';', pos);
+        if (end == std::string::npos) end = walk.size();
+        float mx = 0, my = 0;
+        int frames = 0;
+        if (sscanf(walk.substr(pos, end - pos).c_str(), "%f,%f,%d", &mx, &my, &frames) == 3) {
+            Input wi = in;
+            wi.moveX = mx;
+            wi.moveY = my;
+            for (int i = 0; i < frames; i++) app.update(1.f / 72.f, wi);
+            char st[256];
+            app.debugStatus(st, sizeof(st));
+            printf("walk %.1f,%.1f x%d -> %s\n", mx, my, frames, st);
+        }
+        pos = end + 1;
+    }
+
+    {
+        char st[256];
+        app.debugStatus(st, sizeof(st));
+        printf("%s\n", st);
+    }
     // Head pose in the play space: standing at the origin.
     M4 head = m4Mul(m4Translate(0, eyeH, 0), m4Mul(m4RotY(headYaw), m4RotX(pitch)));
     float t = tanf(fov * 0.5f * (float)M_PI / 180), a = (float)w / h;

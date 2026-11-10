@@ -23,7 +23,17 @@ const double CUT_END = PORTAL + 160.0;
 const double S_MIN = -560.0;        // modelled range of the route
 extern double S_MAX;
 
+// Station cross section, shared by the scenery and the walking logic.
+const double PLAT_Y = 1.10;        // platform surface above the rail
+const double PLAT_EDGE = 3.72;     // platform edge, from the route centreline
+const double PSD_LAT = 3.95;       // platform screen doors
+const double BACK_UNDERGROUND = 9.2;  // back wall of an underground platform
+const double BACK_OPEN = 8.7;         // back wall of an open-air platform
+
 void build();
+// Straight frame of a station: origin on the centreline, unit tangent.
+void stationFrame(int i, double& ox, double& oz, double& tx, double& tz);
+inline bool underground(double s) { return s < PORTAL; }
 double stationS(int i);  // metres from Seoul Station
 double total();
 // Position (x east, z south) and unit tangent at distance s, shifted sideways
