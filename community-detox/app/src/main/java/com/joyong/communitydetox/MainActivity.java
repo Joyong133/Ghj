@@ -416,8 +416,13 @@ public class MainActivity extends Activity {
                 + "   퀘스트 브라우저를 포함한 모든 앱에서 커뮤니티 주소가 열리지 않아요. 헤드셋을 껐다 켜도 자동으로 다시 켜져요.\n\n"
                 + "2) 허용 창이 안 뜨면: 헤드셋을 PC(SideQuest) 또는 휴대폰(Bugjaeger 앱)에 연결해 아래 명령을 한 번 실행하고 이 앱을 다시 여세요."));
         addCommand(c, "adb shell appops set " + pkg + " ACTIVATE_VPN allow");
-        c.addView(ui.body("3) VR 앱 차단·삭제 방지·브라우저 아예 막기는 '접근성' 권한이 있어야 해요 (선택). 쓰려면 아래 명령도 실행하세요."),
+        c.addView(ui.body("3) VR 앱 차단·삭제 방지·브라우저 아예 막기는 '접근성' 권한이 있어야 해요 (선택). "
+                + "먼저 아래 버튼으로 헤드셋 안에서 켜 보고, 안 열리거나 목록에 없으면 그 아래 명령을 실행하세요."),
                 Ui.wrap(ui.dp(10)));
+        LinearLayout open = ui.row();
+        open.addView(ui.button("접근성 설정 열기", true, v -> openAccessibilitySettings()), Ui.weight(0));
+        open.addView(ui.button("앱 정보 열기", false, v -> openAppInfo()), Ui.weight(ui.dp(8)));
+        c.addView(open, Ui.fill(ui.dp(8)));
         addCommand(c, "adb shell settings put secure enabled_accessibility_services "
                 + pkg + "/com.joyong.communitydetox.DetoxAccessibilityService\n"
                 + "adb shell settings put secure accessibility_enabled 1\n"
@@ -449,6 +454,47 @@ public class MainActivity extends Activity {
         r.addView(sw);
         bc.addView(r, Ui.fill(ui.dp(10)));
         content.addView(bc);
+    }
+
+    /**
+     * Meta Quest hides most Android settings screens, so try several ways in turn:
+     * this app's own accessibility switch → the accessibility list → the Android settings activity.
+     */
+    private void openAccessibilitySettings() {
+        android.content.ComponentName service = new android.content.ComponentName(this, DetoxAccessibilityService.class);
+        if (tryOpen(new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                        .putExtra(Intent.EXTRA_COMPONENT_NAME, service.flattenToString()))
+                || tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                || tryOpen(new Intent().setClassName("com.android.settings",
+                        "com.android.settings.Settings$AccessibilitySettingsActivity"))) {
+            Toast.makeText(this, "'Digital Detox 차단'을 켜 주세요", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Toast.makeText(this, "이 헤드셋에서는 접근성 설정을 열 수 없어요. 아래 명령을 써 주세요.", Toast.LENGTH_LONG).show();
+    }
+
+    /** This app's info page (permissions, storage, ...), with fallbacks for Meta Quest. */
+    private void openAppInfo() {
+        Uri pkg = Uri.parse("package:" + getPackageName());
+        if (tryOpen(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
+                || tryOpen(new Intent().setClassName("com.android.settings",
+                        "com.android.settings.Settings$AppInfoDashboardActivity").setData(pkg))
+                || tryOpen(new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
+                || tryOpen(new Intent(Settings.ACTION_SETTINGS))) {
+            return;
+        }
+        Toast.makeText(this, "이 헤드셋에서는 앱 정보를 열 수 없어요", Toast.LENGTH_LONG).show();
+    }
+
+    /** Starts the screen if something on this device can show it. */
+    private boolean tryOpen(Intent i) {
+        try {
+            if (i.resolveActivity(getPackageManager()) == null) return false;
+            startActivity(i);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private void addCommand(LinearLayout card, String cmd) {

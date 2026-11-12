@@ -60,7 +60,7 @@ VR 앱은 **VPN(DNS) 방식**으로 막습니다. 휴대폰 앱과는 다른 별
 3. 헤드셋 앱 목록 → **출처를 알 수 없음** 에서 **커뮤니티 디톡스 VR** 을 열고 **VPN 연결 허용** 을 누르면 끝입니다.
    퀘스트 브라우저를 포함한 모든 앱에서 커뮤니티 주소가 열리지 않고, 헤드셋을 다시 켜도 자동으로 다시 켜집니다.
 4. 허용 창이 뜨지 않으면 한 번만 실행하세요: `adb shell appops set com.joyong.communitydetox.vr ACTIVATE_VPN allow`
-5. (선택) VR 앱 차단 · 삭제 방지 · 퀘스트 브라우저 아예 막기는 접근성 권한이 필요합니다:
+5. (선택) VR 앱 차단 · 삭제 방지 · 퀘스트 브라우저 아예 막기는 접근성 권한이 필요합니다. 앱의 **접근성 설정 열기 / 앱 정보 열기** 버튼으로 헤드셋 안에서 먼저 켜 보고, 안 열리면 PC에서 한 번 실행하세요:
    ```
    adb shell settings put secure enabled_accessibility_services com.joyong.communitydetox.vr/com.joyong.communitydetox.DetoxAccessibilityService
    adb shell settings put secure accessibility_enabled 1
