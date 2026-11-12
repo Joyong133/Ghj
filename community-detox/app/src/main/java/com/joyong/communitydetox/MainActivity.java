@@ -152,15 +152,12 @@ public class MainActivity extends Activity {
         c.addView(ui.title("먼저 접근성 권한을 켜 주세요"));
         c.addView(ui.body("설정 → 접근성 → 설치된 앱(설치된 서비스) → ‘Digital Detox 차단’을 켜면 차단이 시작돼요.\n\n"
                 + "지금 열린 앱 이름과 브라우저 주소창만 기기 안에서 확인하며, 아무것도 저장하거나 외부로 보내지 않아요."));
-        c.addView(ui.button("접근성 설정 열기", true,
-                v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))), Ui.fill(ui.dp(12)));
+        c.addView(ui.button("접근성 설정 열기", true, v -> openAccessibilitySettings()), Ui.fill(ui.dp(12)));
         TextView hint = ui.body("‘제한된 설정’이라며 켜지지 않나요? (Android 13 이상)\n"
                 + "아래 버튼 → 오른쪽 위 ⋮ 메뉴 → ‘제한된 설정 허용’을 누른 뒤 다시 켜 보세요.");
         hint.setTextSize(13);
         c.addView(hint, Ui.wrap(ui.dp(14)));
-        c.addView(ui.button("앱 정보 열기", false, v -> startActivity(
-                new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())))),
-                Ui.fill(ui.dp(8)));
+        c.addView(ui.button("앱 정보 열기", false, v -> openAppInfo()), Ui.fill(ui.dp(8)));
         content.addView(c);
     }
 
@@ -458,32 +455,41 @@ public class MainActivity extends Activity {
         content.addView(bc);
     }
 
+    private static final String ANDROID_SETTINGS = "com.android.settings";
+
     /**
-     * Meta Quest hides most Android settings screens, so try several ways in turn — the same order that
-     * works for Quest App Hider: the accessibility list → Settings' accessibility screen → Settings home.
+     * Opens Android's own Settings app (com.android.settings), which Meta Quest hides from its menus but
+     * still contains — the same way Quest App Hider does. Tries, and shows the first that opens:
+     *  1. Settings' accessibility screen, by name
+     *  2. the "accessibility settings" request, sent only to Android Settings
+     *  3. the same request with no target (the device picks; may be Quest's own settings)
+     *  4. Android Settings' first screen
+     * For 3 and 4 the user has to find '접근성' themselves, so we say how.
      */
     private void openAccessibilitySettings() {
-        if (tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                || tryOpen(new Intent().setClassName("com.android.settings",
-                        "com.android.settings.Settings$AccessibilitySettingsActivity"))
-                || tryOpen(new Intent().setClassName("com.android.settings", "com.android.settings.Settings"))) {
-            Toast.makeText(this, "'설치된 앱/서비스' → 'Digital Detox 차단'을 켜 주세요", Toast.LENGTH_LONG).show();
-            return;
+        String service = getString(R.string.service_label);
+        if (tryOpen(new Intent().setClassName(ANDROID_SETTINGS, ANDROID_SETTINGS + ".Settings$AccessibilitySettingsActivity"))
+                || tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).setPackage(ANDROID_SETTINGS))) {
+            Toast.makeText(this, "'설치된 앱/서비스' → '" + service + "'을 켜 주세요", Toast.LENGTH_LONG).show();
+        } else if (tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                || tryOpen(new Intent().setClassName(ANDROID_SETTINGS, ANDROID_SETTINGS + ".Settings"))) {
+            Toast.makeText(this, "안드로이드 설정에서 '접근성' → '" + service + "'을 찾아 켜세요", Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "이 기기는 접근성 설정을 열 수 없어요. 아래 명령을 써 주세요.", Toast.LENGTH_LONG).show();
         }
-        Toast.makeText(this, "이 기기는 접근성 설정을 열 수 없어요. 아래 명령을 써 주세요.", Toast.LENGTH_LONG).show();
     }
 
-    /** This app's info page — where "제한된 설정 허용" is (⋮ menu), with fallbacks for Meta Quest. */
+    /** This app's info page in Android Settings — where "제한된 설정 허용" is (top-right ⋮ menu). */
     private void openAppInfo() {
         Uri pkg = Uri.parse("package:" + getPackageName());
-        if (tryOpen(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
-                || tryOpen(new Intent().setClassName("com.android.settings",
-                        "com.android.settings.Settings$AppInfoDashboardActivity").setData(pkg))
-                || tryOpen(new Intent(Settings.ACTION_SETTINGS))
-                || tryOpen(new Intent().setClassName("com.android.settings", "com.android.settings.Settings"))) {
-            return;
+        if (tryOpen(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).setPackage(ANDROID_SETTINGS))
+                || tryOpen(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))) {
+            Toast.makeText(this, "오른쪽 위 ⋮ → '제한된 설정 허용'을 누른 뒤 접근성을 다시 켜 주세요", Toast.LENGTH_LONG).show();
+        } else if (tryOpen(new Intent().setClassName(ANDROID_SETTINGS, ANDROID_SETTINGS + ".Settings"))) {
+            Toast.makeText(this, "'앱' → '" + getString(R.string.app_name) + "' → ⋮ → '제한된 설정 허용'", Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "설정 화면을 열 수 없어요", Toast.LENGTH_LONG).show();
         }
-        Toast.makeText(this, "설정 화면을 열 수 없어요", Toast.LENGTH_LONG).show();
     }
 
     /** Just try to open it: on Quest, "does this screen exist?" checks can say no for screens that open fine. */
