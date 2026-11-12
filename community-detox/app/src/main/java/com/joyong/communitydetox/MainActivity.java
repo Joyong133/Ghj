@@ -419,17 +419,19 @@ public class MainActivity extends Activity {
         c.addView(ui.body("3) VR 앱 차단·삭제 방지·브라우저 아예 막기는 '접근성' 권한이 있어야 해요 (선택). "
                 + "먼저 아래 버튼으로 헤드셋 안에서 켜 보고, 안 열리거나 목록에 없으면 그 아래 명령을 실행하세요."),
                 Ui.wrap(ui.dp(10)));
+        boolean serviceOn = isServiceEnabled();
+        c.addView(ui.text(serviceOn ? "✓ 접근성(차단 서비스) 켜짐"
+                : "⚠ 접근성(차단 서비스)이 꺼져 있어요", 14, serviceOn ? ui.accent : ui.danger, true), Ui.wrap(ui.dp(8)));
         LinearLayout open = ui.row();
-        open.addView(ui.button("접근성 설정 열기", true, v -> openAccessibilitySettings()), Ui.weight(0));
-        open.addView(ui.button("앱 정보 열기", false, v -> openAppInfo()), Ui.weight(ui.dp(8)));
+        open.addView(ui.button("① 접근성 설정 열기", true, v -> openAccessibilitySettings()), Ui.weight(0));
+        open.addView(ui.button("앱 정보 (제한된 설정 허용)", false, v -> openAppInfo()), Ui.weight(ui.dp(8)));
         c.addView(open, Ui.fill(ui.dp(8)));
+        c.addView(ui.body("① 버튼 → '설치된 앱/서비스' → 'Digital Detox 차단' 켜기. "
+                + "회색으로 막혀 있으면 '앱 정보' → 오른쪽 위 ⋮ → '제한된 설정 허용' 후 다시 켜세요."), Ui.wrap(ui.dp(6)));
         addCommand(c, "adb shell settings put secure enabled_accessibility_services "
                 + pkg + "/com.joyong.communitydetox.DetoxAccessibilityService\n"
                 + "adb shell settings put secure accessibility_enabled 1\n"
                 + "adb shell dpm set-active-admin " + pkg + "/com.joyong.communitydetox.DetoxAdminReceiver");
-        if (isServiceEnabled()) {
-            c.addView(ui.text("✅ 접근성 권한도 켜져 있어요", 13, ui.accent, true), Ui.wrap(ui.dp(6)));
-        }
         content.addView(c);
 
         // Needs accessibility: the browser itself can't be opened.
@@ -457,39 +459,36 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Meta Quest hides most Android settings screens, so try several ways in turn:
-     * this app's own accessibility switch → the accessibility list → the Android settings activity.
+     * Meta Quest hides most Android settings screens, so try several ways in turn — the same order that
+     * works for Quest App Hider: the accessibility list → Settings' accessibility screen → Settings home.
      */
     private void openAccessibilitySettings() {
-        android.content.ComponentName service = new android.content.ComponentName(this, DetoxAccessibilityService.class);
-        if (tryOpen(new Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                        .putExtra(Intent.EXTRA_COMPONENT_NAME, service.flattenToString()))
-                || tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        if (tryOpen(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 || tryOpen(new Intent().setClassName("com.android.settings",
-                        "com.android.settings.Settings$AccessibilitySettingsActivity"))) {
-            Toast.makeText(this, "'Digital Detox 차단'을 켜 주세요", Toast.LENGTH_LONG).show();
+                        "com.android.settings.Settings$AccessibilitySettingsActivity"))
+                || tryOpen(new Intent().setClassName("com.android.settings", "com.android.settings.Settings"))) {
+            Toast.makeText(this, "'설치된 앱/서비스' → 'Digital Detox 차단'을 켜 주세요", Toast.LENGTH_LONG).show();
             return;
         }
-        Toast.makeText(this, "이 헤드셋에서는 접근성 설정을 열 수 없어요. 아래 명령을 써 주세요.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "이 기기는 접근성 설정을 열 수 없어요. 아래 명령을 써 주세요.", Toast.LENGTH_LONG).show();
     }
 
-    /** This app's info page (permissions, storage, ...), with fallbacks for Meta Quest. */
+    /** This app's info page — where "제한된 설정 허용" is (⋮ menu), with fallbacks for Meta Quest. */
     private void openAppInfo() {
         Uri pkg = Uri.parse("package:" + getPackageName());
         if (tryOpen(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
                 || tryOpen(new Intent().setClassName("com.android.settings",
                         "com.android.settings.Settings$AppInfoDashboardActivity").setData(pkg))
-                || tryOpen(new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
-                || tryOpen(new Intent(Settings.ACTION_SETTINGS))) {
+                || tryOpen(new Intent(Settings.ACTION_SETTINGS))
+                || tryOpen(new Intent().setClassName("com.android.settings", "com.android.settings.Settings"))) {
             return;
         }
-        Toast.makeText(this, "이 헤드셋에서는 앱 정보를 열 수 없어요", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "설정 화면을 열 수 없어요", Toast.LENGTH_LONG).show();
     }
 
-    /** Starts the screen if something on this device can show it. */
+    /** Just try to open it: on Quest, "does this screen exist?" checks can say no for screens that open fine. */
     private boolean tryOpen(Intent i) {
         try {
-            if (i.resolveActivity(getPackageManager()) == null) return false;
             startActivity(i);
             return true;
         } catch (RuntimeException e) {

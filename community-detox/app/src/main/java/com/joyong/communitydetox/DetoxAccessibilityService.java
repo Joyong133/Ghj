@@ -105,7 +105,13 @@ public class DetoxAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null || event.getPackageName() == null) return;
+        if (event == null) return;
+        // Meta Quest shows several 2D apps side by side; a panel opening only reports "windows changed".
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            checkAllWindows();
+            return;
+        }
+        if (event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
         if (pkg.equals(getPackageName()) || pkg.equals("com.android.systemui")) return;
         keepVpnAlive();
@@ -118,6 +124,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
                 && isSystemGuardPackage(pkg) && guardVpnPage(event, pkg)) return;
 
         if (!Prefs.isBlockingActive(this)) return;
+        if (QUEST_SYSTEM.contains(pkg)) return; // Quest home / system panels are never blocked
 
         Prefs.Rules r = rules;
 
@@ -474,6 +481,45 @@ public class DetoxAccessibilityService extends AccessibilityService {
     }
 
     /** Settings screens and the package installer, where the app could be removed or turned off. */
+    /** Meta Quest's own home, shell and lock screen. */
+    private static final Set<String> QUEST_SYSTEM = new HashSet<>(Arrays.asList(
+            "com.oculus.vrshell", "com.oculus.shellenv", "com.oculus.systemux", "com.oculus.systemdriver",
+            "com.oculus.os.vrlockscreen"));
+
+    private long lastWindowsCheck;
+
+    /** Looks at every app window on screen (Quest panels side by side), not only the focused one. */
+    private void checkAllWindows() {
+        if (!Prefs.isBlockingActive(this)) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - lastWindowsCheck < CHECK_INTERVAL_MS) return;
+        lastWindowsCheck = now;
+        Prefs.Rules r = rules;
+        boolean browsersBlocked = Prefs.isBrowserBlockAll(this);
+        List<android.view.accessibility.AccessibilityWindowInfo> windows;
+        try {
+            windows = getWindows();
+        } catch (RuntimeException e) {
+            return;
+        }
+        for (android.view.accessibility.AccessibilityWindowInfo w : windows) {
+            if (w.getType() != android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            AccessibilityNodeInfo root = w.getRoot();
+            if (root == null || root.getPackageName() == null) continue;
+            String p = root.getPackageName().toString();
+            if (p.equals(getPackageName()) || QUEST_SYSTEM.contains(p)) continue;
+            if (r.packages.containsKey(p)) {
+                String name = r.packages.get(p);
+                block("app:" + p, name != null ? name : appLabel(p), false);
+                return;
+            }
+            if (browsersBlocked && isBrowser(p)) {
+                block("browser:" + p, "브라우저", false);
+                return;
+            }
+        }
+    }
+
     private static boolean isSystemGuardPackage(String pkg) {
         return pkg.equals("com.android.settings")
                 || pkg.contains("settings")             // e.g. com.samsung.android.settings, settings search
@@ -481,7 +527,9 @@ public class DetoxAccessibilityService extends AccessibilityService {
                 || pkg.equals("com.samsung.accessibility")
                 || pkg.contains("securitycenter")       // Xiaomi app management
                 || pkg.contains("safecenter")           // OPPO / OnePlus app management
-                || pkg.contains("vpndialogs");          // the VPN "disconnect?" popup
+                || pkg.contains("vpndialogs")           // the VPN "disconnect?" popup
+                || pkg.equals("com.oculus.systemux")    // Meta Quest settings panels
+                || pkg.equals("com.oculus.vrshell");
     }
 
     private static final String[] UNINSTALL_WORDS = {"삭제", "제거", "uninstall", "Uninstall", "UNINSTALL"};
