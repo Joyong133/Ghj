@@ -42,12 +42,13 @@ jobs:
           KEY_PASS: ${{ secrets.DETOX_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
+            # Only DETOX_KEYSTORE_BASE64 is required; the keystore file itself is the secret.
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/detox.jks"
             {
               echo "DETOX_KEYSTORE_PATH=$RUNNER_TEMP/detox.jks"
-              echo "DETOX_KEYSTORE_PASSWORD=$KS_PASS"
-              echo "DETOX_KEY_ALIAS=$KEY_ALIAS"
-              echo "DETOX_KEY_PASSWORD=$KEY_PASS"
+              echo "DETOX_KEYSTORE_PASSWORD=${KS_PASS:-detox-signing}"
+              echo "DETOX_KEY_ALIAS=${KEY_ALIAS:-detox}"
+              echo "DETOX_KEY_PASSWORD=${KEY_PASS:-detox-signing}"
             } >> "$GITHUB_ENV"
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi

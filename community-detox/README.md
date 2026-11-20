@@ -109,9 +109,8 @@ cd community-detox
 ```
 
 - 최소 Android 8.0 (API 26), Java 17, Android Gradle Plugin 8.7
-- 업데이트가 덮어 설치되려면 모든 빌드가 같은 키로 서명되어야 합니다. GitHub Actions는 처음 빌드할 때 서명 키를 만들어
-  Actions 캐시에 보관하고 이후 빌드에서 계속 씁니다. (캐시는 7일 동안 빌드가 없으면 지워질 수 있습니다.)
-  영구적으로 고정하려면 저장소 Secrets에 `DETOX_KEYSTORE_BASE64`, `DETOX_KEYSTORE_PASSWORD`, `DETOX_KEY_ALIAS`, `DETOX_KEY_PASSWORD` 를 넣으세요.
+- 업데이트가 덮어 설치되려면 모든 빌드가 같은 키로 서명되어야 합니다. **저장소 Secrets에 `DETOX_KEYSTORE_BASE64` 하나만 넣어 두면** 그 키로 영구히 서명합니다 (비밀번호·별칭은 따로 넣지 않으면 `detox-signing` / `detox`).
+  Secret이 없으면 첫 빌드 때 만든 키를 Actions 캐시에 보관하는데, 캐시는 7일 동안 빌드가 없으면 지워져 키가 바뀔 수 있습니다.
 
 ## 구조
 
