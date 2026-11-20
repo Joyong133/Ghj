@@ -56,14 +56,16 @@ public class MainActivity extends Activity {
         LinearLayout h = ui.column();
         h.setPadding(ui.dp(4), ui.dp(8), ui.dp(4), ui.dp(16));
         h.addView(ui.text("🔒 커뮤니티 앱 잠금", 26, ui.text, true));
-        h.addView(ui.body("누가 만든 앱이든, 이름이 뭐든 커뮤니티 앱이면 잠가요."), Ui.wrap(ui.dp(4)));
+        h.addView(ui.body("누가 만든 앱이든, 앱의 웹사이트나 이름이 커뮤니티와 맞으면 잠가요."), Ui.wrap(ui.dp(4)));
         content.addView(h);
 
         accessibilityCard();
         lockedCard();
         vpnCard();
 
-        TextView t = ui.body("ℹ️ 이름으로 찾기: 앱 이름이나 패키지에 커뮤니티 이름·별명(디시, 펨코, 에타, reddit …)이 들어 있으면 잠가요. "
+        TextView t = ui.body("ℹ️ 웹사이트로 찾기: 커뮤니티 웹사이트 링크(예: reddit.com, gall.dcinside.com)를 여는 앱이면 잠가요 "
+                + "(모든 사이트를 여는 브라우저는 빼요).\n"
+                + "이름으로 찾기: 앱 이름이나 패키지에 커뮤니티 이름·별명(디시, 펨코, 에타, reddit …)이 들어 있으면 잠가요. "
                 + "짧은 영어 단어는 낱말 단위로만 비교해요 (client, inventory 같은 이름은 안 걸려요).\n"
                 + "브라우저·메신저·시스템 앱과 Digital Detox는 잠그지 않아요. 어떤 정보도 외부로 보내지 않아요.");
         t.setTextSize(12);
@@ -143,7 +145,7 @@ public class MainActivity extends Activity {
         LinearLayout c = ui.card();
         c.addView(ui.title("🔒 잠긴 앱 " + locked.size() + "개"));
         if (locked.isEmpty()) {
-            c.addView(ui.body("아직 잠긴 앱이 없어요. 커뮤니티 이름이 들어간 앱이 설치되거나, "
+            c.addView(ui.body("아직 잠긴 앱이 없어요. 커뮤니티 웹사이트를 열거나 커뮤니티 이름이 들어간 앱이 설치되거나, "
                     + "'접속으로 찾기'를 켠 뒤 커뮤니티에 접속하는 앱이 있으면 여기에 나와요."));
         }
         List<String> pkgs = new ArrayList<>(locked.keySet());
@@ -156,7 +158,7 @@ public class MainActivity extends Activity {
             row.setPadding(ui.dp(12), ui.dp(6), ui.dp(6), ui.dp(6));
             LinearLayout texts = ui.column();
             texts.addView(ui.text(label, 15, ui.text, true));
-            texts.addView(ui.text((l.byConnection ? l.community + " 접속" : "이름에 " + l.community) + " · " + p, 12, ui.sub, false));
+            texts.addView(ui.text(l.reason() + " · " + p, 12, ui.sub, false));
             row.addView(texts, Ui.weight(0));
             Button x = ui.button("풀기", false, v -> {
                 Store.unlock(this, p);

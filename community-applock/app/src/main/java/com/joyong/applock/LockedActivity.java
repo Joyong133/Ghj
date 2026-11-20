@@ -40,9 +40,7 @@ public class LockedActivity extends Activity {
         TextView title = ui.text(Ui.topic(label) + " 잠겨 있어요", 22, ui.text, true);
         title.setGravity(Gravity.CENTER);
         col.addView(title, Ui.wrap(ui.dp(12)));
-        String why = info == null ? "커뮤니티 앱이라 잠갔어요."
-                : info.byConnection ? info.community + "에 접속하려 해서 잠갔어요."
-                : "이름에 " + info.community + "이(가) 들어 있어 잠갔어요.";
+        String why = info == null ? "커뮤니티 앱이라 잠갔어요." : info.reason() + ".";
         TextView msg = ui.text(why + "\n잠금은 ‘커뮤니티 앱 잠금’ 앱에서 풀 수 있어요.", 15, ui.sub, false);
         msg.setGravity(Gravity.CENTER);
         col.addView(msg, Ui.wrap(ui.dp(10)));

@@ -21,15 +21,24 @@ final class Store {
         return c.getApplicationContext().getSharedPreferences("applock", Context.MODE_PRIVATE);
     }
 
+    /** How an app was found. */
+    static final String BY_NAME = "name", BY_SITE = "site", BY_CONNECTION = "net";
+
     /** One locked app. */
     static final class Locked {
-        final String pkg, community;
-        final boolean byConnection;
+        final String pkg, community, way;
 
-        Locked(String pkg, String community, boolean byConnection) {
+        Locked(String pkg, String community, String way) {
             this.pkg = pkg;
             this.community = community;
-            this.byConnection = byConnection;
+            this.way = way;
+        }
+
+        /** "이름에 디시인사이드", "디시인사이드 웹사이트를 여는 앱", "디시인사이드 접속" */
+        String reason() {
+            if (BY_CONNECTION.equals(way)) return community + "에 접속하려 했어요";
+            if (BY_SITE.equals(way)) return community + " 웹사이트를 여는 앱이에요";
+            return "이름에 " + community + "이(가) 들어 있어요";
         }
     }
 
@@ -37,7 +46,7 @@ final class Store {
         Map<String, Locked> m = new HashMap<>();
         for (String e : sp(c).getStringSet(K_LOCKED, Collections.<String>emptySet())) {
             String[] p = e.split("\t");
-            if (p.length >= 3) m.put(p[0], new Locked(p[0], p[1], "net".equals(p[2])));
+            if (p.length >= 3) m.put(p[0], new Locked(p[0], p[1], p[2]));
         }
         return m;
     }
@@ -50,10 +59,10 @@ final class Store {
     }
 
     /** Returns true if newly locked. */
-    static synchronized boolean lock(Context c, String pkg, String community, boolean byConnection) {
+    static synchronized boolean lock(Context c, String pkg, String community, String way) {
         if (isLocked(c, pkg) || allowed(c).contains(pkg)) return false;
         Set<String> s = new HashSet<>(sp(c).getStringSet(K_LOCKED, Collections.<String>emptySet()));
-        s.add(pkg + "\t" + community + "\t" + (byConnection ? "net" : "name"));
+        s.add(pkg + "\t" + community + "\t" + way);
         sp(c).edit().putStringSet(K_LOCKED, s).apply();
         return true;
     }

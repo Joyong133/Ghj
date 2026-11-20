@@ -37,7 +37,8 @@ public class LockService extends AccessibilityService {
         public void onReceive(Context context, Intent intent) {
             if (intent.getData() == null || intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
             String pkg = intent.getData().getSchemeSpecificPart();
-            if (pkg != null) checkName(context, pkg, Kinds.label(context, pkg));
+            if (pkg == null) return;
+            if (!checkName(context, pkg, Kinds.label(context, pkg))) checkSites(context, pkg);
         }
     };
 
@@ -71,13 +72,28 @@ public class LockService extends AccessibilityService {
     public void onInterrupt() {
     }
 
-    /** Looks at every installed app's name. Returns how many were newly locked. Call off the main thread. */
+    /** Looks at every installed app's name and website links. Returns how many were newly locked. Off the main thread. */
     static int scanNames(Context c) {
         int n = 0;
         Set<String> seen = new HashSet<>();
         for (ResolveInfo ri : Kinds.launchable(c)) {
             String p = ri.activityInfo.packageName;
             if (seen.add(p) && checkName(c, p, ri.loadLabel(c.getPackageManager()).toString())) n++;
+        }
+        n += checkSites(c, null);
+        return n;
+    }
+
+    /** Apps that open a community's website links get locked. {@code onlyPkg} null = all apps. */
+    static int checkSites(Context c, String onlyPkg) {
+        int n = 0;
+        for (java.util.Map.Entry<String, String> e : Kinds.siteApps(c, onlyPkg).entrySet()) {
+            String p = e.getKey();
+            if (Store.isLocked(c, p) || !Kinds.mayLock(c, p)) continue;
+            if (Store.lock(c, p, e.getValue(), Store.BY_SITE)) {
+                announce(c, p, e.getValue(), Store.BY_SITE);
+                n++;
+            }
         }
         return n;
     }
@@ -86,19 +102,18 @@ public class LockService extends AccessibilityService {
     static boolean checkName(Context c, String pkg, String label) {
         if (Store.isLocked(c, pkg) || !Kinds.mayLock(c, pkg)) return false;
         String community = Kinds.namedCommunity(label, pkg, Store.keywords());
-        if (community == null || !Store.lock(c, pkg, community, false)) return false;
-        announce(c, pkg, community, false);
+        if (community == null || !Store.lock(c, pkg, community, Store.BY_NAME)) return false;
+        announce(c, pkg, community, Store.BY_NAME);
         return true;
     }
 
     /** Tell the user, and close the app if it's open right now. */
-    static void announce(Context c, String pkg, String community, boolean byConnection) {
+    static void announce(Context c, String pkg, String community, String way) {
         Context app = c.getApplicationContext();
         String label = Kinds.label(app, pkg);
+        String why = new Store.Locked(pkg, community, way).reason();
         new Handler(Looper.getMainLooper()).post(() -> {
-            Toast.makeText(app, byConnection
-                    ? "🔒 ‘" + label + "’ 앱이 " + community + "에 접속하려 해서 잠갔어요"
-                    : "🔒 ‘" + label + "’ 앱은 이름에 " + community + "이(가) 들어 있어 잠갔어요", Toast.LENGTH_LONG).show();
+            Toast.makeText(app, "🔒 ‘" + label + "’ 앱을 잠갔어요 — " + why, Toast.LENGTH_LONG).show();
             LockService s = instance;
             if (s != null) {
                 s.lastWindowsCheck = 0;

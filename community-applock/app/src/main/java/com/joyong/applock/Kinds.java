@@ -87,6 +87,42 @@ final class Kinds {
         return Keywords.match(pkg.replace('.', ' ').replace('_', ' '), keywords);
     }
 
+    /**
+     * Apps that say "I open links to this community's website" (their app links / deep links), e.g. a
+     * Reddit client handling reddit.com or a 디시 viewer handling gall.dcinside.com. Browsers, which
+     * open every site, are left out by also asking who opens an ordinary site.
+     * Returns package -> community. If {@code onlyPkg} is set, only that app is checked.
+     */
+    static Map<String, String> siteApps(Context c, String onlyPkg) {
+        PackageManager pm = c.getPackageManager();
+        Set<String> generic = new HashSet<>();
+        for (String u : new String[]{"https://example.com/", "http://example.com/", "https://www.example.org/"}) {
+            for (ResolveInfo ri : handlers(pm, u, onlyPkg)) generic.add(ri.activityInfo.packageName);
+        }
+        Map<String, String> out = new java.util.HashMap<>();
+        for (Map.Entry<String, String> d : Store.domains().entrySet()) {
+            String host = d.getKey();
+            for (String u : new String[]{"https://" + host + "/", "https://www." + host + "/", "https://m." + host + "/",
+                    "https://gall." + host + "/", "http://" + host + "/"}) {
+                for (ResolveInfo ri : handlers(pm, u, onlyPkg)) {
+                    String p = ri.activityInfo.packageName;
+                    if (!generic.contains(p) && !out.containsKey(p)) out.put(p, d.getValue());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static List<ResolveInfo> handlers(PackageManager pm, String url, String onlyPkg) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE);
+            if (onlyPkg != null) i.setPackage(onlyPkg);
+            return pm.queryIntentActivities(i, PackageManager.MATCH_ALL);
+        } catch (RuntimeException e) {
+            return new ArrayList<>();
+        }
+    }
+
     static List<ResolveInfo> launchable(Context c) {
         PackageManager pm = c.getPackageManager();
         List<ResolveInfo> list = new ArrayList<>(pm.queryIntentActivities(

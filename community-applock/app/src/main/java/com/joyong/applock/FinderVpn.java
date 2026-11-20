@@ -211,8 +211,8 @@ public class FinderVpn extends VpnService implements Runnable {
         if (pkgs == null) return;
         String community = lastCommunity;
         for (String pkg : pkgs) {
-            if (Kinds.mayLock(this, pkg) && Store.lock(this, pkg, community, true)) {
-                LockService.announce(this, pkg, community, true);
+            if (Kinds.mayLock(this, pkg) && Store.lock(this, pkg, community, Store.BY_CONNECTION)) {
+                LockService.announce(this, pkg, community, Store.BY_CONNECTION);
             }
         }
     }
