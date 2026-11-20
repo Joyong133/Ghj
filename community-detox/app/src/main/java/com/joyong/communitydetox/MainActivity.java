@@ -797,12 +797,12 @@ public class MainActivity extends Activity {
         int presets = 0;
         for (Catalog.Entry e : Catalog.ALL) if (on.contains(e.id)) presets++;
         int sites = Prefs.customDomains(this).size();
-        int apps = Prefs.customPackages(this).size();
+        int apps = Prefs.customPackages(this).size() + (Prefs.isAutoAppsOn(this) ? Prefs.autoApps(this).size() : 0);
         LinearLayout c = ui.card();
         c.addView(ui.title("📋 차단 목록"));
         c.addView(ui.text("커뮤니티 " + (presets + sites) + "곳 · 앱 " + apps + "개 차단 중", 20, ui.accent, true));
         c.addView(ui.body("기본 목록 " + Catalog.ALL.size() + "곳 중 " + presets + "곳 켜짐 · 직접 추가한 사이트 " + sites
-                + "곳 · 직접 차단한 앱 " + apps + "개"), Ui.wrap(ui.dp(4)));
+                + "곳 · 직접 차단·자동으로 잠근 앱 " + apps + "개"), Ui.wrap(ui.dp(4)));
         c.addView(ui.button("차단 목록 보기 · 편집", true,
                 v -> startActivity(new Intent(this, BlockListActivity.class))), Ui.fill(ui.dp(12)));
         content.addView(c);

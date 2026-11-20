@@ -143,6 +143,55 @@ final class Prefs {
         sp(c).edit().putBoolean(K_VPN_GUARD, on).apply();
     }
 
+    // ---- community apps found automatically (made by anyone, any name) ----
+
+    private static final String K_AUTO_ON = "auto_apps_on";
+    private static final String K_AUTO_APPS = "auto_apps";        // entries "package\tcommunity"
+    private static final String K_AUTO_ALLOWED = "auto_allowed";  // packages the user unlocked
+
+    /** Lock apps that reach a blocked community (VPN) or are named after one, whoever made them. */
+    static boolean isAutoAppsOn(Context c) {
+        return sp(c).getBoolean(K_AUTO_ON, true);
+    }
+
+    static void setAutoAppsOn(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_AUTO_ON, on).apply();
+    }
+
+    /** package -> community it was caught with. */
+    static Map<String, String> autoApps(Context c) {
+        Map<String, String> m = new HashMap<>();
+        for (String e : sp(c).getStringSet(K_AUTO_APPS, Collections.<String>emptySet())) {
+            int tab = e.indexOf('\t');
+            if (tab > 0) m.put(e.substring(0, tab), e.substring(tab + 1));
+        }
+        return m;
+    }
+
+    /** Returns true if the app was newly added. */
+    static synchronized boolean addAutoApp(Context c, String pkg, String community) {
+        if (autoApps(c).containsKey(pkg) || autoAllowed(c).contains(pkg)) return false;
+        Set<String> s = new HashSet<>(sp(c).getStringSet(K_AUTO_APPS, Collections.<String>emptySet()));
+        s.add(pkg + "\t" + community);
+        sp(c).edit().putStringSet(K_AUTO_APPS, s).apply();
+        return true;
+    }
+
+    /** Unlock: removes it and remembers not to lock it automatically again. */
+    static synchronized void allowAutoApp(Context c, String pkg) {
+        Set<String> s = new HashSet<>();
+        for (String e : sp(c).getStringSet(K_AUTO_APPS, Collections.<String>emptySet())) {
+            if (!e.startsWith(pkg + "\t")) s.add(e);
+        }
+        Set<String> allowed = autoAllowed(c);
+        allowed.add(pkg);
+        sp(c).edit().putStringSet(K_AUTO_APPS, s).putStringSet(K_AUTO_ALLOWED, allowed).apply();
+    }
+
+    static Set<String> autoAllowed(Context c) {
+        return new HashSet<>(sp(c).getStringSet(K_AUTO_ALLOWED, Collections.<String>emptySet()));
+    }
+
     // ---- community app installs ----
 
     private static final String K_INSTALL_BLOCK = "install_block_on";
@@ -307,6 +356,8 @@ final class Prefs {
         final Map<String, String> titleKeywords = new HashMap<>();
         /** normalized community app name / nickname -> community name (app store pages) */
         final Map<String, String> storeKeywords = new HashMap<>();
+        /** the same words for the block list's communities, used to spot apps named after them */
+        final Map<String, String> nameKeywords = new HashMap<>();
         boolean inAppBlockAll;
 
         /** Returns the community name if the text contains one of its page-title keywords, or null. */
@@ -355,14 +406,18 @@ final class Prefs {
         r.inAppBlockAll = isInAppBlockAll(c);
         for (String d : customDomains(c)) r.domains.put(d, d);
         if (isTossInvestBlocked(c)) r.domains.put("tossinvest.com", "토스증권");
-        if (isInstallBlockOn(c)) {
-            for (Catalog.Entry e : Catalog.ALL) {
-                if (!on.contains(e.id)) continue;   // same communities as the block list
-                for (String part : e.name.split("[()]")) {
-                    String n = StoreSearch.normalize(part);
-                    if (!n.isEmpty()) r.storeKeywords.put(n, e.name);   // also one-letter names like "X", matched exactly
-                }
-                for (String k : e.searchKeywords()) r.storeKeywords.put(StoreSearch.normalize(k), e.name);
+        for (Catalog.Entry e : Catalog.ALL) {
+            if (!on.contains(e.id)) continue;   // same communities as the block list
+            for (String part : e.name.split("[()]")) {
+                String n = StoreSearch.normalize(part);
+                if (!n.isEmpty()) r.nameKeywords.put(n, e.name);   // also one-letter names like "X", matched exactly
+            }
+            for (String k : e.searchKeywords()) r.nameKeywords.put(StoreSearch.normalize(k), e.name);
+        }
+        if (isInstallBlockOn(c)) r.storeKeywords.putAll(r.nameKeywords);
+        if (isAutoAppsOn(c)) {
+            for (Map.Entry<String, String> a : autoApps(c).entrySet()) {
+                if (!r.packages.containsKey(a.getKey())) r.packages.put(a.getKey(), null); // shown with its own name
             }
         }
         for (String p : customPackages(c)) {

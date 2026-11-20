@@ -34,6 +34,9 @@ public class DetoxVpnService extends VpnService implements Runnable {
     static final String ACTION_STOP = "com.joyong.communitydetox.STOP_VPN";
     private static final String VPN_ADDRESS = "10.111.222.1";
     private static final String VPN_DNS = "10.111.222.2";
+    /** Blocked names point here; it's routed into the VPN, so whoever connects to it can be identified. */
+    private static final String SINKHOLE = "10.111.222.3";
+    private static final byte[] SINKHOLE_IP = {10, 111, (byte) 222, 3};
 
     static volatile boolean running;
 
@@ -153,6 +156,7 @@ public class DetoxVpnService extends VpnService implements Runnable {
                     .addAddress(VPN_ADDRESS, 32)
                     .addDnsServer(VPN_DNS)
                     .addRoute(VPN_DNS, 32)
+                    .addRoute(SINKHOLE, 32)
                     .setBlocking(true);
             try {
                 // This app is exempt: our own DNS forwarding goes out directly, and 모아읽기 can read
@@ -173,6 +177,17 @@ public class DetoxVpnService extends VpnService implements Runnable {
             while (running) {
                 int len = in.read(buf);
                 if (len <= 0) continue;
+                // An app connecting to a blocked community (it got the sinkhole address): find out which app.
+                int proto = DnsPacket.protocolTo(buf, len, SINKHOLE_IP);
+                if (proto == 6 || proto == 17) {
+                    byte[] packet = java.util.Arrays.copyOf(buf, len);
+                    if (proto == 6 && DnsPacket.isTcpSyn(packet, len)) write(out, DnsPacket.tcpReset(packet, len));
+                    try {
+                        pool.execute(() -> identify(proto, packet));
+                    } catch (RuntimeException ignored) {
+                    }
+                    continue;
+                }
                 String name = DnsPacket.queryName(buf, len);
                 if (name == null) continue;
                 byte[] packet = java.util.Arrays.copyOf(buf, len);
@@ -180,7 +195,8 @@ public class DetoxVpnService extends VpnService implements Runnable {
                 String hit = Prefs.isBlockingActive(this) ? rules.matchHost(name) : null;
                 if (hit != null) {
                     countOnce(hit);
-                    write(out, DnsPacket.blockedResponse(packet, len));
+                    lastBlockedName = rules.domains.get(hit) != null ? rules.domains.get(hit) : hit;
+                    write(out, DnsPacket.sinkholeResponse(packet, len, SINKHOLE_IP));
                 } else {
                     try {
                         pool.execute(() -> forward(out, packet));
@@ -193,6 +209,45 @@ public class DetoxVpnService extends VpnService implements Runnable {
             // closed or revoked
         } finally {
             if (Thread.currentThread() == thread) running = false; // a restart may already run a new loop
+        }
+    }
+
+    private volatile String lastBlockedName = "커뮤니티";
+    private final java.util.Map<String, Long> seenConnections = new java.util.HashMap<>();
+
+    /**
+     * Which app made this connection to the sinkhole? Android tells the active VPN the owner of a
+     * connection going through it. Apps that aren't browsers, messengers or system apps are locked:
+     * they're community apps, whoever made them and whatever they're called.
+     */
+    private void identify(int proto, byte[] packet) {
+        if (android.os.Build.VERSION.SDK_INT < 29 || !Prefs.isAutoAppsOn(this) || !Prefs.isBlockingActive(this)) return;
+        String key = proto + ":" + DnsPacket.srcPort(packet);
+        long now = System.currentTimeMillis();
+        synchronized (seenConnections) {
+            Long seen = seenConnections.get(key);
+            if (seen != null && now - seen < 30_000) return;   // retries of the same connection
+            if (seenConnections.size() > 500) seenConnections.clear();
+            seenConnections.put(key, now);
+        }
+        int uid;
+        try {
+            java.net.InetSocketAddress local = new java.net.InetSocketAddress(
+                    InetAddress.getByAddress(java.util.Arrays.copyOfRange(packet, 12, 16)), DnsPacket.srcPort(packet));
+            java.net.InetSocketAddress remote = new java.net.InetSocketAddress(
+                    InetAddress.getByAddress(SINKHOLE_IP), DnsPacket.dstPort(packet));
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            uid = cm.getConnectionOwnerUid(proto, local, remote);
+        } catch (Exception e) {
+            return;
+        }
+        if (uid < 10000) return;   // system
+        String[] pkgs = getPackageManager().getPackagesForUid(uid);
+        if (pkgs == null) return;
+        String community = lastBlockedName;
+        for (String pkg : pkgs) {
+            if (rules.packages.containsKey(pkg) || !AppKinds.mayAutoLock(this, pkg)) continue;
+            if (Prefs.addAutoApp(this, pkg, community)) AutoLock.announce(this, pkg, community, false);
         }
     }
 

@@ -93,6 +93,7 @@ public class BlockListActivity extends Activity {
             c.addView(ui.text("🔒 집중 디톡스 중에는 목록에서 뺄 수 없어요. 추가는 언제든 돼요.", 14, ui.accent, true));
             content.addView(c, Ui.fill(ui.dp(8)));
         }
+        autoAppsCard();
         appScreensCard();
         for (String category : Catalog.CATEGORIES) presetCard(category);
         appsCard();
@@ -111,6 +112,58 @@ public class BlockListActivity extends Activity {
         for (Catalog.Entry e : Catalog.ALL) if (on.contains(e.id)) presets++;
         summary.setText("지금 차단 중: 커뮤니티 " + presets + "곳 + 직접 추가 " + Prefs.customDomains(this).size()
                 + "곳 · 앱 " + Prefs.customPackages(this).size() + "개");
+    }
+
+    /** Community apps found automatically: they reach a blocked community, or are named after one. */
+    private void autoAppsCard() {
+        boolean locked = Prefs.isLocked(this);
+        boolean on = Prefs.isAutoAppsOn(this);
+        java.util.Map<String, String> apps = Prefs.autoApps(this);
+        if (!query.isEmpty() && !matches("자동 잠근 앱 직접 만든 앱", "")) {
+            boolean any = false;
+            for (java.util.Map.Entry<String, String> a : apps.entrySet()) {
+                if (matches(AutoLock.label(this, a.getKey()), a.getKey())) any = true;
+            }
+            if (!any) return;
+        }
+        LinearLayout c = ui.card();
+        c.addView(ui.title("🤖 자동으로 잠근 앱"));
+        c.addView(ui.body("누가 만든 앱이든, 이름이 무엇이든 커뮤니티에 접속하려 하면 잠가요 (VPN이 켜져 있을 때). "
+                + "이름에 커뮤니티 이름이 들어 있는 앱도 잠가요 (예: Reddit 비공식 앱). 브라우저·메신저·시스템 앱은 잠그지 않아요."));
+        LinearLayout r = ui.row();
+        r.addView(ui.text("직접 만든 앱도 자동으로 잠그기", 15, ui.text, true), Ui.weight(0));
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.setChecked(on);
+        sw.setEnabled(!(locked && on));
+        sw.setOnCheckedChangeListener((b, checked) -> {
+            if (!checked && Prefs.isLocked(this)) {
+                b.setChecked(true);
+                lockedToast();
+                return;
+            }
+            Prefs.setAutoAppsOn(this, checked);
+            render();
+        });
+        r.addView(sw);
+        c.addView(r, Ui.fill(ui.dp(8)));
+        if (!Prefs.isVpnOn(this)) {
+            c.addView(ui.body("※ 접속하는 앱을 잡으려면 '네트워크 차단 (VPN)'을 켜 주세요. 지금은 이름으로만 찾아요."), Ui.wrap(ui.dp(4)));
+        }
+        if (apps.isEmpty()) {
+            c.addView(ui.body("아직 잠근 앱이 없어요."), Ui.wrap(ui.dp(8)));
+        }
+        java.util.List<String> pkgs = new ArrayList<>(apps.keySet());
+        Collections.sort(pkgs);
+        for (String p : pkgs) {
+            String label = AutoLock.label(this, p);
+            if (!matches(label, p) && !query.isEmpty() && !matches("자동 잠근 앱", "")) continue;
+            c.addView(removableRow(label, apps.get(p) + " 접속·이름으로 잠김 · " + p, locked, () -> {
+                Prefs.allowAutoApp(this, p);   // unlocked apps are not locked automatically again
+                Toast.makeText(this, "‘" + label + "’ 잠금을 풀었어요 (다시 자동으로 잠그지 않아요)", Toast.LENGTH_SHORT).show();
+                render();
+            }), Ui.fill(ui.dp(6)));
+        }
+        content.addView(c);
     }
 
     /** Screens inside apps that are otherwise allowed (Toss → only 토스증권). */

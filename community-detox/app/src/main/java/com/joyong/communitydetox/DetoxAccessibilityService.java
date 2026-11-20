@@ -62,9 +62,52 @@ public class DetoxAccessibilityService extends AccessibilityService {
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener =
             (sp, key) -> rules = Prefs.rules(DetoxAccessibilityService.this);
 
+    /** The running service, so other parts of the app can ask it to close an app right away. */
+    static volatile DetoxAccessibilityService instance;
+
+    /** An app was just locked automatically: if it's on screen now, close it. */
+    void lockNow(String pkg) {
+        rules = Prefs.rules(this);
+        if (!Prefs.isBlockingActive(this)) return;
+        if (isFrontApp(pkg)) {
+            block("app:" + pkg, appLabel(pkg), false);
+        } else {
+            lastWindowsCheck = 0;
+            checkAllWindows();   // Quest: it may be in a side panel
+        }
+    }
+
+    /**
+     * Apps named after a blocked community (third-party / home-made clients, e.g. "Reddit is Fun",
+     * "○○ 디시 뷰어") are locked even without the VPN. Runs on start and for each new install.
+     */
+    private void scanNamedApps() {
+        new Thread(() -> {
+            if (!Prefs.isAutoAppsOn(this)) return;
+            Prefs.Rules r = Prefs.rules(this);
+            java.util.Set<String> seen = new HashSet<>();
+            for (ResolveInfo ri : AppKinds.launchable(this)) {
+                String p = ri.activityInfo.packageName;
+                if (!seen.add(p)) continue;
+                checkNamedApp(p, ri.loadLabel(getPackageManager()).toString(), r);
+            }
+        }, "NamedApps").start();
+    }
+
+    /** Returns true if this app was locked because of its name. */
+    private boolean checkNamedApp(String pkg, String label, Prefs.Rules r) {
+        if (r.packages.containsKey(pkg) || !AppKinds.mayAutoLock(this, pkg)) return false;
+        String community = AppKinds.namedCommunity(label, pkg, r.nameKeywords);
+        if (community == null || !Prefs.addAutoApp(this, pkg, community)) return false;
+        AutoLock.announce(this, pkg, community, true);
+        return true;
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        instance = this;
+        scanNamedApps();
         rules = Prefs.rules(this);
         Prefs.sp(this).registerOnSharedPreferenceChangeListener(prefsListener);
         loadBrowsers();
@@ -90,6 +133,7 @@ public class DetoxAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        if (instance == this) instance = null;
         try {
             unregisterReceiver(packageAdded);
         } catch (RuntimeException ignored) {
@@ -251,9 +295,12 @@ public class DetoxAccessibilityService extends AccessibilityService {
         public void onReceive(android.content.Context context, Intent intent) {
             if (intent.getData() == null || intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
             String added = intent.getData().getSchemeSpecificPart();
-            Prefs.Rules r = rules;
-            if (added == null || !Prefs.isInstallBlockOn(context) || !Prefs.isBlockingActive(context)
-                    || !r.packages.containsKey(added)) {
+            if (added == null) return;
+            // A new app named after a blocked community is locked like the known ones.
+            if (Prefs.isAutoAppsOn(context)) checkNamedApp(added, AutoLock.label(context, added), rules);
+            Prefs.Rules r = Prefs.rules(context);
+            rules = r;
+            if (!Prefs.isInstallBlockOn(context) || !Prefs.isBlockingActive(context) || !r.packages.containsKey(added)) {
                 return;
             }
             String name = r.packages.get(added);

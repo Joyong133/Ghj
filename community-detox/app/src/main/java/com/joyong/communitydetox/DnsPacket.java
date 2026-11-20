@@ -62,6 +62,93 @@ final class DnsPacket {
         return wrapResponse(p, msg, msg.length);
     }
 
+    /** Query type of the first question (1 = A, 28 = AAAA, 65 = HTTPS ...), or -1. */
+    static int queryType(byte[] p, int len) {
+        int end = questionEnd(p, len);
+        return end <= len ? u16(p, end - 4) : -1;
+    }
+
+    /**
+     * Answer for a blocked name that points to {@code sinkhole} (an address routed into the VPN), so the
+     * app that then tries to connect can be identified. A queries get that address; other types get
+     * "no records" (so nothing goes around it over IPv6).
+     */
+    static byte[] sinkholeResponse(byte[] p, int len, byte[] sinkhole) {
+        int dns = dnsOffset(p, len);
+        int end = Math.min(questionEnd(p, len), len);
+        boolean a = queryType(p, len) == 1;
+        int qlen = end - dns;
+        byte[] msg = new byte[qlen + (a ? 16 : 0)];
+        System.arraycopy(p, dns, msg, 0, qlen);
+        msg[2] = (byte) (0x80 | (msg[2] & 0x79));           // QR=1, keep opcode + RD
+        msg[3] = (byte) 0x80;                               // RA=1, RCODE=0
+        msg[4] = 0; msg[5] = 1;                             // QDCOUNT=1
+        msg[6] = 0; msg[7] = (byte) (a ? 1 : 0);            // ANCOUNT
+        msg[8] = msg[9] = msg[10] = msg[11] = 0;
+        if (a) {
+            int o = qlen;
+            msg[o] = (byte) 0xC0; msg[o + 1] = 12;          // name: pointer to the question
+            put16(msg, o + 2, 1);                           // type A
+            put16(msg, o + 4, 1);                           // class IN
+            msg[o + 6] = 0; msg[o + 7] = 0; put16(msg, o + 8, 30); // TTL 30 s (pauses take effect quickly)
+            put16(msg, o + 10, 4);
+            System.arraycopy(sinkhole, 0, msg, o + 12, 4);
+        }
+        return wrapResponse(p, msg, msg.length);
+    }
+
+    // ---- packets sent to the sinkhole address (an app trying to connect to a blocked site) ----
+
+    /** IP protocol (6 TCP, 17 UDP) if this IPv4 packet goes to {@code dst}, else -1. */
+    static int protocolTo(byte[] p, int len, byte[] dst) {
+        if (len < IP_HEADER + 8 || (p[0] >> 4 & 0xF) != 4) return -1;
+        for (int i = 0; i < 4; i++) if (p[16 + i] != dst[i]) return -1;
+        return p[9] & 0xFF;
+    }
+
+    static int srcPort(byte[] p) {
+        return u16(p, (p[0] & 0xF) * 4);
+    }
+
+    static int dstPort(byte[] p) {
+        return u16(p, (p[0] & 0xF) * 4 + 2);
+    }
+
+    /** True for a TCP SYN (a new connection), not for later packets of it. */
+    static boolean isTcpSyn(byte[] p, int len) {
+        int ihl = (p[0] & 0xF) * 4;
+        return len >= ihl + 20 && (p[ihl + 13] & 0x02) != 0 && (p[ihl + 13] & 0x10) == 0;
+    }
+
+    /** A TCP reset answering a SYN, so the app's connection fails at once instead of hanging. */
+    static byte[] tcpReset(byte[] p, int len) {
+        int ihl = (p[0] & 0xF) * 4;
+        byte[] r = new byte[IP_HEADER + 20];
+        r[0] = 0x45;
+        put16(r, 2, r.length);
+        r[8] = 64;
+        r[9] = 6;
+        System.arraycopy(p, 16, r, 12, 4);
+        System.arraycopy(p, 12, r, 16, 4);
+        put16(r, 10, checksum(r, 0, IP_HEADER));
+        int t = IP_HEADER;
+        put16(r, t, u16(p, ihl + 2));                       // from the port it tried
+        put16(r, t + 2, u16(p, ihl));                       // to the app's port
+        long seq = ((long) (p[ihl + 4] & 0xFF) << 24) | ((p[ihl + 5] & 0xFF) << 16) | ((p[ihl + 6] & 0xFF) << 8) | (p[ihl + 7] & 0xFF);
+        long ack = (seq + 1) & 0xFFFFFFFFL;
+        r[t + 8] = (byte) (ack >> 24); r[t + 9] = (byte) (ack >> 16); r[t + 10] = (byte) (ack >> 8); r[t + 11] = (byte) ack;
+        r[t + 12] = 0x50;                                   // 20-byte header
+        r[t + 13] = 0x14;                                   // RST + ACK
+        // checksum over pseudo header + TCP header
+        byte[] ph = new byte[12 + 20];
+        System.arraycopy(r, 12, ph, 0, 8);
+        ph[9] = 6;
+        put16(ph, 10, 20);
+        System.arraycopy(r, t, ph, 12, 20);
+        put16(r, t + 16, checksum(ph, 0, ph.length));
+        return r;
+    }
+
     /** The DNS message from the query (to forward upstream). */
     static byte[] dnsMessage(byte[] p, int len) {
         int dns = dnsOffset(p, len);
