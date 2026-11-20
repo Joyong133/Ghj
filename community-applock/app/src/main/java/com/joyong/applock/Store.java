@@ -69,6 +69,7 @@ final class Store {
 
     /** Unlock; it won't be locked automatically again. */
     static synchronized void unlock(Context c, String pkg) {
+        if (isDetox(c)) return; // not during detox time
         Set<String> s = new HashSet<>();
         for (String e : sp(c).getStringSet(K_LOCKED, Collections.<String>emptySet())) {
             if (!e.startsWith(pkg + "\t")) s.add(e);
@@ -88,6 +89,38 @@ final class Store {
 
     static void setVpnOn(Context c, boolean on) {
         sp(c).edit().putBoolean(K_VPN, on).apply();
+    }
+
+    // ---- detox time: while it runs, locks can't be undone and the app can't be switched off or removed ----
+
+    private static final String K_DETOX_UNTIL = "detox_until";
+    private static final String K_ADMIN_SETUP = "admin_setup_until";
+
+    static long detoxUntil(Context c) {
+        return sp(c).getLong(K_DETOX_UNTIL, 0);
+    }
+
+    static boolean isDetox(Context c) {
+        return System.currentTimeMillis() < detoxUntil(c);
+    }
+
+    static long detoxLeft(Context c) {
+        return Math.max(0, detoxUntil(c) - System.currentTimeMillis());
+    }
+
+    /** Starts detox time, or extends it by {@code ms} if it's already running. It can never be shortened. */
+    static synchronized void addDetox(Context c, long ms) {
+        long from = Math.max(System.currentTimeMillis(), detoxUntil(c));
+        sp(c).edit().putLong(K_DETOX_UNTIL, from + ms).commit();
+    }
+
+    /** The "turn on uninstall protection" screen opened from this app stays usable for 2 minutes. */
+    static void allowAdminSetup(Context c) {
+        sp(c).edit().putLong(K_ADMIN_SETUP, System.currentTimeMillis() + 120_000).apply();
+    }
+
+    static boolean adminSetupAllowed(Context c) {
+        return System.currentTimeMillis() < sp(c).getLong(K_ADMIN_SETUP, 0);
     }
 
     static void countBlock(Context c) {

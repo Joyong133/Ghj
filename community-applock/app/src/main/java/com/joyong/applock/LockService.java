@@ -21,8 +21,9 @@ import java.util.Set;
 
 /**
  * Closes locked apps when they come to the front (phones, and Meta Quest side panels), and finds
- * apps named after a community: on start and whenever a new app is installed.
- * Only app names are looked at, never what's on screen.
+ * community apps by name and website links: on start and whenever a new app is installed.
+ * During detox time it also closes the Settings screens that would switch this app off or remove it
+ * (only Settings / installer screens are read, and only to find this app's own pages).
  */
 public class LockService extends AccessibilityService {
 
@@ -125,13 +126,95 @@ public class LockService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+        int type = event.getEventType();
+        if (type == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             checkWindows();
             return;
         }
         if (event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
-        if (Store.isLocked(this, pkg)) close(pkg);
+        if (Store.isDetox(this) && Guard.isSettingsPackage(pkg) && guard(type, pkg)) return;
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && Store.isLocked(this, pkg)) close(pkg);
+    }
+
+    private long lastGuardCheck, lastGuardAt;
+
+    /** Detox time: close this app's uninstall / app-info / accessibility / protection / VPN screens. */
+    private boolean guard(int type, String pkg) {
+        long now = SystemClock.uptimeMillis();
+        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && now - lastGuardCheck < 350) return false;
+        lastGuardCheck = now;
+        AccessibilityNodeInfo root = rootOf(pkg);
+        if (root == null) return false;
+        String me = getString(R.string.app_name);
+        List<AccessibilityNodeInfo> mine = root.findAccessibilityNodeInfosByText(me);
+        if (mine == null || mine.isEmpty()) return false;
+        // The "turn on uninstall protection" screen opened from this app stays usable for a moment.
+        if (Store.adminSetupAllowed(this) && !isAdminActive(this) && hasAny(root, "관리자", "admin", "Admin")) return false;
+        boolean installer = pkg.contains("packageinstaller");
+        if (!Guard.shouldClose(texts(root), installer, pkg.contains("vpndialogs"), me,
+                Guard.snippet(getString(R.string.service_desc)), Guard.snippet(getString(R.string.admin_desc)))) {
+            return false;
+        }
+        if (now - lastGuardAt < 800) return true;
+        lastGuardAt = now;
+        performGlobalAction(installer || pkg.contains("vpndialogs") ? GLOBAL_ACTION_BACK : GLOBAL_ACTION_HOME);
+        handler.postDelayed(() -> {
+            try {
+                startActivity(new Intent(this, LockedActivity.class)
+                        .putExtra(LockedActivity.EXTRA_PROTECT, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+            } catch (RuntimeException ignored) {
+            }
+        }, 250);
+        return true;
+    }
+
+    private AccessibilityNodeInfo rootOf(String pkg) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null && root.getPackageName() != null && pkg.equals(root.getPackageName().toString())) return root;
+        try {
+            for (AccessibilityWindowInfo w : getWindows()) { // Quest: settings may be a side panel
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r != null && r.getPackageName() != null && pkg.equals(r.getPackageName().toString())) return r;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return null;
+    }
+
+    private static boolean hasAny(AccessibilityNodeInfo root, String... words) {
+        for (String w : words) {
+            List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(w);
+            if (found != null && !found.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    private static List<String> texts(AccessibilityNodeInfo root) {
+        List<String> out = new java.util.ArrayList<>();
+        java.util.ArrayDeque<AccessibilityNodeInfo> queue = new java.util.ArrayDeque<>();
+        queue.add(root);
+        int visited = 0;
+        while (!queue.isEmpty() && visited < 800) {
+            AccessibilityNodeInfo n = queue.poll();
+            visited++;
+            if (n.getText() != null && n.getText().length() > 0) out.add(n.getText().toString());
+            if (n.getContentDescription() != null && n.getContentDescription().length() > 0) {
+                out.add(n.getContentDescription().toString());
+            }
+            for (int i = 0; i < n.getChildCount(); i++) {
+                AccessibilityNodeInfo child = n.getChild(i);
+                if (child != null) queue.add(child);
+            }
+        }
+        return out;
+    }
+
+    static boolean isAdminActive(Context c) {
+        android.app.admin.DevicePolicyManager dpm =
+                (android.app.admin.DevicePolicyManager) c.getSystemService(DEVICE_POLICY_SERVICE);
+        return dpm != null && dpm.isAdminActive(new android.content.ComponentName(c, AdminReceiver.class));
     }
 
     /** Every app window on screen (Quest shows several side by side). */

@@ -1,6 +1,8 @@
 package com.joyong.applock;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
@@ -9,6 +11,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.InputType;
+import android.widget.EditText;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -21,7 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-/** 커뮤니티 앱 잠금: locks community apps made by anyone (by name, and optionally by connection). */
+/** 커뮤니티 앱 잠금: locks community apps made by anyone (website, name, optionally connection), with detox time. */
 public class MainActivity extends Activity {
 
     private static final int REQ_VPN = 7;
@@ -31,6 +35,20 @@ public class MainActivity extends Activity {
     private Ui ui;
     private ScrollView scroll;
     private LinearLayout content;
+    private TextView detoxLeft;
+    private final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            if (detoxLeft != null) {
+                if (Store.isDetox(MainActivity.this)) {
+                    detoxLeft.setText("남은 시간 " + Ui.remaining(Store.detoxLeft(MainActivity.this)));
+                } else {
+                    render(); // detox time just ended
+                }
+            }
+            handler.postDelayed(this, 1000);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,11 +65,20 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         render();
+        handler.removeCallbacks(tick);
+        handler.postDelayed(tick, 1000);
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(tick);
+        super.onPause();
     }
 
     private void render() {
         final int y = scroll.getScrollY();
         content.removeAllViews();
+        detoxLeft = null;
 
         LinearLayout h = ui.column();
         h.setPadding(ui.dp(4), ui.dp(8), ui.dp(4), ui.dp(16));
@@ -60,7 +87,9 @@ public class MainActivity extends Activity {
         content.addView(h);
 
         accessibilityCard();
+        detoxCard();
         lockedCard();
+        protectCard();
         vpnCard();
 
         TextView t = ui.body("ℹ️ 웹사이트로 찾기: 커뮤니티 웹사이트 링크(예: reddit.com, gall.dcinside.com)를 여는 앱이면 잠가요 "
@@ -142,6 +171,7 @@ public class MainActivity extends Activity {
 
     private void lockedCard() {
         Map<String, Store.Locked> locked = Store.locked(this);
+        boolean detox = Store.isDetox(this);
         LinearLayout c = ui.card();
         c.addView(ui.title("🔒 잠긴 앱 " + locked.size() + "개"));
         if (locked.isEmpty()) {
@@ -160,7 +190,11 @@ public class MainActivity extends Activity {
             texts.addView(ui.text(label, 15, ui.text, true));
             texts.addView(ui.text(l.reason() + " · " + p, 12, ui.sub, false));
             row.addView(texts, Ui.weight(0));
-            Button x = ui.button("풀기", false, v -> {
+            Button x = ui.button(detox ? "⏳" : "풀기", false, v -> {
+                if (Store.isDetox(this)) {
+                    toast("디톡스 시간이 끝나면 풀 수 있어요");
+                    return;
+                }
                 Store.unlock(this, p);
                 toast("‘" + label + "’ 잠금을 풀었어요 (다시 자동으로 잠그지 않아요)");
                 render();
@@ -175,6 +209,152 @@ public class MainActivity extends Activity {
                 render();
             });
         }).start()), Ui.fill(ui.dp(10)));
+        content.addView(c);
+    }
+
+    // ------------------------------------------------------------------ detox time
+
+    private static final long MIN = 60_000L, HOUR = 60 * MIN, DAY = 24 * HOUR;
+
+    private void detoxCard() {
+        boolean on = Store.isDetox(this);
+        LinearLayout c = ui.card();
+        if (on) c.setBackground(ui.rounded(ui.accentSoft, 20));
+        c.addView(ui.title("⏳ 디톡스 시간"));
+        if (on) {
+            c.addView(ui.text("디톡스 중 — " + new java.text.SimpleDateFormat("M월 d일 HH:mm", java.util.Locale.KOREA)
+                    .format(new java.util.Date(Store.detoxUntil(this))) + "까지", 15, ui.accent, true));
+            detoxLeft = ui.text("남은 시간 " + Ui.remaining(Store.detoxLeft(this)), 14, ui.text, false);
+            c.addView(detoxLeft, Ui.wrap(ui.dp(4)));
+            c.addView(ui.body("끝날 때까지 잠긴 앱을 풀 수 없고, 이 앱을 끄거나(접근성·강제 중지) 지울 수 없어요. "
+                    + "시간은 늘릴 수만 있어요."), Ui.wrap(ui.dp(6)));
+        } else {
+            c.addView(ui.body("시작하면 정한 시간 동안 잠긴 앱을 풀 수 없고, 이 앱을 끄거나 지울 수 없어요. "
+                    + "중간에 멈출 수 없으니 신중하게 고르세요."));
+        }
+        String[] labels = {"1시간", "3시간", "6시간", "12시간", "1일", "3일", "7일", "14일", "30일"};
+        long[] times = {HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 3 * DAY, 7 * DAY, 14 * DAY, 30 * DAY};
+        LinearLayout r = null;
+        for (int i = 0; i < labels.length; i++) {
+            if (i % 3 == 0) {
+                r = ui.row();
+                c.addView(r, Ui.fill(ui.dp(8)));
+            }
+            final long ms = times[i];
+            r.addView(ui.button((on ? "+" : "") + labels[i], !on && i == 4, v -> confirmDetox(ms)), Ui.weight(i % 3 == 0 ? 0 : ui.dp(6)));
+        }
+
+        // custom: days / hours / minutes
+        LinearLayout custom = ui.row();
+        EditText d = number("일"), h = number("시간"), m = number("분");
+        custom.addView(d, Ui.weight(0));
+        custom.addView(h, Ui.weight(ui.dp(6)));
+        custom.addView(m, Ui.weight(ui.dp(6)));
+        custom.addView(ui.button(on ? "늘리기" : "시작", true, v -> {
+            long ms = value(d) * DAY + value(h) * HOUR + value(m) * MIN;
+            if (ms < MIN) {
+                toast("시간을 입력해 주세요");
+                return;
+            }
+            if (ms > 365 * DAY) {
+                toast("최대 365일까지 정할 수 있어요");
+                return;
+            }
+            confirmDetox(ms);
+        }), Ui.weight(ui.dp(6)));
+        c.addView(ui.text("직접 정하기", 13, ui.sub, true), Ui.wrap(ui.dp(12)));
+        c.addView(custom, Ui.fill(ui.dp(4)));
+        if (!isAdminActive()) {
+            c.addView(ui.text("💡 아래 ‘삭제 방지’도 켜 두면 디톡스 중에 앱을 지울 수 없어요", 12, ui.danger, false), Ui.wrap(ui.dp(10)));
+        }
+        content.addView(c);
+    }
+
+    private EditText number(String hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        e.setSingleLine(true);
+        e.setTextSize(15);
+        e.setTextColor(ui.text);
+        e.setHintTextColor(ui.sub);
+        e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4)});
+        return e;
+    }
+
+    private static long value(EditText e) {
+        try {
+            return Long.parseLong(e.getText().toString().trim());
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    private void confirmDetox(long ms) {
+        boolean on = Store.isDetox(this);
+        String what = Ui.duration(ms);
+        new AlertDialog.Builder(this)
+                .setTitle(on ? "디톡스 시간을 " + what + " 늘릴까요?" : what + " 동안 디톡스할까요?")
+                .setMessage("그동안 잠긴 앱을 풀 수 없고, 이 앱을 끄거나 지울 수 없어요. 중간에 멈출 수 없어요.")
+                .setPositiveButton(on ? "늘리기" : "시작", (dlg, w) -> {
+                    Store.addDetox(this, ms);
+                    toast(on ? "디톡스 시간을 " + what + " 늘렸어요" : "디톡스 시작! " + what + " 동안이에요 🌿");
+                    render();
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    // ------------------------------------------------------------------ uninstall protection
+
+    private ComponentName admin() {
+        return new ComponentName(this, AdminReceiver.class);
+    }
+
+    private boolean isAdminActive() {
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        return dpm != null && dpm.isAdminActive(admin());
+    }
+
+    private void protectCard() {
+        boolean on = isAdminActive();
+        LinearLayout c = ui.card();
+        if (on) c.setBackground(ui.rounded(ui.accentSoft, 20));
+        c.addView(ui.title("🛡️ 삭제 방지"));
+        c.addView(ui.text(on ? "✓ 켜짐 — 이 앱을 바로 지울 수 없어요" : "꺼져 있어요", 14, on ? ui.accent : ui.sub, true));
+        c.addView(ui.body("켜 두면 이 앱을 바로 지울 수 없어요. 디톡스 시간에는 삭제 방지도 끌 수 없어요. "
+                + "디톡스 중에는 이 앱의 삭제 창·앱 정보(강제 중지)·접근성 끄기·삭제 방지 끄기 화면만 닫아요. "
+                + "다른 앱 설정은 그대로 쓸 수 있어요."), Ui.wrap(ui.dp(6)));
+        if (!on) {
+            c.addView(ui.button("삭제 방지 켜기", true, v -> {
+                Store.allowAdminSetup(this);
+                Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin())
+                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "켜 두면 커뮤니티 앱 잠금을 바로 지울 수 없어요. 기기를 잠그거나 지우는 등 다른 권한은 쓰지 않아요.");
+                if (!tryOpen(i)) toast("이 기기에서는 삭제 방지를 켤 수 없어요");
+            }), Ui.fill(ui.dp(10)));
+        } else {
+            c.addView(ui.button("삭제 방지 끄기", false, v -> {
+                if (Store.isDetox(this)) {
+                    toast("디톡스 시간이 끝나면 끌 수 있어요");
+                    return;
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle("삭제 방지를 끌까요?")
+                        .setMessage("끄면 이 앱을 바로 지울 수 있게 돼요.")
+                        .setPositiveButton("끄기", (dlg, w) -> {
+                            DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                            try {
+                                dpm.removeActiveAdmin(admin());
+                            } catch (RuntimeException ignored) {
+                            }
+                            handler.postDelayed(this::render, 500);
+                        })
+                        .setNegativeButton("취소", null)
+                        .show();
+            }), Ui.fill(ui.dp(10)));
+        }
         content.addView(c);
     }
 
@@ -210,6 +390,11 @@ public class MainActivity extends Activity {
                 Store.setVpnOn(this, true);
                 FinderVpn.start(this);
             } else {
+                if (Store.isDetox(this)) {
+                    b.setChecked(true);
+                    toast("디톡스 시간에는 끌 수 없어요");
+                    return;
+                }
                 Store.setVpnOn(this, false);
                 FinderVpn.stop(this);
             }

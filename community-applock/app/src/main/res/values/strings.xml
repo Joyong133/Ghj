@@ -2,5 +2,7 @@
 <resources>
     <string name="app_name">커뮤니티 앱 잠금</string>
     <string name="service_label">커뮤니티 앱 잠금</string>
-    <string name="service_desc">이름에 커뮤니티 이름이 들어 있거나 커뮤니티에 접속하려 한 앱을 잠가요. 잠긴 앱이 열리면 홈으로 보내요. 확인하는 것은 지금 열린 앱의 이름뿐이며, 어떤 정보도 저장하거나 외부로 보내지 않아요.</string>
+    <string name="service_desc">커뮤니티 웹사이트를 열거나 이름에 커뮤니티 이름이 들어 있는 앱을 잠가요. 잠긴 앱이 열리면 홈으로 보내요. 디톡스 시간에는 이 앱을 끄거나 지우는 설정 화면도 닫아요. 어떤 정보도 외부로 보내지 않아요.</string>
+    <string name="admin_label">커뮤니티 앱 잠금 삭제 방지</string>
+    <string name="admin_desc">켜 두면 커뮤니티 앱 잠금을 바로 지울 수 없어요. 지우려면 먼저 앱 안에서 삭제 방지를 끄세요. 이 권한으로 기기를 잠그거나 지우는 등 다른 일은 하지 않아요.</string>
 </resources>
