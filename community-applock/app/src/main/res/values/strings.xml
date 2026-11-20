@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">커뮤니티 앱 잠금</string>
+    <string name="service_label">커뮤니티 앱 잠금</string>
+    <string name="service_desc">이름에 커뮤니티 이름이 들어 있거나 커뮤니티에 접속하려 한 앱을 잠가요. 잠긴 앱이 열리면 홈으로 보내요. 확인하는 것은 지금 열린 앱의 이름뿐이며, 어떤 정보도 저장하거나 외부로 보내지 않아요.</string>
+</resources>

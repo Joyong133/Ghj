@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Signing: the same permanent key as Digital Detox when the DETOX_KEYSTORE_BASE64 secret is set (CI).
+def keystorePath = System.getenv("DETOX_KEYSTORE_PATH")
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'com.joyong.applock'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.joyong.applock'
+        minSdk 26
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+    }
+
+    signingConfigs {
+        if (keystorePath) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv("DETOX_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("DETOX_KEY_ALIAS")
+                keyPassword System.getenv("DETOX_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
