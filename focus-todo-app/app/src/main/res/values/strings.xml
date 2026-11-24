@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">집중 투두</string>
+    <string name="title_schedule">집중 시간표</string>
+    <string name="title_allowed">집중 중 허용할 앱</string>
+    <string name="a11y_label">집중 투두 – 집중 모드</string>
+    <string name="a11y_description">집중 시간 동안 현재 화면의 앱을 확인하여, 허용되지 않은 앱이 열리면 집중 투두로 되돌려 보냅니다. 전화·문자·연락처와 직접 허용한 앱은 그대로 사용할 수 있습니다. 화면 내용은 저장하거나 외부로 보내지 않습니다.</string>
+</resources>

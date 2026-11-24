@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/scheduleInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="정해진 요일·시간이 되면 자동으로 집중 모드가 시작되고, 끝날 때까지 이 앱과 허용된 앱(전화·문자 등)만 쓸 수 있어요.\n집중 중에는 시간표를 바꿀 수 없어요."
+        android:textColor="@color/text_sub"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/lockedBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/warn_bg"
+        android:padding="12dp"
+        android:text="🔒 지금은 집중 시간이라 시간표가 잠겨 있어요."
+        android:textColor="@color/warn_text"
+        android:visibility="gone" />
+
+    <ListView
+        android:id="@+id/scheduleList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:background="@drawable/card_bg"
+        android:divider="#EEEEEE"
+        android:dividerHeight="1dp" />
+
+    <TextView
+        android:id="@+id/scheduleEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="24dp"
+        android:text="등록된 집중 시간이 없어요."
+        android:textColor="@color/text_sub"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btnAddSchedule"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="＋ 집중 시간 추가" />
+</LinearLayout>
